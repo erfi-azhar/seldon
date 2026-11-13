@@ -56,6 +56,15 @@ streaks that don't break just because today isn't over yet.
 **Numbers.** Any metric over time, with a sparkline and one-field logging. Each knows
 whether up or down is the good direction.
 
+**Health screenings.** Inside the Health sphere: import a check-up record (JSON) and see
+two visits side by side — what's in range, what moved, scans, risk outlook, every result
+against its healthy range, and an action plan whose items become tasks with one tap. The
+agent can read it too. Your record lives only in your database; none ships with the code.
+
+**Faith, for a Muslim.** The Faith sphere's starter kit is the five daily prayers, Quran
+reading, adhkar, Monday and Thursday fasts, Jumu'ah and sadaqah, with Quran pages (a khatm
+is 604), sadaqah and memorisation as numbers to track.
+
 **Tasks, journal, library.** One-off to-dos with optional due dates; one journal entry per
 day that saves as you type; notes and links filed by sphere.
 
@@ -77,7 +86,7 @@ home-screen icon. Light and dark themes; phone layout with a tab bar.
 ## The agent, concretely
 
 - **It works through the same rules you do.** Every tool is a validated wrapper over the
-  data layer the app itself uses (`server/src/agent/tools.ts`). There are 20: read the
+  data layer the app itself uses (`server/src/agent/tools.ts`). There are 21: read the
   overview or one sphere; create and update goals, steps, tasks, habits, metrics; log
   check-ins and numbers; read and append to the journal; save notes; search; remember.
 - **It cannot delete.** It can add, log, update and complete. Everything it creates or logs

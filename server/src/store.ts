@@ -27,6 +27,7 @@ import type {
   NoteKind,
   Overview,
   Profile,
+  Screenings,
   ProviderKind,
   SearchHit,
   Settings,
@@ -972,6 +973,26 @@ export class Store {
     return note;
   }
 
+  // ── Health screenings ─────────────────────────────────────────────────────
+
+  getScreenings(): Screenings | null {
+    const r = this.get("SELECT data FROM screenings WHERE id = 'main'");
+    return r ? (JSON.parse(r.data) as Screenings) : null;
+  }
+
+  /** Replace the screening record (null removes it). */
+  putScreenings(data: Screenings | null): void {
+    if (data === null) {
+      this.run("DELETE FROM screenings WHERE id = 'main'");
+      return;
+    }
+    this.run(
+      "INSERT INTO screenings (id, data, updated_at) VALUES ('main', ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+      JSON.stringify(data),
+      nowIso(),
+    );
+  }
+
   // ── Memory ────────────────────────────────────────────────────────────────
 
   listMemories(): Memory[] {
@@ -1304,6 +1325,7 @@ export class Store {
     'habit_logs',
     'notes',
     'memories',
+    'screenings',
     'activity',
     'conversations',
     'messages',

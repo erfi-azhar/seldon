@@ -14,6 +14,7 @@ import { cx } from './lib.ts';
 import { AppContext, type AppState, type Sheet, type Toast } from './state.tsx';
 import { Goals } from './views/Goals.tsx';
 import { Library } from './views/Library.tsx';
+import { Screenings } from './views/Screenings.tsx';
 import { Settings } from './views/Settings.tsx';
 import { SphereDetail, Spheres } from './views/Spheres.tsx';
 import { Today } from './views/Today.tsx';
@@ -172,6 +173,7 @@ function Shell({ settings }: { settings: SettingsData }) {
             <Switch>
               <Route path="/" component={Today} />
               <Route path="/spheres" component={Spheres} />
+              <Route path="/spheres/:id/screenings">{(params) => <Screenings sphereId={params.id} />}</Route>
               <Route path="/spheres/:id">{(params) => <SphereDetail key={params.id} id={params.id} />}</Route>
               <Route path="/goals" component={Goals} />
               <Route path="/library" component={Library} />

@@ -288,3 +288,57 @@ export type AgentEvent =
     }
   | { type: 'error'; message: string }
   | { type: 'done' };
+
+// ── Health screenings ───────────────────────────────────────────────────────
+// One document comparing up to two check-ups. `a` is the earlier visit, `b` the latest.
+
+export type ScreenStatus = 'ok' | 'watch' | 'flag' | 'na';
+export type ScreenTrend = 'better' | 'worse' | 'same' | 'new' | 'na';
+
+export interface ScreenResult {
+  /** Group, e.g. "Heart & cholesterol". */
+  g: string;
+  n: string;
+  sub?: string;
+  u?: string;
+  a: string | null;
+  b: string | null;
+  lo?: number;
+  hi?: number;
+  ref?: string;
+  s25?: ScreenStatus;
+  s?: ScreenStatus;
+  v?: ScreenTrend;
+  chl?: string;
+  note?: string;
+}
+
+export interface Screenings {
+  title: string;
+  subtitle?: string;
+  updated?: string;
+  visits: { label: string; date?: string; place?: string }[];
+  next?: string;
+  ringNotes?: { watch?: string; flag?: string };
+  summary?: string[];
+  tiles?: { lab: string; a: number; b: number; val: string; u: string; v: 'better' | 'worse' | 'watch'; dir: 'up' | 'down'; st: ScreenStatus; stt: string; sub: string }[];
+  actions?: { p: 'high' | 'medium' | 'low'; t: string; body: string; also?: string; src?: string }[];
+  moved?: { h: string; s: ScreenStatus; items: [string, string, string][] }[];
+  slopes?: { n: string; u: string; a: number; b: number; dp: number; d: [number, number]; band: [number, number]; rng: string; st: ScreenStatus; stt: string; note?: string; ref?: number; refl?: string }[];
+  scans?: {
+    t: string;
+    tags: string[];
+    s: ScreenStatus;
+    lbl: string;
+    compare?: [string, string];
+    bars?: { name: string; a: number; b: number }[];
+    barNote?: string;
+    facts?: [string, string][];
+    read?: string;
+  }[];
+  risks?: { n: string; h: string; now: number; avg: number; tgt: number; mult: number }[];
+  riskNote?: string;
+  results: ScreenResult[];
+  notes?: [string, string][];
+  footer?: string[];
+}

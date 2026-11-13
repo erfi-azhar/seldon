@@ -151,6 +151,14 @@ const MIGRATIONS: string[] = [
     expires_at TEXT NOT NULL
   );
   `,
+  `
+  -- Structured health-screening record shown in the Health sphere: one JSON document.
+  CREATE TABLE screenings (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export function defaultDbPath(): string {

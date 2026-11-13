@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowUpRight, Pencil, Plus } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Pencil, Plus, Stethoscope } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'wouter';
 import { CATALOG_BY_KEY } from '../../../shared/catalog.ts';
@@ -8,6 +8,7 @@ import { AddTask, GoalRow, HabitRow, MetricCard, TaskRow } from '../components/r
 import { InlineEdit, Loading } from '../components/ui.tsx';
 import { cx, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
+import { normalise, useScreenings } from './Screenings.tsx';
 import { ActivityFeed } from './Today.tsx';
 
 export function Spheres() {
@@ -65,6 +66,25 @@ export function Spheres() {
         </button>
       </div>
     </div>
+  );
+}
+
+/** The way into the screening record, shown on the Health sphere. */
+function ScreeningsEntry({ sphereId }: { sphereId: string }) {
+  const { data: doc } = useScreenings();
+  const rows = (doc?.results ?? []).map(normalise).filter((r) => r.b != null);
+  const n = (st: string) => rows.filter((r) => r.s === st).length;
+  return (
+    <Link href={`/spheres/${sphereId}/screenings`} className="card screenings-entry" style={{ marginBottom: 20 }}>
+      <Stethoscope size={22} className="faint" />
+      <span className="grow">
+        <b>Health screenings</b>
+        <span className="muted">
+          {doc ? `${doc.visits.map((v) => v.label).join(' and ')} · ${n('ok')} in range, ${n('watch')} to watch, ${n('flag')} flagged` : 'Import a check-up record to see results, trends and an action plan.'}
+        </span>
+      </span>
+      <ArrowUpRight size={16} className="faint" />
+    </Link>
   );
 }
 
@@ -130,6 +150,8 @@ export function SphereDetail({ id }: { id: string }) {
           </div>
         </div>
       </header>
+
+      {s.key === 'health' && <ScreeningsEntry sphereId={id} />}
 
       <div className="detail-grid">
         <div className="col">

@@ -10,7 +10,7 @@ import { ProviderError } from './agent/types.ts';
 import type { DB } from './db.ts';
 import { Invalid, localDate, NotFound, nowIso, Store } from './store.ts';
 import { CATALOG_BY_KEY } from '../../shared/catalog.ts';
-import type { AgentEvent } from '../../shared/types.ts';
+import type { AgentEvent, Screenings } from '../../shared/types.ts';
 
 export interface AppOptions {
   db: DB;
@@ -372,6 +372,22 @@ export function createApp(opts: AppOptions): Hono {
   };
   app.get('/api/journal/:date', (c) => c.json(store.getJournal(dayParam(c))));
   app.put('/api/journal/:date', async (c) => c.json(store.putJournal(dayParam(c), (await read(c, S.journal)).body)));
+
+  // One document; the shape is owned by the client (shared/types.ts → Screenings).
+  const screenings = z.looseObject({
+    title: z.string().max(200),
+    visits: z.array(z.looseObject({ label: z.string() })).min(1).max(2),
+    results: z.array(z.looseObject({ g: z.string(), n: z.string() })).max(1000),
+  });
+  app.get('/api/screenings', (c) => c.json(store.getScreenings()));
+  app.put('/api/screenings', async (c) => {
+    store.putScreenings((await read(c, screenings)) as unknown as Screenings);
+    return c.json({ ok: true });
+  });
+  app.delete('/api/screenings', (c) => {
+    store.putScreenings(null);
+    return c.json({ ok: true });
+  });
 
   app.get('/api/memories', (c) => c.json(store.listMemories()));
   app.post('/api/memories', async (c) => c.json(store.addMemory((await read(c, S.memory)).content), 201));

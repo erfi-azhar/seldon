@@ -307,6 +307,28 @@ const TOOLS: ToolDef[] = [
   ),
 
   tool(
+    'get_health_screenings',
+    'Read the user\'s health-screening record (lab results from their check-ups, with what is flagged, what changed between visits, and the action plan). Call this before discussing their health numbers, risks or medical follow-ups. You are not a doctor: relay what the record says and encourage reviewing it with their GP.',
+    z.object({}),
+    (_input, { store }) => {
+      const s = store.getScreenings();
+      if (!s) return { data: 'No screening record has been imported yet.', summary: 'Looked for health screenings' };
+      const attention = s.results.filter((r) => r.s === 'flag' || r.s === 'watch');
+      return {
+        data: {
+          visits: s.visits,
+          summary: s.summary,
+          actions: (s.actions ?? []).map((a) => ({ priority: a.p, title: a.t, detail: a.body })),
+          needs_attention: attention.map((r) => ({ test: r.n, group: r.g, earlier: r.a, latest: r.b, unit: r.u, healthy: r.ref, status: r.s, trend: r.v, note: r.note })),
+          in_range_count: s.results.filter((r) => r.s === 'ok').length,
+          risks: s.risks,
+        },
+        summary: 'Read the health screenings',
+      };
+    },
+  ),
+
+  tool(
     'read_journal',
     'Read the user\'s journal entries for the last few days. Call this when planning the day, doing a review, or when they refer to something they wrote.',
     z.object({ days: z.number().int().min(1).max(60).optional().describe('How many days back, including today; default 7') }),

@@ -140,19 +140,21 @@ at(30, () => store.updateMilestone(japan.milestones[0]!.id, { done: true }));
 at(16, () => store.createTask({ title: 'Renew passports', sphereId: sphere.travels!, goalId: japan.id, dueDate: day(-12) }));
 
 // ── Faith ───────────────────────────────────────────────────────────────────
-at(88, () => store.updateSphere(sphere.faith!, { vision: 'Begin and end each day in gratitude, and let it shape the hours between.' }));
-const prayer = at(80, () => store.createHabit({ sphereId: sphere.faith!, name: 'Morning prayer' }));
-const reading = at(80, () => store.createHabit({ sphereId: sphere.faith!, name: 'Scripture reading' }));
-const gratitude = at(30, () => store.createHabit({ sphereId: sphere.faith!, name: 'Three things I am grateful for' }));
-logHabit(prayer.id, [0, 1, 2, 3, 4, 5, ...often(0.82).filter((d) => d > 6)]);
+at(88, () => store.updateSphere(sphere.faith!, { vision: 'Five prayers on time, the Quran every day, and a heart that remembers between them.' }));
+const prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((name) => at(80, () => store.createHabit({ sphereId: sphere.faith!, name })));
+const rates = [0.72, 0.9, 0.84, 0.95, 0.9];
+prayers.forEach((p, i) => logHabit(p.id, [...(i === 0 || i === 1 ? [0] : []), 1, 2, ...often(rates[i]!).filter((d) => d > 2)]));
+const reading = at(80, () => store.createHabit({ sphereId: sphere.faith!, name: 'Quran reading' }));
 logHabit(reading.id, [0, 1, ...often(0.6).filter((d) => d > 2)]);
-logHabit(gratitude.id, often(0.45, 28));
-const pages = at(80, () => store.createMetric({ sphereId: sphere.faith!, name: 'Pages read', unit: 'pp', direction: 'up' }));
+const fasting = at(40, () => store.createHabit({ sphereId: sphere.faith!, name: 'Fast Monday and Thursday', cadence: 'weekly', targetPerWeek: 2 }));
+logHabit(fasting.id, [1, 4, 8, 11, 18, 22, 25]);
+const pages = at(80, () => store.createMetric({ sphereId: sphere.faith!, name: 'Quran pages read', unit: 'pp', direction: 'up' }));
 logSeries(pages.id, weekly(212, 388, 11, 8, 0));
-const giving = at(150, () => store.createMetric({ sphereId: sphere.faith!, name: 'Given this year', direction: 'up' }));
-logSeries(giving.id, [[150, 2400], [120, 2900], [91, 3350], [60, 3900], [31, 4400], [3, 4950]]);
-at(80, () => store.createGoal({ sphereId: sphere.faith!, title: 'Finish the full read-through this year', metricId: pages.id, startValue: 0, targetValue: 600, targetDate: day(-48) }));
-at(150, () => store.createGoal({ sphereId: sphere.faith!, title: 'Give a tenth of what comes in', why: 'It was never only mine.', metricId: giving.id, startValue: 0, targetValue: 6000, targetDate: day(-48) }));
+const giving = at(150, () => store.createMetric({ sphereId: sphere.faith!, name: 'Sadaqah given', direction: 'up' }));
+logSeries(giving.id, [[150, 240], [120, 310], [91, 420], [60, 495], [31, 610], [3, 700]]);
+at(80, () => store.createGoal({ sphereId: sphere.faith!, title: 'Complete a khatm before Ramadan', metricId: pages.id, startValue: 0, targetValue: 604, targetDate: day(-95) }));
+const umrah = at(60, () => store.createGoal({ sphereId: sphere.faith!, title: 'Go for Umrah', why: 'To stand there at least once while I am able.', horizon: 'year', targetDate: day(-240), milestones: ['Set the budget', 'Choose the dates', 'Book with an agent', 'Learn the rites'] }));
+at(20, () => store.updateMilestone(umrah.milestones[0]!.id, { done: true }));
 
 // ── Family ──────────────────────────────────────────────────────────────────
 at(88, () => store.updateSphere(sphere.family!, { vision: 'Be the one who shows up: present at dinner, patient at bedtime.' }));
