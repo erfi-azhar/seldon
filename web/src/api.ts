@@ -1,0 +1,195 @@
+import { useMutation, useQuery, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
+import type {
+  AgentEvent,
+  ChatContext,
+  Conversation,
+  ConversationSummary,
+  Goal,
+  Memory,
+  Metric,
+  Note,
+  NoteKind,
+  Overview,
+  SearchHit,
+  Settings,
+  SphereDetail,
+  SphereWithStats,
+  Task,
+} from '../../shared/types.ts';
+import { todayStr } from './lib.ts';
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** Fired when the server says the session is gone, so the shell can show sign-in. */
+export const SIGNED_OUT = 'lifeos:signed-out';
+
+async function fail(res: Response): Promise<never> {
+  let message = `Request failed (${res.status})`;
+  let code: string | undefined;
+  try {
+    const body = (await res.json()) as { error?: string; code?: string };
+    if (body.error) message = body.error;
+    code = body.code;
+  } catch {
+    // Not JSON — keep the generic message.
+  }
+  if (res.status === 401) window.dispatchEvent(new Event(SIGNED_OUT));
+  throw new ApiError(message, res.status, code);
+}
+
+export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: 'same-origin',
+    });
+  } catch {
+    throw new ApiError('Could not reach your LifeOS server.', 0);
+  }
+  if (!res.ok) return fail(res);
+  return (await res.json()) as T;
+}
+
+const withDate = (path: string): string => `${path}${path.includes('?') ? '&' : '?'}date=${todayStr()}`;
+
+// ── Queries ─────────────────────────────────────────────────────────────────
+
+export const useAuth = () =>
+  useQuery({ queryKey: ['auth'], queryFn: () => api<{ required: boolean; authenticated: boolean }>('GET', '/auth/status'), staleTime: Infinity });
+
+export const useSettings = (enabled = true) =>
+  useQuery({ queryKey: ['settings'], queryFn: () => api<Settings>('GET', '/settings'), enabled });
+
+export const useOverview = () =>
+  useQuery({ queryKey: ['overview', todayStr()], queryFn: () => api<Overview>('GET', withDate('/overview')) });
+
+export const useSpheres = (archived = false) =>
+  useQuery({
+    queryKey: ['spheres', archived, todayStr()],
+    queryFn: () => api<SphereWithStats[]>('GET', withDate(`/spheres${archived ? '?archived=1' : ''}`)),
+  });
+
+export const useSphere = (id: string) =>
+  useQuery({ queryKey: ['sphere', id, todayStr()], queryFn: () => api<SphereDetail>('GET', withDate(`/spheres/${id}`)) });
+
+export const useGoals = (status: 'active' | 'done' | 'all' | 'paused' = 'all') =>
+  useQuery({ queryKey: ['goals', status], queryFn: () => api<Goal[]>('GET', `/goals?status=${status}`) });
+
+export const useGoal = (id: string | null) =>
+  useQuery({ queryKey: ['goal', id], queryFn: () => api<Goal>('GET', `/goals/${id}`), enabled: !!id });
+
+export const useTasks = (params: { goalId?: string; status?: 'open' | 'done' | 'all' }) =>
+  useQuery({
+    queryKey: ['tasks', params],
+    queryFn: () => api<Task[]>('GET', `/tasks?status=${params.status ?? 'open'}${params.goalId ? `&goalId=${params.goalId}` : ''}`),
+  });
+
+export const useMetrics = () => useQuery({ queryKey: ['metrics'], queryFn: () => api<Metric[]>('GET', '/metrics') });
+
+export const useNotes = (filter: { kind?: NoteKind; sphereId?: string; q?: string }) =>
+  useQuery({
+    queryKey: ['notes', filter],
+    queryFn: () => {
+      const p = new URLSearchParams();
+      if (filter.kind) p.set('kind', filter.kind);
+      if (filter.sphereId) p.set('sphereId', filter.sphereId);
+      if (filter.q) p.set('q', filter.q);
+      return api<Note[]>('GET', `/notes?${p}`);
+    },
+    placeholderData: (prev) => prev,
+  });
+
+export const useMemories = () => useQuery({ queryKey: ['memories'], queryFn: () => api<Memory[]>('GET', '/memories') });
+
+export const useSearch = (q: string) =>
+  useQuery({
+    queryKey: ['search', q],
+    queryFn: () => api<SearchHit[]>('GET', `/search?q=${encodeURIComponent(q)}`),
+    enabled: q.trim().length > 0,
+    placeholderData: (prev) => prev,
+  });
+
+export const useModels = (enabled: boolean, stamp: string) =>
+  useQuery({
+    queryKey: ['models', stamp],
+    queryFn: () => api<{ id: string; name: string }[]>('GET', '/models'),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+export const useConversations = (enabled: boolean) =>
+  useQuery({ queryKey: ['conversations'], queryFn: () => api<ConversationSummary[]>('GET', '/conversations'), enabled });
+
+export const fetchConversation = (id: string) => api<Conversation>('GET', `/conversations/${id}`);
+
+// ── Mutations ───────────────────────────────────────────────────────────────
+
+/**
+ * A write. This is a single-person app with small data, so after any change we simply
+ * refresh everything on screen rather than tracking which queries a write touches.
+ */
+export function useWrite<V = void, R = unknown>(fn: (vars: V) => Promise<R>): UseMutationResult<R, Error, V> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => qc.invalidateQueries(),
+  });
+}
+
+export const write = {
+  post: <T,>(path: string, body: unknown = {}) => api<T>('POST', path, body),
+  patch: <T,>(path: string, body: unknown) => api<T>('PATCH', path, body),
+  put: <T,>(path: string, body: unknown) => api<T>('PUT', path, body),
+  del: (path: string) => api<{ ok: true }>('DELETE', path),
+};
+
+// ── Agent stream ────────────────────────────────────────────────────────────
+
+/** POST a message and read the event stream. Resolves when the stream ends. */
+export async function streamChat(
+  body: { conversationId?: string; message: string; context: ChatContext },
+  onEvent: (event: AgentEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const res = await fetch('/api/agent/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'same-origin',
+    signal,
+  });
+  if (!res.ok) return fail(res);
+  if (!res.body) throw new ApiError('The server sent an empty reply.', 0);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let end: number;
+    while ((end = buffer.indexOf('\n\n')) >= 0) {
+      const frame = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const data = frame
+        .split('\n')
+        .filter((l) => l.startsWith('data:'))
+        .map((l) => l.slice(5).trimStart())
+        .join('\n');
+      if (data) onEvent(JSON.parse(data) as AgentEvent);
+    }
+  }
+}
