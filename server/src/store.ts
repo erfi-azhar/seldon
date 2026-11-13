@@ -112,7 +112,7 @@ const UNDOABLE = new Set([
   'completed:milestone',
 ]);
 
-const DEFAULT_PROFILE: Profile = { userName: '', agentName: 'North', onboarded: false };
+const DEFAULT_PROFILE: Profile = { userName: '', agentName: 'Seldon', onboarded: false };
 
 interface StoredModel {
   provider: ProviderKind | null;

@@ -20,7 +20,7 @@ test('the everyday flow: onboard, add things, read them back', async () => {
     profile: { agentName: string; onboarded: boolean };
   };
   assert.equal(settings.profile.onboarded, true);
-  assert.equal(settings.profile.agentName, 'North', 'a blank agent name falls back to the default');
+  assert.equal(settings.profile.agentName, 'Seldon', 'a blank agent name falls back to the default');
 
   const spheres = (await (await call('GET', '/api/spheres?date=2026-11-13')).json()) as { id: string; name: string }[];
   assert.deepEqual(spheres.map((s) => s.name), ['Health', 'Faith']);

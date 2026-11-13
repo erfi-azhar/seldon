@@ -160,7 +160,7 @@ test('settings never expose the key, and a key does not follow a change of endpo
 
 test('export → import round-trips everything except secrets', () => {
   const a = fresh();
-  a.onboard({ userName: 'Sam', agentName: 'North', sphereKeys: ['health', 'family', 'nonsense'] });
+  a.onboard({ userName: 'Sam', agentName: 'Seldon', sphereKeys: ['health', 'family', 'nonsense'] });
   a.updateSettings({ model: { provider: 'anthropic', apiKey: 'sk-ant-secret' } });
   const sphere = a.listSpheres(TODAY)[0]!;
   const habit = a.createHabit({ sphereId: sphere.id, name: 'Walk' });

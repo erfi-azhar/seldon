@@ -78,7 +78,7 @@ export function Onboarding({ settings }: { settings: Settings }) {
                 <input className="input" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={80} autoFocus placeholder="Your first name" />
               </Field>
               <Field label="And what will you call it?">
-                <input className="input" value={agentName} onChange={(e) => setAgentName(e.target.value)} maxLength={40} placeholder="North" />
+                <input className="input" value={agentName} onChange={(e) => setAgentName(e.target.value)} maxLength={40} placeholder="Seldon" />
               </Field>
             </div>
             <div>
@@ -117,7 +117,7 @@ export function Onboarding({ settings }: { settings: Settings }) {
 
         {step === 2 && (
           <>
-            <h1>Give {agentName.trim() || 'North'} a mind.</h1>
+            <h1>Give {agentName.trim() || 'Seldon'} a mind.</h1>
             <p className="lede">Pick the model it thinks with. A local one keeps every word on this machine; a hosted one is sharper but sends your conversations to that provider. You can change this later, or skip it and use LifeOS on its own.</p>
             <ModelSetup settings={live} />
             {finish.error && <p className="error-text">{finish.error.message}</p>}

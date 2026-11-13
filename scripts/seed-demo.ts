@@ -61,7 +61,7 @@ function weekly(from: number, to: number, weeks: number, wobble: number, places 
   });
 }
 
-store.onboard({ userName: '', agentName: 'North', sphereKeys: ['health', 'finances', 'work', 'side-projects', 'travels', 'faith', 'family'] });
+store.onboard({ userName: '', agentName: 'Seldon', sphereKeys: ['health', 'finances', 'work', 'side-projects', 'travels', 'faith', 'family'] });
 const sphere = Object.fromEntries(store.listSpheres(today).map((s) => [s.key!, s.id])) as Record<string, string>;
 db.prepare('UPDATE activity SET ts = ?').run(new Date(`${day(90)}T10:00:00`).toISOString());
 

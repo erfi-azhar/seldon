@@ -100,7 +100,7 @@ function anthropicMessage(blocks: Record<string, unknown>[], stop: string, extra
 
 function setup(): { store: Store; sphereId: string } {
   const store = new Store(openDb(':memory:'));
-  store.onboard({ userName: 'Sam', agentName: 'North', sphereKeys: ['health', 'work'] });
+  store.onboard({ userName: 'Sam', agentName: 'Seldon', sphereKeys: ['health', 'work'] });
   return { store, sphereId: store.listSpheres(CONTEXT.date)[0]!.id };
 }
 
@@ -153,7 +153,7 @@ test('openai-compatible: a tool round trip changes the data, and history is appe
   assert.equal(req1!.path, '/v1/chat/completions');
   assert.equal(req1!.headers.authorization, 'Bearer k-123');
   assert.equal(req1!.body.messages[0].role, 'system');
-  assert.match(req1!.body.messages[0].content, /You are North/);
+  assert.match(req1!.body.messages[0].content, /You are Seldon/);
   assert.match(req1!.body.messages[1].content, /<lifeos_snapshot/);
   assert.match(req1!.body.messages[1].content, new RegExp(`\\[sphere ${sphereId}\\]`));
   assert.ok(req1!.body.tools.some((t: { function: { name: string } }) => t.function.name === 'create_task'));
@@ -323,7 +323,7 @@ test('anthropic: a rejected key is explained, not dumped', async () => {
 test('POST /api/agent/chat streams events, and says so plainly when no model is connected', async () => {
   const db = openDb(':memory:');
   const store = new Store(db);
-  store.onboard({ userName: '', agentName: 'North', sphereKeys: ['health'] });
+  store.onboard({ userName: '', agentName: 'Seldon', sphereKeys: ['health'] });
   const app = createApp({ db });
   const body = JSON.stringify({ message: 'hello', context: CONTEXT });
   const post = () => app.request('http://localhost/api/agent/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
