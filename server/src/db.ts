@@ -408,6 +408,22 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  // Flight options for a trip: routings to weigh before booking, each a few legs.
+  `
+  CREATE TABLE trip_options (
+    id TEXT PRIMARY KEY,
+    trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    legs TEXT NOT NULL DEFAULT '[]',
+    notes TEXT NOT NULL DEFAULT '[]',
+    recommended INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    chosen_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX trip_options_by_trip ON trip_options(trip_id, position);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

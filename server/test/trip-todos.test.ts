@@ -76,3 +76,41 @@ test('the API takes a trip on tasks, travel state carries the to-dos, and export
   store.importAll(dump);
   assert.equal(getTrip(store, trip.id).todos.length, 2);
 });
+
+test('flight options: legs resolved like bookings, shown on the trip, and chosen into planned flights', async () => {
+  const { db, store } = setup();
+  const app = createApp({ db });
+  const call = async (method: string, path: string, body?: unknown) => {
+    const res = await app.request(`http://localhost/api${path}?date=${DAY}`, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, json: (await res.json()) as any };
+  };
+  const trip = createTrip(store, { title: 'São Paulo', purpose: 'work', startDate: '2026-11-29', endDate: '2026-12-12' });
+  const made = await call('POST', `/travel/trips/${trip.id}/options`, {
+    title: 'Via Johannesburg',
+    recommended: true,
+    notes: ['Confirm LA8059 flies that Sunday.'],
+    legs: [
+      { carrier: 'SQ', number: '893', fromCode: 'HKG', toCode: 'SIN', startLocal: '2026-11-28T15:40', endLocal: '2026-11-28T19:25' },
+      { carrier: 'SQ', number: '478', fromCode: 'SIN', toCode: 'JNB', startLocal: '2026-11-29T01:15', endLocal: '2026-11-29T06:10' },
+      { carrier: 'LA', number: '8059', fromCode: 'JNB', toCode: 'GRU', startLocal: '2026-11-29T15:05', endLocal: '2026-11-29T20:35' },
+    ],
+  });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const opt = (made.json as TravelState).trips[0]!.options[0]!;
+  assert.equal(opt.recommended, true);
+  assert.equal(opt.legs[0]!.fromCity, 'Hong Kong');
+  assert.equal(opt.legs[2]!.toCity, 'São Paulo');
+  assert.equal(opt.legs[0]!.startUtc, '2026-11-28T07:40:00.000Z', 'local times read in each airport’s zone');
+  assert.equal(opt.legs[2]!.endUtc, '2026-11-29T23:35:00.000Z');
+  assert.match(renderSnapshot(store, DAY), /Option \[\w+\] Via Johannesburg \(recommended\): SQ893 HKG-SIN 2026-11-28 15:40/);
+
+  const chosen = (await call('POST', `/travel/options/${opt.id}/choose`)).json as TravelState;
+  const t = chosen.trips.find((x) => x.id === trip.id)!;
+  assert.deepEqual(t.segments.map((s) => `${s.carrier}${s.number}`), ['SQ893', 'SQ478', 'LA8059']);
+  assert.match(t.segments[0]!.notes, /not booked yet/);
+  assert.ok(t.options[0]!.chosenAt);
+  assert.equal(t.startDate, '2026-11-28', 'the trip stretches to the first flight');
+
+  assert.equal((await call('DELETE', `/travel/options/${opt.id}`)).status, 200);
+  assert.equal(getTrip(store, trip.id).options.length, 0);
+});
