@@ -217,6 +217,55 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  `
+  CREATE TABLE food_log (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    time TEXT NOT NULL,
+    meal TEXT NOT NULL,
+    name TEXT NOT NULL,
+    amount TEXT NOT NULL DEFAULT '',
+    kcal REAL NOT NULL,
+    protein REAL NOT NULL DEFAULT 0,
+    carbs REAL NOT NULL DEFAULT 0,
+    fat REAL NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'manual',
+    external_id TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX food_by_date ON food_log(date);
+
+  CREATE TABLE workouts (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    duration_min REAL,
+    distance_km REAL,
+    kcal REAL,
+    notes TEXT NOT NULL DEFAULT '',
+    exercises TEXT NOT NULL DEFAULT '[]',
+    source TEXT NOT NULL DEFAULT 'manual',
+    external_id TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX workouts_by_date ON workouts(date);
+
+  CREATE TABLE body_readings (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    weight_kg REAL,
+    body_fat_pct REAL,
+    muscle_kg REAL,
+    visceral_fat REAL,
+    water_pct REAL,
+    bmr REAL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    external_id TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

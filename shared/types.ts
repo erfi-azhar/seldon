@@ -485,3 +485,77 @@ export interface FaithState {
   hijri: string;
   ramadan: { start: string; daysUntil: number; inRamadan: boolean; day: number | null } | null;
 }
+
+// ── Health: food, training, body composition ────────────────────────────────
+
+export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export interface FoodEntry {
+  id: string;
+  date: string;
+  time: string;
+  meal: Meal;
+  name: string;
+  amount: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  source: string;
+}
+
+export interface Macros {
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+export interface NutritionTargets {
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+}
+
+export interface WorkoutSet {
+  reps: number | null;
+  weight: number | null;
+}
+
+export interface Workout {
+  id: string;
+  date: string;
+  name: string;
+  type: 'strength' | 'run' | 'walk' | 'cycle' | 'swim' | 'cardio' | 'mobility' | 'sport' | 'other';
+  durationMin: number | null;
+  distanceKm: number | null;
+  kcal: number | null;
+  notes: string;
+  exercises: { name: string; sets: WorkoutSet[] }[];
+  source: string;
+}
+
+export interface BodyReading {
+  id: string;
+  date: string;
+  weightKg: number | null;
+  bodyFatPct: number | null;
+  muscleKg: number | null;
+  visceralFat: number | null;
+  waterPct: number | null;
+  bmr: number | null;
+  source: string;
+  notes: string;
+}
+
+export interface HealthState {
+  date: string;
+  targets: NutritionTargets;
+  today: { entries: FoodEntry[]; totals: Macros };
+  /** Daily totals for the last 14 days, oldest first. */
+  days: ({ date: string } & Macros)[];
+  workouts: Workout[];
+  week: { sessions: number; minutes: number; strength: number; cardio: number };
+  body: BodyReading[];
+}

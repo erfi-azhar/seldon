@@ -7,6 +7,7 @@ import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
 import { PrayerCard } from '../components/Prayer.tsx';
+import { HealthPanels } from '../components/HealthPanels.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
 import { cx, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -154,6 +155,7 @@ export function SphereDetail({ id }: { id: string }) {
       </header>
 
       {s.key === 'health' && <ScreeningsEntry sphereId={id} />}
+      {s.key === 'health' && <HealthPanels />}
 
       <div className="detail-grid">
         <div className="col">

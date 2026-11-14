@@ -15,6 +15,7 @@ import { openDb } from '../server/src/db.ts';
 import { addDays, localDate, Store } from '../server/src/store.ts';
 import { addSignal } from '../server/src/features/signals.ts';
 import { saveFile } from '../server/src/features/capture.ts';
+import { logBody, logFood, logWorkout } from '../server/src/features/health.ts';
 import { deflateSync } from 'node:zlib';
 
 const path = resolve(process.argv[2] ?? 'data/demo.db');
@@ -251,6 +252,23 @@ await chat({
   context: { date: today, time: '07:42', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, viewing: 'Today' },
   emit: () => undefined,
 });
+
+// ── Food, training, body composition ───────────────────────────────────────
+store.db.prepare("INSERT INTO settings (key, value) VALUES ('nutrition_targets', ?)").run(JSON.stringify({ kcal: 2200, protein: 160, carbs: 220, fat: 70 }));
+const meals: [number, string, { name: string; amount: string; kcal: number; protein: number; carbs: number; fat: number }[]][] = [
+  [0, '07:40', [{ name: 'Greek yoghurt with berries and oats', amount: '1 bowl', kcal: 420, protein: 32, carbs: 48, fat: 10 }, { name: 'Kopi C kosong', amount: '1 cup', kcal: 25, protein: 1, carbs: 2, fat: 1 }]],
+  [0, '12:50', [{ name: 'Chicken rice (steamed)', amount: '1 plate', kcal: 610, protein: 34, carbs: 72, fat: 19 }]],
+];
+for (let ago = 1; ago <= 13; ago++) {
+  const k = 1700 + Math.round(rand() * 900);
+  meals.push([ago, '13:00', [{ name: 'Logged day', amount: '', kcal: k, protein: Math.round(k * 0.07), carbs: Math.round(k * 0.11), fat: Math.round(k * 0.035) }]]);
+}
+for (const [ago, time, items] of meals) at(ago, () => logFood(store, day(ago), time, items, ago === 0 ? 'estimate' : 'manual'), 13);
+const sessions: [number, string, 'strength' | 'run', number, number | null][] = [[1, 'Push day', 'strength', 55, null], [3, 'Easy run', 'run', 32, 5.2], [6, 'Pull day', 'strength', 50, null], [8, 'Legs', 'strength', 60, null], [10, 'Tempo run', 'run', 28, 5.0], [13, 'Push day', 'strength', 52, null]];
+for (const [ago, name, type, mins, km] of sessions) at(ago, () => logWorkout(store, { date: day(ago), name, type, durationMin: mins, distanceKm: km, kcal: null, notes: '', exercises: type === 'strength' ? [{ name: 'Bench press', sets: [{ reps: 8, weight: 70 }, { reps: 8, weight: 70 }, { reps: 6, weight: 72.5 }] }, { name: 'Overhead press', sets: [{ reps: 8, weight: 40 }, { reps: 8, weight: 40 }] }] : [] }), 7);
+for (const [ago, w, bf, mm, vf] of [[56, 80.6, 29.4, 32.1, 13], [28, 79.6, 28.6, 32.4, 12], [7, 78.9, 27.9, 32.8, 12], [1, 78.6, 27.6, 33.0, 11]] as const) {
+  at(ago, () => logBody(store, { date: day(ago), weightKg: w, bodyFatPct: bf, muscleKg: mm, visceralFat: vf, waterPct: null, bmr: 1680 + Math.round(mm * 4) }, 'scan'), 7);
+}
 
 // ── Saved links, as if shared from a phone ─────────────────────────────────
 // Thumbnails are generated soft gradients: the demo never fetches the real pages.

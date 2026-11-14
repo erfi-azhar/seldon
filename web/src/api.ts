@@ -6,6 +6,7 @@ import type {
   ConversationSummary,
   FaithState,
   Goal,
+  HealthState,
   IntegrationStatus,
   Memory,
   Metric,
@@ -217,4 +218,18 @@ export const faithWrite = {
   settings: (body: object) => api<FaithState>('PUT', withDate('/faith/settings'), body),
   log: (body: object) => api<FaithState>('POST', withDate('/faith/log'), body),
   qada: (body: object) => api<FaithState>('POST', withDate('/faith/qada'), body),
+};
+
+export const useHealth = () => useQuery({ queryKey: ['health', todayStr()], queryFn: () => api<HealthState>('GET', withDate('/health')) });
+
+export async function postForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`/api${withDate(path)}`, { method: 'POST', body: form, credentials: 'same-origin' });
+  if (!res.ok) return fail(res);
+  return (await res.json()) as T;
+}
+
+export const healthWrite = {
+  post: (path: string, body: object) => api<HealthState>('POST', withDate(`/health${path}`), body),
+  targets: (body: object) => api<HealthState>('PUT', withDate('/health/targets'), body),
+  del: (path: string) => api<{ ok: true }>('DELETE', `/health${path}`),
 };
