@@ -68,6 +68,7 @@ const NEVER = [
   /^\/api\/settings/,
   /^\/api\/capture\/token/,
   /^\/api\/integrations\/gmail$/,
+  /^\/api\/integrations\/calendar$/,
   /^\/api\/mcp\//,
 ];
 

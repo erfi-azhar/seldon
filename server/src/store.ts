@@ -593,6 +593,7 @@ export class Store {
       notes: r.notes,
       sphereId: r.sphere_id,
       goalId: r.goal_id,
+      tripId: r.trip_id ?? null,
       dueDate: r.due_date,
       done: !!r.done,
       doneAt: r.done_at,
@@ -600,7 +601,7 @@ export class Store {
     };
   }
 
-  listTasks(filter: { status?: 'open' | 'done' | 'all'; sphereId?: string; goalId?: string; limit?: number } = {}): Task[] {
+  listTasks(filter: { status?: 'open' | 'done' | 'all'; sphereId?: string; goalId?: string; tripId?: string; limit?: number } = {}): Task[] {
     const where: string[] = [];
     const params: SqlValue[] = [];
     const status = filter.status ?? 'open';
@@ -612,6 +613,10 @@ export class Store {
     if (filter.goalId) {
       where.push('goal_id = ?');
       params.push(filter.goalId);
+    }
+    if (filter.tripId) {
+      where.push('trip_id = ?');
+      params.push(filter.tripId);
     }
     const order = status === 'done' ? 'done_at DESC' : 'done, due_date IS NULL, due_date, created_at';
     const rows = this.all(
@@ -628,7 +633,11 @@ export class Store {
     return this.taskFromRow(r);
   }
 
-  createTask(input: { title: string; notes?: string; sphereId?: string | null; goalId?: string | null; dueDate?: string | null }): Task {
+  private checkTrip(id: string): void {
+    if (!this.get('SELECT 1 AS x FROM trips WHERE id = ?', id)) throw new NotFound('Trip');
+  }
+
+  createTask(input: { title: string; notes?: string; sphereId?: string | null; goalId?: string | null; tripId?: string | null; dueDate?: string | null }): Task {
     const title = input.title.trim();
     if (!title) throw new Invalid('A task needs a title');
     let sphereId = input.sphereId ?? null;
@@ -636,15 +645,24 @@ export class Store {
       const goal = this.getGoal(input.goalId);
       sphereId = sphereId ?? goal.sphereId;
     }
+    if (input.tripId != null) {
+      this.checkTrip(input.tripId);
+      // A trip's to-do lives in the sphere the trip shows in, unless one was chosen.
+      if (sphereId == null) {
+        const t = this.get('SELECT purpose FROM trips WHERE id = ?', input.tripId)!;
+        sphereId = this.get('SELECT id FROM spheres WHERE key = ? AND archived = 0', t.purpose === 'work' ? 'work' : 'travels')?.id ?? this.get("SELECT id FROM spheres WHERE key = 'travels' AND archived = 0")?.id ?? null;
+      }
+    }
     if (sphereId != null) this.getSphere(sphereId);
     const id = newId();
     this.run(
-      'INSERT INTO tasks (id, title, notes, sphere_id, goal_id, due_date, created_at) VALUES (?,?,?,?,?,?,?)',
+      'INSERT INTO tasks (id, title, notes, sphere_id, goal_id, trip_id, due_date, created_at) VALUES (?,?,?,?,?,?,?,?)',
       id,
       title,
       input.notes ?? '',
       sphereId,
       input.goalId ?? null,
+      input.tripId ?? null,
       input.dueDate ?? null,
       nowIso(),
     );
@@ -654,16 +672,18 @@ export class Store {
 
   updateTask(
     id: string,
-    patch: { title?: string; notes?: string; sphereId?: string | null; goalId?: string | null; dueDate?: string | null; done?: boolean },
+    patch: { title?: string; notes?: string; sphereId?: string | null; goalId?: string | null; tripId?: string | null; dueDate?: string | null; done?: boolean },
   ): Task {
     const before = this.getTask(id);
     if (patch.sphereId != null) this.getSphere(patch.sphereId);
     if (patch.goalId != null) this.getGoal(patch.goalId);
+    if (patch.tripId != null) this.checkTrip(patch.tripId);
     this.patch('tasks', id, {
       title: patch.title?.trim() || undefined,
       notes: patch.notes,
       sphere_id: patch.sphereId,
       goal_id: patch.goalId,
+      trip_id: patch.tripId,
       due_date: patch.dueDate,
       done: patch.done === undefined ? undefined : Number(patch.done),
       done_at: patch.done === undefined ? undefined : patch.done ? nowIso() : null,
@@ -1629,6 +1649,9 @@ export class Store {
     for (const [t, rows] of Object.entries(tables)) if (!Array.isArray(rows)) throw new Invalid(`That export is damaged (${t} is not a list)`);
     if (!Array.isArray(tables.spheres) || tables.spheres.length === 0) throw new Invalid('That export has no spheres in it, so nothing was changed');
     this.tx(() => {
+      // Rows arrive table by table, and core rows can point at feature rows (a to-do at its trip):
+      // check references once everything is in, at commit.
+      this.db.exec('PRAGMA defer_foreign_keys = ON');
       for (const t of [...Store.dataTables()].reverse()) this.run(`DELETE FROM ${t}`);
       for (const t of Store.dataTables()) {
         const columns = new Set(this.all(`PRAGMA table_info(${t})`).map((c) => c.name as string));
@@ -1650,6 +1673,8 @@ export class Store {
         `UPDATE conversations SET connection_id = NULL WHERE connection_id IS NOT NULL AND connection_id NOT IN (${brains.map(() => '?').join(', ')})`,
         ...brains,
       );
+      const broken = this.all('PRAGMA foreign_key_check')[0];
+      if (broken) throw new Invalid(`That export could not be read (${broken.table}: a row points at something that is not there). Nothing was changed.`);
     });
   }
 }

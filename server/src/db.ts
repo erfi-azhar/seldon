@@ -391,6 +391,11 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE prayer_log ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;
   `,
+  // A to-do can belong to a trip (book the hotel, check in online), and shows with it.
+  `
+  ALTER TABLE tasks ADD COLUMN trip_id TEXT REFERENCES trips(id) ON DELETE SET NULL;
+  CREATE INDEX tasks_by_trip ON tasks(trip_id, done);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

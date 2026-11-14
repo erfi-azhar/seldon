@@ -75,6 +75,8 @@ export interface Task {
   notes: string;
   sphereId: string | null;
   goalId: string | null;
+  /** The trip this to-do is for, if any. */
+  tripId: string | null;
   dueDate: string | null;
   done: boolean;
   doneAt: string | null;
@@ -638,6 +640,8 @@ export interface Trip {
   notes: string;
   segments: Segment[];
   itinerary: ItineraryItem[];
+  /** To-dos for the trip: open ones by due date, then done ones. */
+  todos: Task[];
   /** Seldon's airport and layover notes, keyed by flight segment id. */
   companion: Record<string, { lounges: string[]; plan: string[]; generatedAt: string }>;
 }

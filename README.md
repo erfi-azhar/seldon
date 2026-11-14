@@ -102,6 +102,14 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   (making one when needed), and merged when a check-in email repeats a booking. You can
   also paste a confirmation or send a screenshot — a boarding pass, or the KrisFlyer or
   Bonvoy app.
+- **Flights from your calendar, Flighty included.** Flight trackers such as Flighty keep
+  each flight as a calendar event and move it when the time changes. Paste that calendar's
+  private iCal address (Google: *Secret address in iCal format*; iCloud: a Public Calendar's
+  `webcal://` link) under Settings → Connections → Calendar flights. Every 15 minutes
+  Terminus files each flight onto the right trip (making one when needed, return legs
+  included), follows changes to its times and tells you when a departure moves. A flight
+  that leaves the calendar is flagged, never removed for you; one you delete here stays
+  deleted. Only flights are read, and the address is kept with your other secrets.
 - **Travel mode.** When a trip is near, Seldon gets ahead of it. A week out it drafts a plan
   for the destination (halal food, Jumu'ah on Fridays, fitted around your flights). The day
   before a flight, Today becomes a small app for that moment: the route and countdown, the
@@ -236,7 +244,7 @@ Set these in the environment before `npm start`.
 
 The older `LIFEOS_*` names still work, and an existing `data/lifeos.db` keeps being used.
 
-Connections need outbound network access: `imap.gmail.com:993` for Gmail; the job boards'
+Connections need outbound network access: `imap.gmail.com:993` for Gmail; your calendar's host (`calendar.google.com`, `*.icloud.com`) for calendar flights; the job boards'
 APIs (`boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com`, `apply.workable.com`,
 `api.smartrecruiters.com`); any MCP servers you add; and whatever links you capture.
 

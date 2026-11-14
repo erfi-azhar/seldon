@@ -1,7 +1,7 @@
 // Connections to outside services, managed in Settings.
 
 import { useQuery } from '@tanstack/react-query';
-import { KeyRound, Mail, Plug, Plus, RefreshCw, Share2 } from 'lucide-react';
+import { CalendarDays, KeyRound, Mail, Plug, Plus, RefreshCw, Share2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { IntegrationStatus, McpServerView } from '../../../shared/types.ts';
 import { api, useIntegration, useWrite, write } from '../api.ts';
@@ -112,6 +112,80 @@ export function GmailConnection() {
           {save.error && <p className="error-text">{save.error.message}</p>}
           <p className="hint">
             Mail is read by your background brain to judge what matters, with no ability to act. With no brain connected, Gmail's own Important label decides. Your app password stays in your Terminus database and is never shown again.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function CalendarConnection() {
+  const { data: status } = useIntegration('calendar');
+  const [url, setUrl] = useState('');
+  const [editing, setEditing] = useState(false);
+  const save = useWrite(() => write.put('/integrations/calendar', { url }));
+  const run = useWrite(() => write.post('/integrations/calendar/run'));
+  const disconnect = useWrite(() => write.del('/integrations/calendar'));
+  const connected = !!status?.configured;
+  const showForm = !connected || editing;
+  const name = String(status?.settings.name || status?.settings.host || 'Calendar');
+  const flights = Number(status?.settings.flights ?? 0);
+
+  return (
+    <div className="conn-card">
+      <div className="conn-head">
+        <span className="brain-icon">
+          <CalendarDays size={18} />
+        </span>
+        <div className="grow">
+          <b>Calendar flights</b>
+          <span className="hint" style={{ display: 'block' }}>
+            {connected ? `${name} · ${flights === 1 ? '1 upcoming flight' : `${flights} upcoming flights`}` : 'Bring in flights from Flighty or any calendar, and keep their times current'}
+          </span>
+        </div>
+        {connected && !editing && (
+          <div className="row" style={{ gap: 4 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => run.mutate()} disabled={status?.running}>
+              <RefreshCw size={13} /> Check now
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
+              Change
+            </button>
+            <button type="button" className="btn btn-danger btn-sm" onClick={() => window.confirm('Disconnect this calendar? Its link is deleted from Terminus; flights already added stay on your trips.') && disconnect.mutate()}>
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
+      {connected && <StatusLine status={status} />}
+
+      {showForm && (
+        <>
+          <ol className="steps-list">
+            <li>
+              In Flighty, turn on calendar export and pick the calendar it writes to. A calendar of its own, such as "Flights", keeps everything else private.
+            </li>
+            <li>
+              Copy that calendar's private address. <b>Google:</b> calendar.google.com → Settings → the calendar → Integrate calendar → <i>Secret address in iCal format</i>. <b>iCloud:</b> in Calendar, share the calendar as a Public Calendar and copy the <code>webcal://</code> link.
+            </li>
+            <li>Paste it below. Terminus checks it every 15 minutes, files each flight onto the right trip and follows any change in its times.</li>
+          </ol>
+          <Field label="Private calendar address">
+            <input className="input" type="url" autoComplete="off" value={url} placeholder={connected ? 'Saved — paste a new address to replace it' : 'https://calendar.google.com/calendar/ical/…/basic.ics'} onChange={(e) => setUrl(e.target.value)} />
+          </Field>
+          <div className="row-wrap">
+            <button type="button" className="btn btn-primary" disabled={save.isPending || !url.trim()} onClick={() => save.mutate(undefined, { onSuccess: () => (setEditing(false), setUrl('')) })}>
+              {save.isPending ? 'Checking…' : connected ? 'Save' : 'Connect calendar'}
+            </button>
+            {editing && (
+              <button type="button" className="btn btn-ghost" onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+            )}
+          </div>
+          {save.error && <p className="error-text">{save.error.message}</p>}
+          <p className="hint">
+            Anyone with this address can read the calendar, so Terminus keeps it with your other secrets and never shows it again. Only flights are read from it. A flight you delete here stays deleted, and one that disappears from the calendar is flagged for you, not removed.
           </p>
         </>
       )}

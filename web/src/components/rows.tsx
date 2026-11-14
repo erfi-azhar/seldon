@@ -35,7 +35,7 @@ export function TaskRow({ task, showSphere = true }: { task: Task; showSphere?: 
   );
 }
 
-export function AddTask({ sphereId, goalId, placeholder = 'Add a task…' }: { sphereId?: string; goalId?: string; placeholder?: string }) {
+export function AddTask({ sphereId, goalId, tripId, placeholder = 'Add a task…' }: { sphereId?: string; goalId?: string; tripId?: string; placeholder?: string }) {
   const [title, setTitle] = useState('');
   const [sphere, setSphere] = useState<string | null>(null);
   const [due, setDue] = useState('');
@@ -44,7 +44,7 @@ export function AddTask({ sphereId, goalId, placeholder = 'Add a task…' }: { s
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    add.mutate({ title, sphereId: sphereId ?? sphere, goalId: goalId ?? null, dueDate: due || null });
+    add.mutate({ title, sphereId: sphereId ?? sphere, goalId: goalId ?? null, ...(tripId ? { tripId } : {}), dueDate: due || null });
     setTitle('');
     setDue('');
   };
@@ -55,7 +55,7 @@ export function AddTask({ sphereId, goalId, placeholder = 'Add a task…' }: { s
       <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={placeholder} aria-label="New task" maxLength={200} />
       {title.trim() && (
         <>
-          {!sphereId && !goalId && <SphereSelect className="mini-select" value={sphere} onChange={setSphere} noneLabel="Sphere" />}
+          {!sphereId && !goalId && !tripId && <SphereSelect className="mini-select" value={sphere} onChange={setSphere} noneLabel="Sphere" />}
           <input type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Due date" />
           <button type="submit" className="btn btn-primary btn-sm">
             Add

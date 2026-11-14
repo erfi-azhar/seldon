@@ -13,6 +13,7 @@ import './health.ts';
 import './mcp.ts';
 import './gravl.ts';
 import './travel.ts';
+import './calendar.ts';
 import './job-alerts.ts';
 
 /** Mount every feature's routes and register its jobs. */

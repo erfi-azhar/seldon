@@ -64,7 +64,7 @@ function goalView(g: Goal, sphereName: string) {
   };
 }
 
-const taskView = (t: Task) => ({ id: t.id, title: t.title, due: t.dueDate, done: t.done, notes: t.notes || undefined });
+const taskView = (t: Task) => ({ id: t.id, title: t.title, due: t.dueDate, done: t.done, notes: t.notes || undefined, trip_id: t.tripId || undefined });
 
 const habitView = (h: Habit) => ({
   id: h.id,
@@ -222,11 +222,12 @@ const TOOLS: ToolDef[] = [
       title: z.string().min(1).max(200).describe('Short, starts with a verb'),
       sphere_id: z.string().optional(),
       goal_id: z.string().optional().describe('The goal this task advances, if any'),
+      trip_id: z.string().optional().describe('The trip this to-do is for (book the hotel, check in online), from the Travel section; it then shows with the trip'),
       due_date: date.optional(),
       notes: z.string().max(1000).optional(),
     }),
     (i, { store }) => {
-      const t = store.createTask({ title: i.title, sphereId: i.sphere_id, goalId: i.goal_id, dueDate: i.due_date, notes: i.notes });
+      const t = store.createTask({ title: i.title, sphereId: i.sphere_id, goalId: i.goal_id, tripId: i.trip_id, dueDate: i.due_date, notes: i.notes });
       return { data: taskView(t), summary: `Added task: ${t.title}${t.dueDate ? ` (due ${prettyDay(t.dueDate)})` : ''}` };
     },
   ),
@@ -240,9 +241,10 @@ const TOOLS: ToolDef[] = [
       title: z.string().min(1).max(200).optional(),
       due_date: date.nullable().optional().describe('null clears the date'),
       notes: z.string().max(1000).optional(),
+      trip_id: z.string().nullable().optional().describe('Attach to a trip, or null to detach'),
     }),
     (i, { store }) => {
-      const t = store.updateTask(i.task_id, { done: i.done, title: i.title, dueDate: i.due_date, notes: i.notes });
+      const t = store.updateTask(i.task_id, { done: i.done, title: i.title, dueDate: i.due_date, notes: i.notes, tripId: i.trip_id });
       const what = i.done === true ? 'Done' : i.due_date !== undefined ? 'Rescheduled' : 'Updated';
       return { data: taskView(t), summary: `${what}: ${t.title}` };
     },

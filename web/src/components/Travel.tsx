@@ -3,13 +3,14 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { BedDouble, Briefcase, CalendarDays, Camera, ChevronDown, Clock, Hotel, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Sofa, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { BedDouble, Briefcase, CalendarDays, Camera, ChevronDown, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Sofa, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { useRef, useState, type ReactNode } from 'react';
 import type { ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
 import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { untilLabel, useNow } from './Prayer.tsx';
+import { AddTask, TaskRow } from './rows.tsx';
 import { Check, Field, Modal, Seg, Spinner } from './ui.tsx';
 
 // ── Small helpers ───────────────────────────────────────────────────────────
@@ -668,6 +669,13 @@ function TripCard({ trip, state, open, onToggle }: { trip: Trip; state: TravelSt
 
           <div className="plan-head">
             <h3>
+              <ListChecks size={14} /> To-dos
+            </h3>
+          </div>
+          <TripTodos trip={trip} past={past} />
+
+          <div className="plan-head">
+            <h3>
               <CalendarDays size={14} /> Plan
             </h3>
             {!past && (
@@ -831,39 +839,137 @@ function Block({ icon, title, children }: { icon: ReactNode; title: string; chil
   );
 }
 
+/** A trip's to-dos: open ones to tick off, the done ones folded away, and a line to add another. */
+function TripTodos({ trip, past = false }: { trip: Trip; past?: boolean }) {
+  const open = trip.todos.filter((t) => !t.done);
+  const done = trip.todos.filter((t) => t.done);
+  return (
+    <div className="trip-todos">
+      {open.length > 0 && (
+        <ul>
+          {open.map((t) => (
+            <TaskRow key={t.id} task={t} showSphere={false} />
+          ))}
+        </ul>
+      )}
+      {done.length > 0 && (
+        <details className="trip-todos-done">
+          <summary>{plural(done.length, 'done', 'done')}</summary>
+          <ul>
+            {done.map((t) => (
+              <TaskRow key={t.id} task={t} showSphere={false} />
+            ))}
+          </ul>
+        </details>
+      )}
+      {!past && <AddTask tripId={trip.id} placeholder={open.length || done.length ? 'Add a to-do…' : `Add a to-do for ${trip.title}…`} />}
+    </div>
+  );
+}
+
+/** Every trip still ahead, each as its own countdown card with its flights and to-dos. */
+function TripsAhead({ trips }: { trips: Trip[] }) {
+  return (
+    <>
+      {trips.map((trip) => (
+        <TripCountdown key={trip.id} trip={trip} />
+      ))}
+    </>
+  );
+}
+
+const weekdayShort = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+/** One trip ahead, in the manner of the Ramadan countdown: days to go, the way out and back, then what is left to do. */
+function TripCountdown({ trip }: { trip: Trip }) {
+  const { agentName } = useApp();
+  const draft = useWrite(() => travelWrite.post(`/trips/${trip.id}/draft`));
+  const today = todayStr();
+  const days = daysFrom(today, trip.startDate);
+  const flights = trip.segments.filter((s) => s.kind === 'flight');
+  const stays = trip.segments.filter((s) => s.kind === 'stay');
+  const out = flights[0];
+  const back = flights.length > 1 ? flights[flights.length - 1] : undefined;
+  const leg = (s: Segment) => `${`${s.carrier} ${s.number}`.trim()} · ${s.startLocal.slice(11, 16)} from ${s.fromCode || s.fromName}`;
+  const summary = [
+    trip.purpose === 'work' ? 'Work trip' : 'Leisure',
+    flights.length || stays.length ? `${plural(flights.length, 'flight')}, ${plural(stays.length, 'stay')}` : 'nothing booked yet',
+    trip.itinerary.length ? `${plural(trip.itinerary.length, 'thing')} planned` : 'no plan yet',
+  ].join(' · ');
+
+  return (
+    <section className={cx('trip-hero', trip.purpose === 'work' ? 'is-work' : 'is-leisure')}>
+      <div className="trip-hero-top">
+        <div className="trip-hero-head">
+          {days > 0 ? (
+            <>
+              <span className="trip-hero-count num">{days}</span>
+              <b>
+                {days === 1 ? 'day' : 'days'} until {trip.title}
+              </b>
+            </>
+          ) : (
+            <b>{trip.title} starts today</b>
+          )}
+          <PlaneTakeoff size={22} className="trip-hero-icon" />
+        </div>
+        <p className="trip-hero-note">{summary}</p>
+      </div>
+      <dl className="trip-hero-legs">
+        <div>
+          <dt>{out ? 'Flies out' : 'Starts'}</dt>
+          <dd>{weekdayShort(out ? out.startLocal.slice(0, 10) : trip.startDate)}</dd>
+          <dd className="trip-hero-sub">{out ? leg(out) : 'No flight booked yet'}</dd>
+        </div>
+        <div>
+          <dt>{back ? 'Flies home' : 'Ends'}</dt>
+          <dd>{weekdayShort(back ? back.startLocal.slice(0, 10) : trip.endDate)}</dd>
+          <dd className="trip-hero-sub">{back ? leg(back) : stays[0]?.title || plural(daysFrom(trip.startDate, trip.endDate) + 1, 'day')}</dd>
+        </div>
+      </dl>
+      {!trip.itinerary.length && trip.segments.length > 0 && (
+        <button type="button" className="btn btn-sm trip-hero-btn" disabled={draft.isPending} onClick={() => draft.mutate()}>
+          {draft.isPending ? <Spinner /> : <Wand2 size={13} />} Draft a plan with {agentName}
+        </button>
+      )}
+      {draft.error && <p className="trip-hero-note">{draft.error.message}</p>}
+      <div className="trip-hero-todos">
+        <div className="trip-hero-label">To do</div>
+        <TripTodos trip={trip} />
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Travel on Today: the moment you are in (a flight today, a trip under way) as its own card,
+ * then every trip still ahead with its to-dos.
+ */
 export function TravelModeCard() {
+  const { data: t } = useTravel();
+  if (!t) return null;
+  const today = todayStr();
+  const c = t.context;
+  const current = (c.mode === 'departing' || c.mode === 'away') && c.trip ? c.trip : null;
+  const ahead = t.trips.filter((x) => x.endDate >= today && x.id !== current?.id).sort((a, b) => a.startDate.localeCompare(b.startDate));
+  return (
+    <>
+      {current && <TravelNowCard />}
+      {ahead.length > 0 && <TripsAhead trips={ahead} />}
+    </>
+  );
+}
+
+function TravelNowCard() {
   const { data: t } = useTravel();
   const { agentName, ask } = useApp();
   const now = useNow();
   const prepare = useWrite((id: string) => travelWrite.post(`/segments/${id}/companion`));
-  const draft = useWrite((id: string) => travelWrite.post(`/trips/${id}/draft`));
   const toggle = useWrite((i: ItineraryItem) => travelWrite.patch(`/itinerary/${i.id}`, { done: !i.done }));
   if (!t || t.context.mode === 'none' || !t.context.trip) return null;
   const { context: c } = t;
   const trip = c.trip!;
   const today = todayStr();
-
-  if (c.mode === 'upcoming') {
-    return (
-      <section className="card travel-mode tm-upcoming">
-        <div className="tm-head">
-          <span className="tm-kicker">
-            <PlaneTakeoff size={13} /> {trip.title} {whenLabel(trip, today)}
-          </span>
-          <PurposeChip purpose={trip.purpose} />
-        </div>
-        <p className="tm-line">
-          {plural(trip.segments.filter((s) => s.kind === 'flight').length, 'flight')}, {plural(trip.segments.filter((s) => s.kind === 'stay').length, 'stay')} · {trip.itinerary.length ? plural(trip.itinerary.length, 'thing') + ' planned' : 'no plan yet'}
-        </p>
-        {!trip.itinerary.length && (
-          <button type="button" className="btn btn-sm" disabled={draft.isPending} onClick={() => draft.mutate(trip.id)}>
-            {draft.isPending ? <Spinner /> : <Wand2 size={13} />} Draft a plan with {agentName}
-          </button>
-        )}
-        {draft.error && <p className="error-text">{draft.error.message}</p>}
-      </section>
-    );
-  }
 
   if (c.mode === 'departing' && c.flight) {
     const f = c.flight;
@@ -932,6 +1038,11 @@ export function TravelModeCard() {
           </div>
         )}
         {prepare.error && <p className="error-text">{prepare.error.message}</p>}
+        {trip.todos.some((x) => !x.done) && (
+          <Block icon={<ListChecks size={13} />} title="Still to do">
+            <TripTodos trip={trip} past />
+          </Block>
+        )}
         <div className="tm-foot">
           <button type="button" className="link" onClick={() => ask(`I'm flying ${f.carrier} ${f.number} from ${f.fromCode} to ${f.toCode} soon. What should I do before boarding, and what should I know on arrival?`)}>
             Ask {agentName} about this flight
@@ -984,6 +1095,9 @@ export function TravelModeCard() {
             ))}
           </ul>
         )}
+      </Block>
+      <Block icon={<ListChecks size={13} />} title="Trip to-dos">
+        <TripTodos trip={trip} />
       </Block>
     </section>
   );

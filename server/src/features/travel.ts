@@ -110,6 +110,7 @@ function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store)): Trip 
     companion: JSON.parse(r.companion),
     segments: (store.db.prepare('SELECT * FROM trip_segments WHERE trip_id = ? ORDER BY start_utc').all(r.id) as Row[]).map((x) => segmentFromRow(x, accounts)),
     itinerary: (store.db.prepare("SELECT * FROM itinerary_items WHERE trip_id = ? ORDER BY date, COALESCE(time, '99:99'), created_at").all(r.id) as Row[]).map(itemFromRow),
+    todos: store.listTasks({ tripId: r.id, status: 'all', limit: 100 }),
   };
 }
 
@@ -294,6 +295,42 @@ export function addSegment(store: Store, tripId: string | null, input: SegmentIn
   const trip = tripId ? (store.db.prepare('SELECT purpose FROM trips WHERE id = ?').get(tripId) as Row) : null;
   if (!quiet) store.record('created', 'trip_segment', id, trip ? sphereFor(store, trip.purpose) : travelSphere(store), `Added ${label} on ${n.startLocal.slice(0, 10)}`);
   return { segment: segmentFromRow(store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row, accounts), created: true };
+}
+
+/**
+ * File one booking from outside (a calendar, say) onto the trip whose dates hold it, making a
+ * trip when none does. The same flight already on file is matched, not duplicated.
+ */
+export function fileSegment(store: Store, input: SegmentInput, source: string, externalId: string | null, origin: string): { segment: Segment; created: boolean; tripId: string; newTrip: boolean } {
+  const first = input.startLocal.slice(0, 10);
+  const last = (input.endLocal || input.startLocal).slice(0, 10);
+  let trip = tripFor(store, first, last < first ? first : last);
+  const from = (input.fromCode ?? '').toUpperCase();
+  if (!trip && input.kind === 'flight' && from) {
+    // Leaving from where a trip's latest flight landed, within six weeks: that trip's onward or return leg.
+    trip = store.db
+      .prepare(
+        `SELECT t.* FROM trips t JOIN trip_segments s ON s.trip_id = t.id
+          WHERE s.kind = 'flight' AND s.to_code = ? AND substr(s.end_local, 1, 10) <= ? AND substr(s.end_local, 1, 10) >= ?
+            AND NOT EXISTS (SELECT 1 FROM trip_segments l WHERE l.trip_id = t.id AND l.kind = 'flight' AND l.start_utc > s.start_utc)
+          ORDER BY s.start_utc DESC LIMIT 1`,
+      )
+      .get(from, first, addDays(first, -45)) as Row | undefined;
+  }
+  let newTrip = false;
+  if (!trip) {
+    const home = travelSettings(store).homeAirport;
+    // A flight home with no trip around it still belongs to a trip: the place it leaves from.
+    const away = (input.toCode ?? '').toUpperCase() !== home ? input.toCode : input.fromCode;
+    const name = input.toCode && away === input.toCode ? input.toName : input.fromName;
+    const destination = (away && airport(away)?.city) || clean(name) || clean(input.address) || 'Trip';
+    const created = createTrip(store, { destination, title: destination, purpose: 'leisure', startDate: first, endDate: last < first ? first : last }, true);
+    store.record('created', 'trip', created.id, sphereFor(store, created.purpose), `Found a trip in your ${origin}: ${created.title}`);
+    trip = store.db.prepare('SELECT * FROM trips WHERE id = ?').get(created.id) as Row;
+    newTrip = true;
+  }
+  const { segment, created } = addSegment(store, trip!.id, input, source, externalId);
+  return { segment, created, tripId: trip!.id, newTrip };
 }
 
 export function updateSegment(store: Store, id: string, p: Partial<SegmentInput>): Segment {
@@ -793,7 +830,11 @@ registerSnapshotSection<Store>('Travel', (store, today) => {
   }
   for (const l of ctx.layovers) lines.push(`Layover: ${l.hours} h at ${l.airport}.`);
   if (ctx.mode === 'away' && ctx.trip) lines.push(`Away now: day ${ctx.dayOfTrip} of ${ctx.tripDays} in ${ctx.trip.title}${ctx.stay ? `, staying at ${ctx.stay.title}` : ''}.`);
-  for (const t of trips) lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items.`);
+  for (const t of trips) {
+    const open = t.todos.filter((x) => !x.done);
+    lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items, ${open.length} open to-dos.`);
+    for (const x of open.slice(0, 8)) lines.push(`  To-do [${x.id}] ${x.title}${x.dueDate ? ` (due ${x.dueDate})` : ''}`);
+  }
   for (const a of loyalty) lines.push(`${a.program}: ${[a.tier, a.points !== null ? `${a.points.toLocaleString('en')} ${a.kind === 'airline' ? 'miles' : 'points'}` : '', a.progress !== null && a.progressTarget ? `${a.progress}/${a.progressTarget} ${a.progressLabel}` : ''].filter(Boolean).join(', ')} (as of ${a.updatedAt.slice(0, 10)}).`);
   // Names of trips, hotels, carriers and programmes are often copied out of mail and screenshots.
   return wrapUntrusted('travel bookings and loyalty, partly read from mail and screenshots', lines.join('\n'), 8000);
@@ -846,6 +887,7 @@ async function imageFrom(form: FormData) {
 const compactTrip = (t: Trip) => ({
   ...t,
   segments: t.segments.map((s) => ({ id: s.id, kind: s.kind, what: describeSegment(s), seat: s.seat || undefined, confirmation: s.confirmation || undefined, lounges: s.lounges.length ? s.lounges : undefined, perks: s.perks.length ? s.perks : undefined })),
+  todos: t.todos.map((x) => ({ id: x.id, title: x.title, due: x.dueDate, done: x.done })),
 });
 
 registerFeature({
