@@ -60,30 +60,43 @@ const DEFAULTS: PrayerSettings = {
 function getSettings(store: Store): PrayerSettings {
   const r = store.db.prepare("SELECT value FROM settings WHERE key = 'prayer'").get() as { value: string } | undefined;
   const saved = r ? (JSON.parse(r.value) as Partial<PrayerSettings>) : {};
-  return { ...DEFAULTS, ...saved, adjustments: { ...zero(), ...saved.adjustments }, backlog: { ...zero(), ...saved.backlog } };
+  return { ...DEFAULTS, ...saved, timezone: saved.timezone || DEFAULTS.timezone, adjustments: { ...zero(), ...saved.adjustments }, backlog: { ...zero(), ...saved.backlog } };
 }
 
 function saveSettings(store: Store, s: PrayerSettings): void {
   store.db.prepare("INSERT INTO settings (key, value) VALUES ('prayer', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(s));
 }
 
-/** Prayer times for a calendar date at the saved location. */
-export function timesFor(s: PrayerSettings, date: string): PrayerDay['times'] | null {
-  if (s.lat === null || s.lng === null) return null;
+const DAY_MS = 86_400_000;
+
+/** adhan's times for one date, or null when the sun doesn't rise or set that day. */
+function calculate(s: PrayerSettings & { lat: number; lng: number }, date: string): PrayerDay['times'] | null {
   const params = (METHODS[s.method] ?? METHODS.MuslimWorldLeague!).make();
   params.madhab = s.madhab === 'hanafi' ? Madhab.Hanafi : Madhab.Shafi;
   params.adjustments = { ...params.adjustments, ...s.adjustments };
   const [y, m, d] = date.split('-').map(Number);
   // adhan reads only the calendar date from this value.
   const pt = new PrayerTimes(new Coordinates(s.lat, s.lng), new Date(y!, m! - 1, d!, 12), params);
-  return {
-    fajr: pt.fajr.toISOString(),
-    sunrise: pt.sunrise.toISOString(),
-    dhuhr: pt.dhuhr.toISOString(),
-    asr: pt.asr.toISOString(),
-    maghrib: pt.maghrib.toISOString(),
-    isha: pt.isha.toISOString(),
-  };
+  const times = { fajr: pt.fajr, sunrise: pt.sunrise, dhuhr: pt.dhuhr, asr: pt.asr, maghrib: pt.maghrib, isha: pt.isha };
+  if (Object.values(times).some((t) => Number.isNaN(t.getTime()))) return null;
+  return Object.fromEntries(Object.entries(times).map(([k, t]) => [k, t.toISOString()])) as PrayerDay['times'];
+}
+
+/**
+ * Prayer times for a calendar date at the saved location. Near the poles, where the
+ * sun stays up (or down) for weeks, it uses the nearest day that has a sunrise and
+ * sunset, moved to this date. Null when unset, or when no day in the year has them.
+ */
+export function timesFor(s: PrayerSettings, date: string): PrayerDay['times'] | null {
+  if (s.lat === null || s.lng === null) return null;
+  const at = { ...s, lat: s.lat, lng: s.lng };
+  for (let i = 0; i <= 183; i++) {
+    for (const offset of i === 0 ? [0] : [-i, i]) {
+      const t = calculate(at, addDays(date, offset));
+      if (t) return Object.fromEntries(Object.entries(t).map(([k, v]) => [k, new Date(Date.parse(v) - offset * DAY_MS).toISOString()])) as PrayerDay['times'];
+    }
+  }
+  return null;
 }
 
 /** When a prayer's time ends: Fajr at sunrise, Isha at the next Fajr, the others at the next prayer. */
@@ -138,7 +151,7 @@ export function ramadanFrom(date: string): FaithState['ramadan'] {
 
 export function faithState(store: Store, today: string, now: Date = new Date()): FaithState {
   const s = getSettings(store);
-  const configured = s.lat !== null && s.lng !== null;
+  const configured = timesFor(s, today) !== null;
   const from = addDays(today, -6);
   const logs = logFor(store, addDays(from, -1), today);
   const week: PrayerDay[] = configured ? Array.from({ length: 7 }, (_, i) => addDays(from, i)).map((d) => ({ date: d, times: timesFor(s, d)!, log: logs.get(d) ?? {} })) : [];
@@ -197,14 +210,17 @@ export function adjustQada(store: Store, prayer: PrayerName, delta: number): Rec
     s.backlog[prayer] += delta;
     saveSettings(store, s);
   } else if (delta < 0) {
-    for (let i = 0; i < -delta; i++) {
-      const oldest = store.db.prepare("SELECT date FROM prayer_log WHERE prayer = ? AND status = 'missed' AND made_up_at IS NULL ORDER BY date LIMIT 1").get(prayer) as { date: string } | undefined;
-      if (oldest) store.db.prepare('UPDATE prayer_log SET made_up_at = ? WHERE date = ? AND prayer = ?').run(nowIso(), oldest.date, prayer);
-      else if (s.backlog[prayer] > 0) s.backlog[prayer] -= 1;
-      else throw new Invalid(`No missed ${cap(prayer)} left to make up.`);
-    }
-    saveSettings(store, s);
-    store.record('made_up', 'prayer', `${prayer}|${nowIso()}`, faith?.id ?? null, `Made up ${-delta === 1 ? 'a missed' : `${-delta} missed`} ${cap(prayer)}`);
+    const have = owed(store, s)[prayer];
+    if (have < -delta) throw new Invalid(have ? `Only ${have} missed ${cap(prayer)} left to make up.` : `No missed ${cap(prayer)} left to make up.`);
+    store.tx(() => {
+      for (let i = 0; i < -delta; i++) {
+        const oldest = store.db.prepare("SELECT date FROM prayer_log WHERE prayer = ? AND status = 'missed' AND made_up_at IS NULL ORDER BY date LIMIT 1").get(prayer) as { date: string } | undefined;
+        if (oldest) store.db.prepare('UPDATE prayer_log SET made_up_at = ? WHERE date = ? AND prayer = ?').run(nowIso(), oldest.date, prayer);
+        else s.backlog[prayer] -= 1;
+      }
+      saveSettings(store, s);
+      store.record('made_up', 'prayer', `${prayer}|${nowIso()}`, faith?.id ?? null, `Made up ${-delta === 1 ? 'a missed' : `${-delta} missed`} ${cap(prayer)}`);
+    });
   }
   return owed(store, s);
 }
@@ -272,16 +288,16 @@ registerFeature({
           lat: z.number().min(-90).max(90).optional(),
           lng: z.number().min(-180).max(180).optional(),
           label: z.string().max(80).optional(),
-          timezone: z.string().max(60).optional(),
+          timezone: z.string().min(1).max(60).optional(),
           method: z.string().refine((m) => m in METHODS, 'Unknown method').optional(),
           madhab: z.enum(['shafi', 'hanafi']).optional(),
-          adjustments: z.record(prayerName, z.number().int().min(-30).max(30)).optional(),
+          adjustments: z.partialRecord(prayerName, z.number().int().min(-30).max(30)).optional(),
         }),
       );
       const s = getSettings(store);
       const first = s.lat === null;
       const next: PrayerSettings = { ...s, ...input, adjustments: { ...s.adjustments, ...input.adjustments } };
-      if (input.timezone) {
+      if (input.timezone !== undefined) {
         try {
           new Intl.DateTimeFormat('en', { timeZone: input.timezone });
         } catch {
@@ -290,6 +306,7 @@ registerFeature({
       }
       // First time: pick the method people use where you are.
       if (first && !input.method && input.timezone) next.method = methodForTimezone(input.timezone);
+      if (next.lat !== null && next.lng !== null && !timesFor(next, todayOf(c))) throw new Invalid("Prayer times can't be calculated this close to the pole.");
       saveSettings(store, next);
       return c.json(faithState(store, todayOf(c)));
     });

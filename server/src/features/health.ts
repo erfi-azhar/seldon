@@ -17,6 +17,30 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 
 const healthSphere = (store: Store) => store.listSpheres().find((s) => s.key === 'health') ?? null;
 
+// ── Synced rows the person deleted ──────────────────────────────────────────
+// A sync reads back up to 30 days, so a deleted Gravl row would come straight back
+// unless its key is remembered for longer than that.
+
+const DELETED = 'health_sync_deleted';
+const DELETED_KEEP_DAYS = 60;
+type HealthTable = 'food_log' | 'workouts' | 'body_readings';
+
+function deletedKeys(store: Store): Record<string, string> {
+  const r = store.db.prepare('SELECT value FROM settings WHERE key = ?').get(DELETED) as { value: string } | undefined;
+  return r ? (JSON.parse(r.value) as Record<string, string>) : {};
+}
+
+const deletedKey = (table: HealthTable, source: string, externalId: string) => `${table}|${source}|${externalId}`;
+const wasDeleted = (store: Store, table: HealthTable, source: string, externalId: string) => deletedKey(table, source, externalId) in deletedKeys(store);
+
+function rememberDeleted(store: Store, table: HealthTable, source: string, externalId: string): void {
+  const today = nowIso().slice(0, 10);
+  const cutoff = addDays(today, -DELETED_KEEP_DAYS);
+  const keys = Object.fromEntries(Object.entries(deletedKeys(store)).filter(([, day]) => day >= cutoff));
+  keys[deletedKey(table, source, externalId)] = today;
+  store.db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(DELETED, JSON.stringify(keys));
+}
+
 // ── Food ────────────────────────────────────────────────────────────────────
 
 const foodFromRow = (r: Row): FoodEntry => ({
@@ -53,7 +77,7 @@ export function logFood(store: Store, date: string, time: string, items: FoodInp
   const sphere = healthSphere(store);
   const out: FoodEntry[] = [];
   for (const item of items) {
-    if (externalId && store.db.prepare('SELECT 1 AS x FROM food_log WHERE source = ? AND external_id = ?').get(source, externalId)) continue;
+    if (externalId && (wasDeleted(store, 'food_log', source, externalId) || store.db.prepare('SELECT 1 AS x FROM food_log WHERE source = ? AND external_id = ?').get(source, externalId))) continue;
     const id = newId();
     store.db
       .prepare('INSERT INTO food_log (id, date, time, meal, name, amount, kcal, protein, carbs, fat, source, external_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -120,6 +144,7 @@ const workoutFromRow = (r: Row): Workout => ({
 
 export function logWorkout(store: Store, w: Omit<Workout, 'id' | 'source'>, source = 'manual', externalId: string | null = null, quiet = false): Workout | null {
   if (externalId) {
+    if (wasDeleted(store, 'workouts', source, externalId)) return null;
     const existing = store.db.prepare('SELECT * FROM workouts WHERE source = ? AND external_id = ?').get(source, externalId) as Row | undefined;
     if (existing) return null;
   }
@@ -148,9 +173,73 @@ const bodyFromRow = (r: Row): BodyReading => ({
   notes: r.notes,
 });
 
+const FROM_BODY = 'from body composition';
+
+/** A weight in kilograms as the Weight metric keeps it; null when its unit is neither kg nor lb. */
+function weightIn(unit: string, kg: number): number | null {
+  const u = unit.trim();
+  if (/^(kgs?|kilos?|kilograms?)?$/i.test(u)) return kg;
+  if (/^(lbs?|pounds?)$/i.test(u)) return r1(kg * 2.20462);
+  return null;
+}
+
+/** Keep the Weight metric (and any goal it drives) in step with a reading. */
+function syncWeight(store: Store, date: string, kg: number): void {
+  const sphere = healthSphere(store);
+  const weight = sphere && store.listMetrics(sphere.id).find((m) => /^(body )?weight$/i.test(m.name));
+  const value = weight ? weightIn(weight.unit, kg) : null;
+  if (weight && value !== null) store.addMetricEntry(weight.id, { value, date, note: FROM_BODY });
+}
+
+/**
+ * Take back the Weight metric entry a reading wrote, as undoing its "Logged Weight" row
+ * would: the day's earlier value comes back, or the day goes. Left alone when something
+ * else has written that day since.
+ */
+function unwindWeight(db: Store['db'], reading: Row | undefined): void {
+  if (!reading || reading.weight_kg === null) return;
+  const entries = db.prepare('SELECT e.id, e.value, m.unit FROM metric_entries e JOIN metrics m ON m.id = e.metric_id WHERE e.date = ? AND e.note = ?').all(reading.date, FROM_BODY) as Row[];
+  for (const e of entries) {
+    if (weightIn(e.unit, reading.weight_kg) !== e.value) continue;
+    const logged = db.prepare("SELECT id, undo_data FROM activity WHERE verb = 'logged' AND entity_type = 'metric_entry' AND entity_id = ? AND undone = 0 ORDER BY id DESC LIMIT 1").get(e.id) as Row | undefined;
+    if (!logged) continue;
+    const prev = logged.undo_data ? (JSON.parse(logged.undo_data) as { value: number; note: string } | null) : null;
+    if (prev) db.prepare('UPDATE metric_entries SET value = ?, note = ? WHERE id = ?').run(prev.value, prev.note, e.id);
+    else db.prepare('DELETE FROM metric_entries WHERE id = ?').run(e.id);
+    db.prepare('UPDATE activity SET undone = 1 WHERE id = ?').run(logged.id);
+  }
+}
+
+function removeBody(db: Store['db'], id: string): boolean {
+  unwindWeight(db, db.prepare('SELECT * FROM body_readings WHERE id = ?').get(id) as Row | undefined);
+  return db.prepare('DELETE FROM body_readings WHERE id = ?').run(id).changes > 0;
+}
+
+/** A source's later reading for the same key (Gravl's: the same day) fills in or corrects the one we have. */
+function updateBody(store: Store, existing: Row, b: Omit<BodyReading, 'id' | 'source' | 'notes'>): BodyReading | null {
+  const next = {
+    weight_kg: b.weightKg ?? existing.weight_kg,
+    body_fat_pct: b.bodyFatPct ?? existing.body_fat_pct,
+    muscle_kg: b.muscleKg ?? existing.muscle_kg,
+    visceral_fat: b.visceralFat ?? existing.visceral_fat,
+    water_pct: b.waterPct ?? existing.water_pct,
+    bmr: b.bmr ?? existing.bmr,
+  };
+  if (Object.entries(next).every(([k, v]) => v === existing[k])) return null;
+  store.db
+    .prepare('UPDATE body_readings SET weight_kg = ?, body_fat_pct = ?, muscle_kg = ?, visceral_fat = ?, water_pct = ?, bmr = ? WHERE id = ?')
+    .run(next.weight_kg, next.body_fat_pct, next.muscle_kg, next.visceral_fat, next.water_pct, next.bmr, existing.id);
+  if (next.weight_kg !== null && next.weight_kg !== existing.weight_kg) syncWeight(store, existing.date, next.weight_kg);
+  return bodyFromRow(store.db.prepare('SELECT * FROM body_readings WHERE id = ?').get(existing.id) as Row);
+}
+
 export function logBody(store: Store, b: Omit<BodyReading, 'id' | 'source' | 'notes'> & { notes?: string }, source = 'manual', externalId: string | null = null, quiet = false): BodyReading | null {
   if ([b.weightKg, b.bodyFatPct, b.muscleKg, b.visceralFat, b.waterPct, b.bmr].every((v) => v === null || v === undefined)) throw new Invalid('Add at least one reading');
-  if (externalId && store.db.prepare('SELECT 1 AS x FROM body_readings WHERE source = ? AND external_id = ?').get(source, externalId)) return null;
+  if (externalId) {
+    if (wasDeleted(store, 'body_readings', source, externalId)) return null;
+    const existing = store.db.prepare('SELECT * FROM body_readings WHERE source = ? AND external_id = ?').get(source, externalId) as Row | undefined;
+    if (existing) return updateBody(store, existing, b);
+  }
   const id = newId();
   store.db
     .prepare('INSERT INTO body_readings (id, date, weight_kg, body_fat_pct, muscle_kg, visceral_fat, water_pct, bmr, source, external_id, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -158,11 +247,7 @@ export function logBody(store: Store, b: Omit<BodyReading, 'id' | 'source' | 'no
   const sphere = healthSphere(store);
   const parts = [b.weightKg != null ? `${b.weightKg} kg` : '', b.bodyFatPct != null ? `${b.bodyFatPct}% fat` : '', b.muscleKg != null ? `${b.muscleKg} kg muscle` : ''].filter(Boolean);
   if (!quiet) store.record('created', 'body_reading', id, sphere?.id ?? null, `Body composition: ${parts.join(', ') || 'new reading'}`);
-  // Keep the Weight metric (and any goal it drives) in step.
-  if (b.weightKg != null && sphere) {
-    const weight = store.listMetrics(sphere.id).find((m) => /^(body )?weight$/i.test(m.name));
-    if (weight) store.addMetricEntry(weight.id, { value: b.weightKg, date: b.date, note: 'from body composition' });
-  }
+  if (b.weightKg != null) syncWeight(store, b.date, b.weightKg);
   return bodyFromRow(store.db.prepare('SELECT * FROM body_readings WHERE id = ?').get(id) as Row);
 }
 
@@ -220,7 +305,18 @@ export function healthState(store: Store, date: string): HealthState {
 
 registerUndo('created:food', (db, id) => void db.prepare('DELETE FROM food_log WHERE id = ?').run(id));
 registerUndo('created:workout', (db, id) => void db.prepare('DELETE FROM workouts WHERE id = ?').run(id));
-registerUndo('created:body_reading', (db, id) => void db.prepare('DELETE FROM body_readings WHERE id = ?').run(id));
+registerUndo('created:body_reading', (db, id) => void removeBody(db, id));
+
+/** Delete a row from the panels. A synced row is remembered so the next sync does not bring it back. */
+function removeRow(store: Store, table: HealthTable, id: string, what: string): void {
+  store.tx(() => {
+    const row = store.db.prepare(`SELECT source, external_id FROM ${table} WHERE id = ?`).get(id) as Row | undefined;
+    if (!row) throw new NotFound(what);
+    if (row.external_id) rememberDeleted(store, table, row.source, row.external_id);
+    if (table === 'body_readings') removeBody(store.db, id);
+    else store.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+  });
+}
 
 // ── Agent ───────────────────────────────────────────────────────────────────
 
@@ -288,7 +384,21 @@ const toBody = (b: z.infer<typeof bodyInput>, today: string) => ({
   bmr: b.bmr ?? null,
   notes: b.notes,
 });
-const nowHHMM = () => new Date().toTimeString().slice(0, 5);
+/** HH:MM now where the person is: the zone their browser reports, which can differ from the server's. */
+function nowHHMM(store: Store): string {
+  const zone = store.zone();
+  if (zone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+      const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+      return `${part('hour')}:${part('minute')}`;
+    } catch {
+      // An unknown zone falls back to the server's clock.
+    }
+  }
+  return new Date().toTimeString().slice(0, 5);
+}
+const HHMM = /^\d{2}:\d{2}$/;
 
 async function imageFrom(form: FormData) {
   const f = form.get('file');
@@ -307,7 +417,7 @@ registerFeature({
       'Log food the user ate, with calories and macros. When they do not give numbers, estimate them yourself from typical portions (Singapore portions for local dishes) and say they are estimates. Split a meal into its items. Date defaults to today; time to now.',
       z.object({ items: z.array(foodItem).min(1).max(20), date: dateStr.optional(), time: z.string().regex(/^\d{2}:\d{2}$/).optional() }),
       ({ items, date, time }, { store, today }) => {
-        const logged = logFood(store, date ?? today, time ?? nowHHMM(), items, 'seldon');
+        const logged = logFood(store, date ?? today, time ?? nowHHMM(store), items, 'seldon');
         const kcal = logged.reduce((n, e) => n + e.kcal, 0);
         return { data: { ok: true, logged: logged.length, kcal, day: healthState(store, date ?? today).today.totals }, summary: `Logged ${logged.map((e) => e.name).join(', ')} — ${Math.round(kcal)} kcal` };
       },
@@ -355,19 +465,20 @@ registerFeature({
     });
     app.post('/api/health/food', async (c) => {
       const { items, time } = await read(c, z.object({ items: z.array(foodItem).min(1).max(20), time: z.string().regex(/^\d{2}:\d{2}$/).optional() }));
-      logFood(store, todayOf(c), time ?? nowHHMM(), items);
+      logFood(store, todayOf(c), time ?? nowHHMM(store), items);
       return c.json(healthState(store, todayOf(c)), 201);
     });
     app.post('/api/health/food/describe', async (c) => {
       const type = c.req.header('content-type') ?? '';
       let text = '';
       let image: { data: Buffer; mime: string } | undefined;
-      let time = nowHHMM();
+      let time = nowHHMM(store);
       if (type.includes('multipart/form-data')) {
         const form = await c.req.formData();
         text = String(form.get('text') ?? '');
         if (form.get('file')) image = await imageFrom(form);
-        time = String(form.get('time') ?? time);
+        const sent = form.get('time');
+        if (typeof sent === 'string' && HHMM.test(sent)) time = sent;
       } else {
         const input = await read(c, z.object({ text: z.string().min(1).max(1000), time: z.string().regex(/^\d{2}:\d{2}$/).optional() }));
         text = input.text;
@@ -383,7 +494,7 @@ registerFeature({
       return c.json(healthState(store, todayOf(c)), 201);
     });
     app.delete('/api/health/food/:id', (c) => {
-      if (!store.db.prepare('DELETE FROM food_log WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Entry');
+      removeRow(store, 'food_log', c.req.param('id'), 'Entry');
       return c.json({ ok: true });
     });
     app.post('/api/health/workouts', async (c) => {
@@ -391,7 +502,7 @@ registerFeature({
       return c.json(healthState(store, todayOf(c)), 201);
     });
     app.delete('/api/health/workouts/:id', (c) => {
-      if (!store.db.prepare('DELETE FROM workouts WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Workout');
+      removeRow(store, 'workouts', c.req.param('id'), 'Workout');
       return c.json({ ok: true });
     });
     app.post('/api/health/body', async (c) => {
@@ -410,7 +521,7 @@ registerFeature({
       return c.json(healthState(store, todayOf(c)), 201);
     });
     app.delete('/api/health/body/:id', (c) => {
-      if (!store.db.prepare('DELETE FROM body_readings WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Reading');
+      removeRow(store, 'body_readings', c.req.param('id'), 'Reading');
       return c.json({ ok: true });
     });
   },

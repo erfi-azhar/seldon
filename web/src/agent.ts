@@ -30,7 +30,8 @@ export interface AgentChat extends ChatState {
   reset: () => void;
   load: (conversationId: string) => Promise<void>;
   undo: (activityId: number) => Promise<void>;
-  setBrain: (connectionId: string) => void;
+  /** Undefined goes back to the chat brain. */
+  setBrain: (connectionId: string | undefined) => void;
 }
 
 function applyToReply(messages: ChatMessage[], change: (parts: ChatPart[]) => ChatPart[]): ChatMessage[] {
@@ -185,7 +186,7 @@ export function useAgentChat(viewing: () => string): AgentChat {
   );
 
   // Takes effect with the next message; the server records it on the conversation.
-  const setBrain = useCallback((connectionId: string) => setState((s) => ({ ...s, connectionId })), []);
+  const setBrain = useCallback((connectionId: string | undefined) => setState((s) => ({ ...s, connectionId })), []);
 
   return { ...state, send, stop, reset, load, undo, setBrain };
 }

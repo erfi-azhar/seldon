@@ -155,7 +155,10 @@ const sphereFor = (store: Store, purpose: TripPurpose) => (purpose === 'work' ? 
 
 export function updateTrip(store: Store, id: string, p: Partial<TripInput>): Trip {
   const cur = getTrip(store, id);
-  const next = { title: p.title ?? cur.title, purpose: p.purpose ?? cur.purpose, destination: p.destination ?? cur.destination, startDate: p.startDate ?? cur.startDate, endDate: p.endDate ?? cur.endDate, notes: p.notes ?? cur.notes };
+  const destination = (p.destination ?? cur.destination).trim();
+  // A cleared name falls back to the destination, as it does when the trip is made.
+  const title = p.title === undefined ? cur.title : p.title.trim() || destination || cur.title;
+  const next = { title, purpose: p.purpose ?? cur.purpose, destination, startDate: p.startDate ?? cur.startDate, endDate: p.endDate ?? cur.endDate, notes: p.notes ?? cur.notes };
   if (next.endDate < next.startDate) throw new Invalid('A trip cannot end before it starts');
   store.db.prepare('UPDATE trips SET title = ?, purpose = ?, destination = ?, start_date = ?, end_date = ?, notes = ? WHERE id = ?').run(next.title.slice(0, 120), next.purpose, next.destination.slice(0, 120), next.startDate, next.endDate, next.notes.slice(0, 2000), id);
   return getTrip(store, id);
@@ -201,8 +204,14 @@ function normalise(s: SegmentInput, settings: TravelSettings) {
   const startUtc = zonedToUtc(startLocal, startTz);
   let endUtc = zonedToUtc(endLocal, endTz);
   if (endUtc < startUtc) endUtc = startUtc;
-  const carrier = clean(s.carrier, 60);
-  const number = clean(s.number, 12).toUpperCase().replace(/\s+/g, '');
+  let carrier = clean(s.carrier, 60);
+  let number = clean(s.number, 12).toUpperCase().replace(/\s+/g, '');
+  // "SQ638" and "SQ" + "638" are the same flight. Airline codes always hold a letter, so "638" stays whole.
+  const coded = s.kind === 'flight' ? /^([A-Z]{2}|[A-Z]\d|\d[A-Z])(\d{1,4}[A-Z]?)$/.exec(number) : null;
+  if (coded && (!carrier || carrier.toUpperCase() === coded[1])) {
+    carrier ||= coded[1]!;
+    number = coded[2]!;
+  }
   return {
     kind: s.kind,
     title: clean(s.title) || (s.kind === 'flight' ? `${carrier} ${number}`.trim() : ''),
@@ -226,20 +235,33 @@ function normalise(s: SegmentInput, settings: TravelSettings) {
   };
 }
 
-/** The same flight or stay already on file (a booking, then its check-in reminder). */
-function findSame(store: Store, n: ReturnType<typeof normalise>): Row | undefined {
+/** The same flight or stay already on file for this trip (a booking, then its check-in reminder). */
+function findSame(store: Store, tripId: string | null, n: ReturnType<typeof normalise>): Row | undefined {
+  const day = n.startLocal.slice(0, 10);
   if (n.kind === 'flight' && n.number) {
-    return store.db.prepare("SELECT * FROM trip_segments WHERE kind = 'flight' AND number = ? AND substr(start_local, 1, 10) = ?").get(n.number, n.startLocal.slice(0, 10)) as Row | undefined;
+    // Flight numbers repeat across airlines, so the carrier and departure airport must agree where both are known.
+    return store.db
+      .prepare(
+        `SELECT * FROM trip_segments WHERE kind = 'flight' AND number IN (?, ?) AND substr(start_local, 1, 10) = ?
+          AND (carrier = '' OR ? = '' OR upper(carrier) = upper(?)) AND (from_code = '' OR ? = '' OR from_code = ?) AND (? IS NULL OR trip_id = ?)`,
+      )
+      .get(n.number, `${n.carrier}${n.number}`.toUpperCase(), day, n.carrier, n.carrier, n.fromCode, n.fromCode, tripId, tripId) as Row | undefined;
   }
   if (n.kind === 'stay' && n.title) {
-    return store.db.prepare("SELECT * FROM trip_segments WHERE kind = 'stay' AND lower(title) = lower(?) AND substr(start_local, 1, 10) = ?").get(n.title, n.startLocal.slice(0, 10)) as Row | undefined;
+    return store.db.prepare("SELECT * FROM trip_segments WHERE kind = 'stay' AND lower(title) = lower(?) AND substr(start_local, 1, 10) = ? AND (? IS NULL OR trip_id = ?)").get(n.title, day, tripId, tripId) as Row | undefined;
   }
   return undefined;
 }
 
-/** The trip a segment belongs to: one whose dates it falls in or near. */
+/** The trip a segment belongs to: one whose dates hold it, else the nearest within a day of it. */
 function tripFor(store: Store, date: string, endDate: string): Row | undefined {
-  return store.db.prepare('SELECT * FROM trips WHERE start_date <= ? AND end_date >= ? ORDER BY start_date LIMIT 1').get(addDays(endDate, 1), addDays(date, -1)) as Row | undefined;
+  return store.db
+    .prepare(
+      `SELECT * FROM trips WHERE start_date <= ? AND end_date >= ?
+        ORDER BY (start_date <= ? AND end_date >= ?) DESC, max(julianday(start_date) - julianday(?), julianday(?) - julianday(end_date), 0), (start_date <= ? AND end_date >= ?) DESC, start_date
+        LIMIT 1`,
+    )
+    .get(addDays(endDate, 1), addDays(date, -1), date, endDate, endDate, date, date, date) as Row | undefined;
 }
 
 /** Stretch a trip's dates to cover a segment. */
@@ -250,7 +272,7 @@ function cover(store: Store, tripId: string, from: string, to: string): void {
 export function addSegment(store: Store, tripId: string | null, input: SegmentInput, source = 'manual', externalId: string | null = null, quiet = false): { segment: Segment; created: boolean } {
   const n = normalise(input, travelSettings(store));
   const accounts = listLoyalty(store);
-  const same = findSame(store, n);
+  const same = findSame(store, tripId, n);
   if (same) {
     // Fill gaps (a seat assigned at check-in, a terminal) without overwriting what is there.
     const fill = (k: string, v: string) => (v && !same[k] ? v : same[k]);
@@ -278,6 +300,11 @@ export function updateSegment(store: Store, id: string, p: Partial<SegmentInput>
   const r = store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Booking');
   const { lounges: _l, perks: _p, startUtc: _s, endUtc: _e, ...cur } = segmentFromRow(r, []);
+  // Names and a flight's own title follow its codes and number: drop the stale ones so normalise derives them again.
+  const changed = (k: 'fromCode' | 'toCode' | 'carrier' | 'number') => p[k] !== undefined && clean(p[k]).toUpperCase() !== cur[k].toUpperCase();
+  if (changed('fromCode') && p.fromName === undefined) cur.fromName = '';
+  if (changed('toCode') && p.toName === undefined) cur.toName = '';
+  if (cur.kind === 'flight' && (changed('carrier') || changed('number')) && p.title === undefined && cur.title === `${cur.carrier} ${cur.number}`.trim()) cur.title = '';
   const n = normalise({ ...cur, ...p }, travelSettings(store));
   store.db
     .prepare(
@@ -347,8 +374,8 @@ export function upsertLoyalty(store: Store, input: LoyaltyInput, source = 'manua
   const known = canonicalProgram(input.program);
   const program = known?.program ?? clean(input.program, 60);
   if (!program) throw new Invalid('Name the programme');
-  const kind = input.kind ?? known?.kind ?? 'airline';
   const cur = store.db.prepare('SELECT * FROM loyalty_accounts WHERE program = ?').get(program) as Row | undefined;
+  const kind: LoyaltyAccount['kind'] = input.kind ?? cur?.kind ?? known?.kind ?? 'airline';
   const pick = <T>(v: T | undefined, k: string): T => (v === undefined ? (cur?.[k] ?? null) : v) as T;
   // Only ever keep the last four digits of a membership number.
   const suffix = input.memberSuffix !== undefined ? input.memberSuffix.replace(/\D/g, '').slice(-4) : (cur?.member_suffix ?? '');
@@ -451,8 +478,8 @@ export async function buildCompanion(store: Store, segmentId: string, now: Date 
 - "plan": 3 to 6 concrete suggestions that fit the time they have${layover ? ` (a ${layover.hours}-hour layover)` : ' before boarding'}, e.g. what to see or eat (halal options), where the prayer room (musolla) is, whether there is time to leave the airport, and when to head to the gate. They are Muslim; on a long journey mention that a traveller may shorten and combine prayers.
 Be specific and brief. Say if you are unsure of a detail. Reply {"lounges": [...], "plan": [...]}.`,
     input: [
-      `Trip: ${trip.title} (${trip.purpose}).`,
-      wrapUntrusted('booking', describeSegment(seg), 2000),
+      `Trip purpose: ${trip.purpose}.`,
+      wrapUntrusted('booking', `Trip: ${trip.title}\n${describeSegment(seg)}`, 2400),
       `Eligibility from their fare and status: ${seg.lounges.length ? seg.lounges.map((l) => `${l.access} (${l.basis})`).join('; ') : 'none known'}.`,
       layover ? `This is a connection: ${layover.hours} hours at ${layover.airport}.` : `Departing from ${seg.fromCode}.`,
     ].join('\n'),
@@ -486,14 +513,15 @@ export async function draftItinerary(store: Store, tripId: string): Promise<Trip
   if (days.length === 0) return trip;
   const res = await think({
     store,
-    task: `Draft a realistic day-by-day plan for this ${trip.purpose} trip${trip.destination ? ` to ${trip.destination}` : ''}, for these dates only: ${days.join(', ')}.
+    task: `Draft a realistic day-by-day plan for this ${trip.purpose} trip, to the destination given below, for these dates only: ${days.join(', ')}.
 - Fit around the flights and hotel: nothing before landing or after the last departure; leave time to get to and from the airport (a "transit" item).
 - ${trip.purpose === 'work' ? 'It is a work trip: keep working hours as "work" blocks (title "Work" unless the notes say what), and suggest a few things for evenings and any free day.' : 'It is a leisure trip: two or three anchors a day with room to breathe, mixing sights, local experiences and rest.'}
 - They are Muslim: suggest halal or Muslim-friendly places to eat, and on a Friday, Jumu'ah at a nearby mosque around midday.
 - Use real, specific places. Times are local, "HH:MM", or null for flexible items.
 Reply {"items": [{"date", "time", "title", "place", "notes", "kind": "activity"|"food"|"transit"|"work"|"rest"}]}.`,
     input: [
-      `Trip: ${trip.title}, ${trip.startDate} to ${trip.endDate}, purpose ${trip.purpose}.`,
+      `Trip dates: ${trip.startDate} to ${trip.endDate}, purpose ${trip.purpose}.`,
+      wrapUntrusted('trip', `Name: ${trip.title}\nDestination: ${trip.destination || 'not given'}`, 400),
       trip.segments.length ? wrapUntrusted('bookings', trip.segments.map(describeSegment).join('\n'), 6000) : 'No bookings on file yet.',
       trip.notes ? wrapUntrusted('their notes for the trip', trip.notes, 2000) : '',
     ]
@@ -502,9 +530,11 @@ Reply {"items": [{"date", "time", "title", "place", "notes", "kind": "activity"|
     schema: Plan,
   });
   const wanted = new Set(days);
-  addItems(store, tripId, res.items.filter((i) => wanted.has(i.date)), true);
+  const added = addItems(store, tripId, res.items.filter((i) => wanted.has(i.date)), true);
   store.db.prepare('UPDATE trips SET drafted = 1 WHERE id = ?').run(tripId);
-  store.record('created', 'itinerary_draft', tripId, sphereFor(store, trip.purpose), `Drafted a plan for ${trip.title}`);
+  // Each draft is its own entry, holding the ids it made, so undo takes back only those.
+  const activity = store.record('created', 'itinerary_draft', newId(), sphereFor(store, trip.purpose), `Drafted a plan for ${trip.title}`);
+  store.db.prepare('UPDATE activity SET undo_data = ? WHERE id = ?').run(JSON.stringify({ tripId, items: added.map((i) => i.id) }), activity);
   return getTrip(store, tripId);
 }
 
@@ -518,12 +548,12 @@ export async function prepareTravel(store: Store, now: Date = new Date()): Promi
       const until = at - now.getTime();
       if (until <= 0 || until > 24 * HOUR) continue;
       let lounges = seg.lounges.map((l) => l.access);
-      if (!trip.companion[seg.id]) {
+      if (!trip.companion[seg.id] && due(`companion:${seg.id}`, now)) {
         try {
           const t = await buildCompanion(store, seg.id, now);
           lounges = t.companion[seg.id]?.lounges ?? lounges;
         } catch (err) {
-          if (!(err instanceof NoBrain)) throw err;
+          failed(`companion:${seg.id}`, err, now);
         }
       }
       const layover = ctx.layovers.find((l) => l.nextSegmentId === seg.id);
@@ -540,7 +570,7 @@ export async function prepareTravel(store: Store, now: Date = new Date()): Promi
     }
     const startsIn = daysBetween(today, trip.startDate);
     const r = store.db.prepare('SELECT drafted FROM trips WHERE id = ?').get(trip.id) as Row;
-    if (startsIn >= 0 && startsIn <= 7 && !r.drafted && trip.itinerary.length === 0) {
+    if (startsIn >= 0 && startsIn <= 7 && !r.drafted && trip.itinerary.length === 0 && due(`draft:${trip.id}`, now)) {
       try {
         await draftItinerary(store, trip.id);
         addSignal(store, {
@@ -554,10 +584,21 @@ export async function prepareTravel(store: Store, now: Date = new Date()): Promi
           data: { tripId: trip.id },
         });
       } catch (err) {
-        if (!(err instanceof NoBrain)) throw err;
+        failed(`draft:${trip.id}`, err, now);
       }
     }
   }
+}
+
+// A model that is down or answering badly should not hold up the rule-based flight signal
+// or the other trips, nor be asked again every half hour.
+const RETRY_AFTER = 3 * HOUR;
+const failures = new Map<string, number>();
+const due = (key: string, now: Date) => (failures.get(key) ?? -Infinity) + RETRY_AFTER <= now.getTime();
+function failed(key: string, err: unknown, now: Date): void {
+  if (err instanceof NoBrain) return;
+  failures.set(key, now.getTime());
+  console.warn(`[${ID}] ${key} failed:`, err instanceof Error ? err.message : err);
 }
 
 // ── Reading bookings and statements ─────────────────────────────────────────
@@ -724,9 +765,18 @@ async function onMail(store: Store, m: MailMessage): Promise<void> {
 registerUndo('created:trip', (db, id) => void db.prepare('DELETE FROM trips WHERE id = ?').run(id));
 registerUndo('created:trip_segment', (db, id) => void db.prepare('DELETE FROM trip_segments WHERE id = ?').run(id));
 registerUndo('created:itinerary', (db, id) => void db.prepare('DELETE FROM itinerary_items WHERE id = ?').run(id));
+// Takes back the draft's own items that are not ticked off. The trip stays marked as drafted,
+// so the half-hourly job does not draft it again; "Draft with Seldon" still can.
 registerUndo('created:itinerary_draft', (db, id) => {
-  db.prepare('DELETE FROM itinerary_items WHERE trip_id = ? AND done = 0').run(id);
-  db.prepare('UPDATE trips SET drafted = 0 WHERE id = ?').run(id);
+  const a = db.prepare("SELECT ts, undo_data FROM activity WHERE verb = 'created' AND entity_type = 'itinerary_draft' AND entity_id = ? ORDER BY id DESC LIMIT 1").get(id) as Row | undefined;
+  const made = a?.undo_data ? (JSON.parse(a.undo_data) as { items: string[] }).items : null;
+  if (made) {
+    const drop = db.prepare('DELETE FROM itinerary_items WHERE id = ? AND done = 0');
+    for (const item of made) drop.run(item);
+  } else if (a) {
+    // Drafts logged before ids were kept: entity_id is the trip, and its items were added just before the entry.
+    db.prepare('DELETE FROM itinerary_items WHERE trip_id = ? AND done = 0 AND created_at <= ? AND created_at >= ?').run(id, a.ts, new Date(Date.parse(a.ts) - 60_000).toISOString());
+  }
 });
 
 // ── Agent ───────────────────────────────────────────────────────────────────
@@ -745,7 +795,8 @@ registerSnapshotSection<Store>('Travel', (store, today) => {
   if (ctx.mode === 'away' && ctx.trip) lines.push(`Away now: day ${ctx.dayOfTrip} of ${ctx.tripDays} in ${ctx.trip.title}${ctx.stay ? `, staying at ${ctx.stay.title}` : ''}.`);
   for (const t of trips) lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items.`);
   for (const a of loyalty) lines.push(`${a.program}: ${[a.tier, a.points !== null ? `${a.points.toLocaleString('en')} ${a.kind === 'airline' ? 'miles' : 'points'}` : '', a.progress !== null && a.progressTarget ? `${a.progress}/${a.progressTarget} ${a.progressLabel}` : ''].filter(Boolean).join(', ')} (as of ${a.updatedAt.slice(0, 10)}).`);
-  return lines.join('\n');
+  // Names of trips, hotels, carriers and programmes are often copied out of mail and screenshots.
+  return wrapUntrusted('travel bookings and loyalty, partly read from mail and screenshots', lines.join('\n'), 8000);
 });
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);

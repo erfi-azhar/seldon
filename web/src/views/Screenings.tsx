@@ -55,13 +55,15 @@ function Rich({ text }: { text: string }) {
 
 function Ring({ value, total, label, note, tone }: { value: number; total: number; label: string; note: string; tone: 'ok' | 'watch' | 'flag' }) {
   const C = 2 * Math.PI * 40;
-  const shown = tone === 'ok' ? `${Math.round((value / total) * 100)}%` : String(value);
+  // A record can have no current results (one visit, or none filled in yet): no share to show.
+  const frac = total > 0 ? value / total : 0;
+  const shown = tone === 'ok' ? (total > 0 ? `${Math.round(frac * 100)}%` : '—') : String(value);
   return (
     <div className="hs-ring">
       <div className="hs-ring-g" role="img" aria-label={`${label}: ${shown} — ${note}`}>
         <svg viewBox="0 0 100 100" aria-hidden>
           <circle cx="50" cy="50" r="40" className="hs-ring-track" />
-          <circle cx="50" cy="50" r="40" className={`hs-ring-arc hs-${tone}`} strokeDasharray={`${Math.max(0.02, value / total) * C} ${C}`} />
+          <circle cx="50" cy="50" r="40" className={`hs-ring-arc hs-${tone}`} strokeDasharray={`${Math.max(0.02, frac) * C} ${C}`} />
         </svg>
         <span className="num">{shown}</span>
       </div>
@@ -393,7 +395,8 @@ export function Screenings({ sphereId }: { sphereId: string }) {
               </div>
               <div className="hs-slopes">
                 {doc.slopes.map((sl) => {
-                  const Y = (v: number): number => (1 - (v - sl.d[0]) / (sl.d[1] - sl.d[0])) * 100;
+                  const span = sl.d[1] - sl.d[0] || 1;
+                  const Y = (v: number): number => (1 - (v - sl.d[0]) / span) * 100;
                   const top = Y(sl.band[1]);
                   const fa = sl.a.toFixed(sl.dp);
                   const fb = sl.b.toFixed(sl.dp);

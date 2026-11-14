@@ -32,8 +32,11 @@ export function parseJsonObject(text: string): unknown {
 
 export function wrapUntrusted(label: string, text: string, max = 24_000): string {
   const clipped = text.length > max ? `${text.slice(0, max)}\n[…truncated]` : text;
-  // Keep the content from closing our tag early.
-  return `<untrusted source="${label}">\n${clipped.replaceAll('</untrusted', '<\\/untrusted')}\n</untrusted>`;
+  // Keep the content from closing our tag early, in any case or spacing a model
+  // might still read as a closing tag, and keep the label from breaking out of its quotes.
+  const body = clipped.replace(/<\s*\/\s*untrusted/gi, '<\\/untrusted');
+  const source = label.replace(/["<>\n\r]/g, ' ');
+  return `<untrusted source="${source}">\n${body}\n</untrusted>`;
 }
 
 export interface ThinkRequest<T> {

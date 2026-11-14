@@ -120,6 +120,10 @@ export function openAiProvider(cfg: ModelConfig): Provider {
       let text = '';
       let finish: string | null = null;
       const partial = new Map<number, { id: string; name: string; args: string }>();
+      // Which slot each wire `index` currently streams into. Usually the same number, but
+      // some servers number every parallel call 0, so a new id moves that index on.
+      const route = new Map<number, number>();
+      const nextSlot = (): number => (partial.size ? Math.max(...partial.keys()) + 1 : 0);
       let last = -1;
 
       const handle = (chunk: StreamChunk & { error?: { message?: string } | string }): void => {
@@ -137,17 +141,24 @@ export function openAiProvider(cfg: ModelConfig): Provider {
         for (const call of delta.tool_calls ?? []) {
           let index: number;
           if (call.index !== undefined) {
-            index = call.index;
-            // Some servers number every parallel call 0; a different id means a new call.
-            const cur = partial.get(index);
-            if (cur && call.id && cur.id && call.id !== cur.id) index = Math.max(...partial.keys(), index) + 1;
-            else if (cur && call.id && call.id !== cur.id && [...partial.values()].some((p) => p.id === call.id)) index = [...partial.entries()].find(([, p]) => p.id === call.id)![0];
+            const routed = route.get(call.index);
+            const cur = routed === undefined ? undefined : partial.get(routed);
+            if (routed === undefined) {
+              index = partial.has(call.index) ? nextSlot() : call.index;
+            } else if (cur && call.id && call.id !== cur.id) {
+              // A different id on a used index: back to that call if it was seen, else a new call.
+              const seen = [...partial.entries()].find(([, p]) => p.id === call.id);
+              index = seen ? seen[0] : cur.id ? nextSlot() : routed;
+            } else {
+              index = routed;
+            }
+            route.set(call.index, index);
           } else if (!call.id && !call.function?.name && last >= 0) {
             // A continuation without an index belongs to the call being streamed.
             index = last;
           } else {
             // Servers that send a whole call in one chunk often omit `index`.
-            index = partial.size ? Math.max(...partial.keys()) + 1 : 0;
+            index = nextSlot();
           }
           const slot = partial.get(index) ?? { id: '', name: '', args: '' };
           if (call.id) slot.id = call.id;

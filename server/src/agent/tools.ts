@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { addDays, formatValue, prettyDay, type Store } from '../store.ts';
 import { renderSnapshot } from './prompt.ts';
+import { wrapUntrusted } from './think.ts';
 import type { ToolSpec } from './types.ts';
 import type { Goal, Habit, Metric, Task } from '../../../shared/types.ts';
 
@@ -426,20 +427,24 @@ export interface Toolbox {
 
 /** Everything the agent can use right now: built-in and feature tools, then connected servers'. */
 export async function toolbox(store: Store): Promise<Toolbox> {
-  const external = (await Promise.all(SOURCES.map((src) => src(store).catch(() => [] as ExternalTool[])))).flat();
-  external.sort((a, b) => a.name.localeCompare(b.name));
-  const byName = new Map(external.map((t) => [t.name, t]));
+  const all = (await Promise.all(SOURCES.map((src) => src(store).catch(() => [] as ExternalTool[])))).flat();
+  all.sort((a, b) => a.name.localeCompare(b.name));
+  // Model APIs reject a request whose tool names repeat, so a clash would break every turn.
+  const byName = new Map<string, ExternalTool>();
+  for (const t of all) if (!byName.has(t.name) && !TOOLS.some((b) => b.name === t.name)) byName.set(t.name, t);
+  const external = [...byName.values()];
   return {
     specs: [...TOOLS.map(specOf), ...external.map((t) => ({ name: t.name, description: t.description, schema: t.schema }))],
     run: async (name, input, ctx) => {
       const ext = byName.get(name);
       if (!ext) return runTool(name, input, ctx);
+      // Whatever a connected server sends back is outside data, and so are its error messages.
       try {
         const out = await ext.run(input, ctx);
-        return { content: typeof out.data === 'string' ? out.data : JSON.stringify(out.data), isError: false, summary: out.summary };
+        return { content: wrapUntrusted(name, typeof out.data === 'string' ? out.data : JSON.stringify(out.data), 20_000), isError: false, summary: out.summary };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return { content: `Error: ${message}`, isError: true, summary: `Couldn't run ${name.replaceAll('_', ' ')}: ${message}` };
+        return { content: `Error: ${wrapUntrusted(name, message, 2000)}`, isError: true, summary: `Couldn't run ${name.replaceAll('_', ' ')}: ${message}` };
       }
     },
   };

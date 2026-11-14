@@ -79,10 +79,12 @@ function WatchSheet({ onClose }: { onClose: () => void }) {
 
 function Posting({ p }: { p: JobPosting }) {
   const mark = useWrite(({ status }: { status: 'seen' | 'saved' | 'dismissed' }) => jobsWrite.mark(p.id, status));
+  // Opening a role is looking at it: it stops counting as new.
+  const opened = () => p.status === 'new' && p.url && mark.mutate({ status: 'seen' });
   return (
     <li className={cx('job', p.status === 'new' && 'is-new')}>
       <div className="grow">
-        <a className="job-title" href={p.url || undefined} target="_blank" rel="noreferrer noopener">
+        <a className="job-title" href={p.url || undefined} target="_blank" rel="noreferrer noopener" onClick={opened} onAuxClick={(e) => e.button === 1 && opened()}>
           {p.title}
           {p.url && <ExternalLink size={11} />}
         </a>

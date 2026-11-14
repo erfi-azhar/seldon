@@ -32,14 +32,40 @@ export function isPublicAddress(ip: string): boolean {
     return true;
   }
   if (v === 6) {
-    const x = ip.toLowerCase();
-    if (x === '::' || x === '::1') return false;
-    const mapped = x.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped) return isPublicAddress(mapped[1]!);
-    if (/^f[cd]/.test(x) || /^fe[89ab]/.test(x) || /^ff/.test(x) || x.startsWith('2001:db8') || x.startsWith('64:ff9b')) return false;
+    // Compare numerically: the same address has many spellings (the URL parser turns
+    // [::ffff:127.0.0.1] into [::ffff:7f00:1]), so string prefixes are not enough.
+    const h = hextets(ip);
+    const v4 = (hi: number, lo: number): string => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+    if (h.slice(0, 4).every((x) => x === 0)) {
+      // ::/64 holds the unspecified and loopback addresses and the forms that carry an
+      // IPv4 address (mapped ::ffff:a.b.c.d, translated ::ffff:0:a.b.c.d, compatible ::a.b.c.d).
+      const embedsV4 = (h[4] === 0 && (h[5] === 0 || h[5] === 0xffff)) || (h[4] === 0xffff && h[5] === 0);
+      return embedsV4 && isPublicAddress(v4(h[6]!, h[7]!));
+    }
+    const [a, b] = h as [number, number];
+    if (a === 0x2002) return isPublicAddress(v4(b, h[2]!)); // 6to4 carries an IPv4 address
+    if (a === 0x64 && b === 0xff9b) return false; // NAT64 can reach IPv4 networks behind it
+    if (a === 0x100 && h.slice(1, 4).every((x) => x === 0)) return false; // discard-only
+    if (a === 0x2001 && (b < 0x200 || b === 0xdb8)) return false; // Teredo and other special use, documentation
+    if ((a & 0xfe00) === 0xfc00 || (a & 0xffc0) === 0xfe80 || (a & 0xffc0) === 0xfec0 || (a & 0xff00) === 0xff00) return false;
     return true;
   }
   return false;
+}
+
+/** A valid IPv6 address as its eight 16-bit groups. */
+function hextets(ip: string): number[] {
+  let s = ip.toLowerCase();
+  const dotted = s.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (dotted) {
+    const [, a, b, c, d] = dotted.map(Number) as [number, number, number, number, number];
+    s = `${s.slice(0, dotted.index)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const [head, tail] = s.split('::') as [string, string | undefined];
+  const left = head ? head.split(':') : [];
+  const right = tail === undefined ? [] : tail ? tail.split(':') : [];
+  const groups = tail === undefined ? left : [...left, ...Array<string>(8 - left.length - right.length).fill('0'), ...right];
+  return groups.map((g) => parseInt(g, 16));
 }
 
 const guardedLookup: LookupFunction = (hostname, options, callback) => {
@@ -68,6 +94,9 @@ export function allowPrivateAddressesForTests(on: boolean): void {
 
 export async function safeFetch(raw: string, opts: { maxBytes?: number; timeoutMs?: number; accept?: string } = {}): Promise<Fetched> {
   const maxBytes = opts.maxBytes ?? 3_000_000;
+  // One deadline for the whole fetch, redirects included: a socket timeout alone only
+  // notices silence, and a page that drips a byte at a time would never trip it.
+  const deadline = Date.now() + (opts.timeoutMs ?? 12_000);
   let url: URL;
   try {
     url = new URL(raw);
@@ -79,7 +108,7 @@ export async function safeFetch(raw: string, opts: { maxBytes?: number; timeoutM
     if (url.username || url.password) throw new FetchError('Links with credentials are not fetched');
     const host = url.hostname.replace(/^\[|\]$/g, '');
     if (!allowPrivate && isIP(host) && !isPublicAddress(host)) throw new FetchError(`${host} is not a public address`);
-    const res = await once(url, maxBytes, opts.timeoutMs ?? 12_000, opts.accept);
+    const res = await once(url, maxBytes, deadline, opts.accept);
     if (res.status >= 300 && res.status < 400 && res.location) {
       url = new URL(res.location, url);
       continue;
@@ -89,15 +118,21 @@ export async function safeFetch(raw: string, opts: { maxBytes?: number; timeoutM
   throw new FetchError('Too many redirects');
 }
 
-function once(url: URL, maxBytes: number, timeoutMs: number, accept?: string): Promise<{ status: number; contentType: string; location?: string; body: Buffer }> {
-  return new Promise((resolve, reject) => {
+function once(url: URL, maxBytes: number, deadline: number, accept?: string): Promise<{ status: number; contentType: string; location?: string; body: Buffer }> {
+  return new Promise((done, fail) => {
+    const timeoutMs = Math.max(1, deadline - Date.now());
+    const timer = setTimeout(() => {
+      reject(new FetchError('The site took too long to answer'));
+      req.destroy();
+    }, timeoutMs);
+    const resolve: typeof done = (v) => (clearTimeout(timer), done(v));
+    const reject = (err: unknown): void => (clearTimeout(timer), fail(err));
     const lib = url.protocol === 'https:' ? https : http;
     const req = lib.request(
       url,
       {
         method: 'GET',
         lookup: allowPrivate ? undefined : guardedLookup,
-        timeout: timeoutMs,
         headers: {
           'user-agent': 'Mozilla/5.0 (compatible; Terminus/0.2; personal link reader)',
           accept: accept ?? 'text/html,application/xhtml+xml,application/json,image/*;q=0.9,*/*;q=0.5',
@@ -126,7 +161,6 @@ function once(url: URL, maxBytes: number, timeoutMs: number, accept?: string): P
         res.on('error', reject);
       },
     );
-    req.on('timeout', () => req.destroy(new FetchError('The site took too long to answer')));
     req.on('error', (err) => reject(err instanceof FetchError ? err : new FetchError(`Could not fetch that link: ${err.message}`)));
     req.end();
   });

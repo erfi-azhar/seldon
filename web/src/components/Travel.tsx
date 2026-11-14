@@ -315,7 +315,8 @@ function TripSheet({ trip, onClose }: { trip: Trip | null; onClose: () => void }
 
 function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment | null; onClose: () => void }) {
   const day = trip.startDate;
-  const [kind, setKind] = useState<'flight' | 'stay'>(segment?.kind === 'stay' ? 'stay' : 'flight');
+  // An existing booking keeps its own kind: a train or event edited here must not turn into a flight.
+  const [kind, setKind] = useState<Segment['kind']>(segment?.kind ?? 'flight');
   const [f, setF] = useState({
     carrier: segment?.carrier ?? 'SQ',
     number: segment?.number ?? '',
@@ -329,10 +330,13 @@ function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment
     seat: segment?.seat ?? '',
     confirmation: segment?.confirmation ?? '',
   });
+  // Fields this form does not show are left out, so an edit keeps them (a hotel's brand, a train's operator).
   const body = () =>
     kind === 'flight'
       ? { kind, carrier: f.carrier, number: f.number, fromCode: f.fromCode, toCode: f.toCode, startLocal: f.startLocal, endLocal: f.endLocal, cabin: f.cabin, seat: f.seat, confirmation: f.confirmation }
-      : { kind, title: f.title, carrier: '', address: f.address, startLocal: f.startLocal, endLocal: f.endLocal, confirmation: f.confirmation };
+      : kind === 'stay'
+        ? { kind, title: f.title, address: f.address, startLocal: f.startLocal, endLocal: f.endLocal, confirmation: f.confirmation }
+        : { kind, title: f.title, address: f.address, startLocal: f.startLocal, endLocal: f.endLocal, seat: f.seat, confirmation: f.confirmation };
   const save = useWrite(() => (segment ? travelWrite.patch(`/segments/${segment.id}`, body()) : travelWrite.post(`/trips/${trip.id}/segments`, body())));
   const remove = useWrite(() => travelWrite.del(`/segments/${segment!.id}`));
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
@@ -357,10 +361,35 @@ function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment
     >
       {!segment && (
         <Field label="What">
-          <Seg label="Booking type" value={kind} onChange={setKind} options={[{ value: 'flight', label: 'Flight' }, { value: 'stay', label: 'Hotel' }]} />
+          <Seg<Segment['kind']> label="Booking type" value={kind} onChange={setKind} options={[{ value: 'flight', label: 'Flight' }, { value: 'stay', label: 'Hotel' }]} />
         </Field>
       )}
-      {kind === 'flight' ? (
+      {kind !== 'flight' && kind !== 'stay' ? (
+        <>
+          <Field label={kind === 'train' ? 'Train' : kind === 'car' ? 'Car' : 'Event'}>
+            <input className="input" value={f.title} onChange={set('title')} data-autofocus />
+          </Field>
+          <Field label="Address">
+            <input className="input" value={f.address} onChange={set('address')} />
+          </Field>
+          <div className="field-row">
+            <Field label="Starts (local)">
+              <input className="input" type="datetime-local" value={f.startLocal} onChange={set('startLocal')} />
+            </Field>
+            <Field label="Ends (local)">
+              <input className="input" type="datetime-local" value={f.endLocal} onChange={set('endLocal')} />
+            </Field>
+          </div>
+          <div className="field-row">
+            <Field label="Seat">
+              <input className="input num" value={f.seat} onChange={set('seat')} />
+            </Field>
+            <Field label="Booking reference">
+              <input className="input num" value={f.confirmation} onChange={set('confirmation')} />
+            </Field>
+          </div>
+        </>
+      ) : kind === 'flight' ? (
         <>
           <div className="field-row">
             <Field label="Airline">

@@ -22,6 +22,9 @@ import { addSignal } from './signals.ts';
 const RASTER = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
 const MAX_IMAGE = 8_000_000;
 
+/** Capture details as stored; fileId is the original upload or fetched file (a PDF, a picture). */
+type Meta = CaptureMeta & { fileId?: string | null };
+
 // ── Files ───────────────────────────────────────────────────────────────────
 
 export function saveFile(store: Store, data: Buffer, mime: string, name = ''): string {
@@ -90,6 +93,17 @@ const OEMBED: { test: RegExp; endpoint: (u: string) => string; kind: CaptureKind
   { test: /^https?:\/\/(www\.)?vimeo\.com\/\d+/i, endpoint: (u) => `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(u)}`, kind: 'video', site: 'Vimeo' },
 ];
 
+/** A fetched file's name from its link, for a title. */
+function fileTitle(url: string, host: string): string {
+  const last = new URL(url).pathname.split('/').pop() || '';
+  try {
+    return decodeURIComponent(last) || host;
+  } catch {
+    // A stray '%' (sale-50%off.png) is not an escape; keep the name as written.
+    return last || host;
+  }
+}
+
 export async function extract(url: string): Promise<Extracted> {
   const known = OEMBED.find((o) => o.test.test(url));
   if (known) {
@@ -117,8 +131,8 @@ export async function extract(url: string): Promise<Extracted> {
   if (res.status >= 400) throw new FetchError(`The site answered ${res.status}`);
   const host = new URL(res.url).hostname.replace(/^www\./, '');
   const type = res.contentType.split(';')[0]!.trim();
-  if (RASTER.has(type)) return { kind: 'image', title: decodeURIComponent(new URL(res.url).pathname.split('/').pop() || host), description: '', site: host, author: '', text: '', imageUrl: null, file: { data: res.body, mime: type } };
-  if (type === 'application/pdf') return { kind: 'pdf', title: decodeURIComponent(new URL(res.url).pathname.split('/').pop() || host), description: '', site: host, author: '', text: '', imageUrl: null, file: { data: res.body, mime: type } };
+  if (RASTER.has(type)) return { kind: 'image', title: fileTitle(res.url, host), description: '', site: host, author: '', text: '', imageUrl: null, file: { data: res.body, mime: type } };
+  if (type === 'application/pdf') return { kind: 'pdf', title: fileTitle(res.url, host), description: '', site: host, author: '', text: '', imageUrl: null, file: { data: res.body, mime: type } };
   if (!/html|xml|text\/plain/.test(type)) return { kind: 'link', title: host, description: '', site: host, author: '', text: '', imageUrl: null };
 
   const html = res.body.toString('utf8');
@@ -166,61 +180,119 @@ function collectionsInUse(store: Store): string[] {
   return rows.map((r) => r.c).filter((c): c is string => !!c);
 }
 
-async function organise(store: Store, x: Extracted, url: string, userNote: string, image?: { data: Buffer; mime: string }) {
+/** What came with the item: typed by the person in Terminus, or passed along (a share sheet, a Shortcut, the chat agent). */
+interface SavedNote {
+  text: string;
+  typedInApp: boolean;
+}
+
+async function organise(store: Store, x: Extracted, url: string, note: SavedNote, image?: { data: Buffer; mime: string }) {
   const spheres = store.listSpheres().map((s) => s.name);
   const collections = collectionsInUse(store);
   return think({
     store,
-    task: `Something was saved to the user's library${url ? ` from ${url}` : ''}. Organise it.
+    task: `Something was saved to the user's library. Organise it.
 Return {"title": a clear title (rewrite clickbait plainly), "kind": one of tweet|video|article|image|pdf|link|text, "summary": 2-3 sentences on what it is and why someone would keep it, "key_points": up to 5 short takeaways (empty for a simple picture), "tags": 3-6 lowercase tags, "sphere": the best match from [${spheres.join(', ')}] or null, "collection": a short group name for browsing — reuse one of [${collections.join(', ')}] when it fits, else a new one like "Recipes" or "Design inspiration", "task": only if it contains something to act on (an event, a deadline, a booking, something to buy) give {"title", "due_date"}, else null}.`,
     input: [
-      userNote ? `Note from the user (trusted): ${userNote}` : '',
-      wrapUntrusted('saved item', [`site: ${x.site}`, `author: ${x.author}`, `title: ${x.title}`, `description: ${x.description}`, '', x.text].join('\n'), 12_000),
+      // A share sheet's title is usually the page's own title, so only text typed in Terminus is the user's word.
+      !note.text ? '' : note.typedInApp ? `Note from the user (trusted): ${note.text}` : wrapUntrusted('note shared with it', note.text, 2000),
+      wrapUntrusted('saved item', [...(url ? [`link: ${url}`] : []), `site: ${x.site}`, `author: ${x.author}`, `title: ${x.title}`, `description: ${x.description}`, '', x.text].join('\n'), 12_000),
     ]
       .filter(Boolean)
       .join('\n\n'),
     images: image && RASTER.has(image.mime) && image.data.length < 5_000_000 ? [{ mediaType: image.mime, data: image.data.toString('base64') }] : undefined,
     schema: Organised,
+    // Captures share a few reading slots; a model that never answers must not hold one.
+    signal: AbortSignal.timeout(120_000),
   });
 }
 
 // ── The pipeline ────────────────────────────────────────────────────────────
 
-let queue: Promise<unknown> = Promise.resolve();
+// A few captures are read at a time, so one slow site does not hold up the rest.
+const PARALLEL = 3;
+let running = 0;
+const waiting: (() => void)[] = [];
+const jobs = new Set<Promise<void>>();
+/** Notes this process is reading right now; any other 'processing' note was interrupted. */
+const reading = new Set<string>();
+
 /** Resolves once every capture queued so far has been processed (for tests). */
-export function capturesSettled(): Promise<unknown> {
-  return queue;
+export async function capturesSettled(): Promise<void> {
+  while (jobs.size) await Promise.all(jobs);
 }
 
-function setCapture(store: Store, id: string, fields: { title?: string; body?: string; sphereId?: string | null; status: Note['status']; capture: CaptureMeta }): void {
+interface CaptureInput {
+  url?: string;
+  text: string;
+  typedInApp: boolean;
+  /** An uploaded file, already stored under id. */
+  file?: { data: Buffer; mime: string; name: string; id: string };
+}
+
+function enqueue(store: Store, id: string, input: CaptureInput, via: string): void {
+  reading.add(id);
+  const job = (async () => {
+    if (running < PARALLEL) running++;
+    else await new Promise<void>((go) => waiting.push(go)); // a finishing job hands over its slot
+    try {
+      await process(store, id, input, via);
+    } catch (err) {
+      failCapture(store, id, err instanceof Error ? err.message : String(err));
+    } finally {
+      reading.delete(id);
+      const next = waiting.shift();
+      if (next) next();
+      else running--;
+    }
+  })();
+  jobs.add(job);
+  void job.then(() => jobs.delete(job));
+}
+
+function failCapture(store: Store, id: string, error: string): void {
+  store.db.prepare("UPDATE notes SET status = 'failed', capture = json_set(capture, '$.error', ?), updated_at = ? WHERE id = ? AND capture IS NOT NULL").run(error, nowIso(), id);
+}
+
+/** Captures left 'processing' by a restart or crash will never finish; let them be tried again. */
+export function recoverInterruptedCaptures(store: Store): void {
+  const rows = store.db.prepare("SELECT id FROM notes WHERE status = 'processing' AND capture IS NOT NULL").all() as { id: string }[];
+  for (const r of rows) if (!reading.has(r.id)) failCapture(store, r.id, 'Interrupted before it was read — try again.');
+}
+
+function setCapture(store: Store, id: string, fields: { title?: string; body?: string; sphereId?: string | null; status: Note['status']; capture: Meta }): void {
   store.db
     .prepare('UPDATE notes SET title = COALESCE(?, title), body = COALESCE(?, body), sphere_id = COALESCE(?, sphere_id), status = ?, capture = ?, updated_at = ? WHERE id = ?')
     .run(fields.title ?? null, fields.body ?? null, fields.sphereId ?? null, fields.status, JSON.stringify(fields.capture), nowIso(), id);
 }
 
-async function process(store: Store, id: string, input: { url?: string; text?: string; file?: { data: Buffer; mime: string } }, via: string): Promise<void> {
-  const base: CaptureMeta = { kind: 'link', site: '', author: '', imageFileId: null, summary: '', keyPoints: [], tags: [], collection: '', via };
-  const userNote = input.url ? (input.text ?? '') : '';
+async function process(store: Store, id: string, input: CaptureInput, via: string): Promise<void> {
+  const upload = input.file;
+  const base: Meta = { kind: 'link', site: '', author: '', imageFileId: upload && RASTER.has(upload.mime) ? upload.id : null, fileId: upload?.id ?? null, summary: '', keyPoints: [], tags: [], collection: '', via };
+  const note: SavedNote = { text: input.url || upload ? input.text : '', typedInApp: input.typedInApp };
   let x: Extracted;
   try {
-    if (input.file) {
-      x = { kind: input.file.mime === 'application/pdf' ? 'pdf' : 'image', title: 'Saved picture', description: '', site: '', author: '', text: '', imageUrl: null, file: input.file };
+    if (upload) {
+      const pdf = upload.mime === 'application/pdf';
+      x = { kind: pdf ? 'pdf' : 'image', title: upload.name || (pdf ? 'Saved PDF' : 'Saved picture'), description: '', site: '', author: '', text: '', imageUrl: null, file: upload };
     } else if (input.url) {
       x = await extract(input.url);
     } else {
-      x = { kind: 'text', title: (input.text ?? '').split('\n')[0]!.slice(0, 80), description: '', site: '', author: '', text: input.text ?? '', imageUrl: null };
+      x = { kind: 'text', title: input.text.split('\n')[0]!.slice(0, 80), description: '', site: '', author: '', text: input.text, imageUrl: null };
     }
   } catch (err) {
     setCapture(store, id, { status: 'failed', capture: { ...base, error: err instanceof Error ? err.message : String(err) } });
     return;
   }
 
-  const imageFileId = x.file && RASTER.has(x.file.mime) ? saveFile(store, x.file.data, x.file.mime, x.title) : await fetchThumbnail(store, x.imageUrl);
-  let meta: CaptureMeta = { ...base, kind: x.kind, site: x.site, author: x.author, imageFileId, summary: x.description };
+  // Keep the file itself (a PDF or picture from a link); an upload was stored when it arrived.
+  const fileId = base.fileId ?? (x.file ? saveFile(store, x.file.data, x.file.mime, x.title) : null);
+  const imageFileId = x.file && RASTER.has(x.file.mime) ? fileId : await fetchThumbnail(store, x.imageUrl);
+  let meta: Meta = { ...base, kind: x.kind, site: x.site, author: x.author, imageFileId, fileId, summary: x.description };
   let title = x.title;
   let sphereId: string | null = null;
   try {
-    const o = await organise(store, x, input.url ?? '', userNote, x.file);
+    const o = await organise(store, x, input.url ?? '', note, x.file);
     title = o.title || title;
     meta = { ...meta, kind: o.kind, summary: o.summary, keyPoints: o.key_points, tags: o.tags.map((t) => t.toLowerCase()), collection: o.collection ?? '' };
     sphereId = store.listSpheres().find((s) => s.name.toLowerCase() === (o.sphere ?? '').toLowerCase())?.id ?? null;
@@ -240,12 +312,16 @@ async function process(store: Store, id: string, input: { url?: string; text?: s
     // Without a brain, keep what the page said about itself.
     if (!(err instanceof NoBrain)) meta.error = `Saved, but could not be organised: ${err instanceof Error ? err.message : String(err)}`;
   }
-  const body = [meta.summary, ...meta.keyPoints.map((p) => `• ${p}`), userNote ? `\n${userNote}` : ''].filter(Boolean).join('\n');
-  setCapture(store, id, { title, body: input.file || input.url ? body : undefined, sphereId, status: 'ready', capture: meta });
+  const body = [meta.summary, ...meta.keyPoints.map((p) => `• ${p}`), note.text ? `\n${note.text}` : ''].filter(Boolean).join('\n');
+  setCapture(store, id, { title, body: upload || input.url ? body : undefined, sphereId, status: 'ready', capture: meta });
 }
 
-/** Save something and read it in the background. Returns the note straight away. */
-export function capture(store: Store, input: { url?: string; text?: string; file?: { data: Buffer; mime: string; name?: string } }, via: string): Note {
+/**
+ * Save something and read it in the background. Returns the note straight away.
+ * typedInApp: the text was typed by the person in Terminus itself, so the model may take it
+ * as their words; anything shared from another app is treated as outside text.
+ */
+export function capture(store: Store, input: { url?: string; text?: string; file?: { data: Buffer; mime: string; name?: string }; typedInApp?: boolean }, via: string): Note {
   let url = input.url?.trim();
   let text = input.text?.trim() ?? '';
   // Shared text often carries the link inside it.
@@ -273,13 +349,34 @@ export function capture(store: Store, input: { url?: string; text?: string; file
 
   const id = newId();
   const now = nowIso();
-  const pending: CaptureMeta = { kind: input.file ? 'image' : url ? 'link' : 'text', site: url ? new URL(url).hostname.replace(/^www\./, '') : '', author: '', imageFileId: null, summary: '', keyPoints: [], tags: [], collection: '', via };
+  const pdf = input.file?.mime === 'application/pdf';
+  // Store an upload at once, so a restart before it is read loses nothing.
+  const file = input.file && { ...input.file, name: input.file.name ?? '', id: saveFile(store, input.file.data, input.file.mime, input.file.name ?? '') };
+  const pending: Meta = { kind: file ? (pdf ? 'pdf' : 'image') : url ? 'link' : 'text', site: url ? new URL(url).hostname.replace(/^www\./, '') : '', author: '', imageFileId: file && !pdf ? file.id : null, fileId: file?.id ?? null, summary: '', keyPoints: [], tags: [], collection: '', via };
   store.db
     .prepare("INSERT INTO notes (id, kind, title, body, url, created_at, updated_at, capture, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'processing')")
-    .run(id, url ? 'link' : 'note', url ? pending.site : input.file ? (input.file.name ?? 'Saved picture') : text.split('\n')[0]!.slice(0, 80), url ? text : text, url ?? '', now, now, JSON.stringify(pending));
-  store.record('created', 'note', id, null, `Saved ${url ? `a link from ${pending.site}` : input.file ? 'a picture' : 'a note'}`);
-  const job = queue.then(() => process(store, id, { url, text, file: input.file }, via)).catch(() => undefined);
-  queue = job;
+    .run(id, url ? 'link' : 'note', url ? pending.site : file ? file.name || (pdf ? 'Saved PDF' : 'Saved picture') : text.split('\n')[0]!.slice(0, 80), text, url ?? '', now, now, JSON.stringify(pending));
+  store.record('created', 'note', id, null, `Saved ${url ? `a link from ${pending.site}` : file ? (pdf ? 'a PDF' : 'a picture') : 'a note'}`);
+  enqueue(store, id, { url, text, typedInApp: input.typedInApp ?? false, file }, via);
+  return store.getNote(id);
+}
+
+/** Read a saved item again in place, keeping its id, sphere, pin and the note saved with it. */
+export function readAgain(store: Store, id: string): Note {
+  const n = store.getNote(id);
+  const meta = n.capture as Meta | null;
+  if (!meta) throw new Invalid('Only saved links and files can be read again.');
+  if (n.status === 'processing') return n;
+  // A read item's body holds the summary; reading it again would fold that into the note.
+  if (n.status !== 'failed') throw new Invalid('Only something that could not be read can be read again.');
+  const fileId = meta.fileId ?? (n.url ? null : meta.imageFileId);
+  const stored = fileId ? getFile(store, fileId) : null;
+  if (fileId && !stored) throw new Invalid('The saved file is gone, so it cannot be read again.');
+  const { error: _error, ...rest } = meta;
+  store.db.prepare("UPDATE notes SET status = 'processing', capture = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(rest), nowIso(), id);
+  // The body may mix the person's words with shared text, so it goes to the model as outside text.
+  const file = stored && fileId ? { data: Buffer.from(stored.data), mime: stored.mime, name: stored.name, id: fileId } : undefined;
+  enqueue(store, id, { url: n.url || undefined, text: n.body, typedInApp: false, file }, meta.via);
   return store.getNote(id);
 }
 
@@ -325,6 +422,7 @@ registerFeature({
     ),
   ],
   routes: (app, { store }) => {
+    recoverInterruptedCaptures(store);
     app.post('/api/capture', async (c) => {
       const type = c.req.header('content-type') ?? '';
       if (type.includes('multipart/form-data')) {
@@ -334,7 +432,8 @@ registerFeature({
         return c.json(capture(store, { file, text }, String(form.get('via') ?? 'app')), 201);
       }
       const input = await read(c, z.object({ url: z.string().max(2000).optional(), text: z.string().max(20_000).optional(), via: z.string().max(20).optional() }));
-      return c.json(capture(store, input, input.via ?? 'app'), 201);
+      // The capture token is for Shortcuts and other apps, which pass along shared text.
+      return c.json(capture(store, { ...input, typedInApp: !hasCaptureToken(store, c) }, input.via ?? 'app'), 201);
     });
     // The installed app's share target (Android): the OS posts here, then we show the Library.
     app.post('/api/share', async (c) => {
@@ -350,12 +449,7 @@ registerFeature({
     });
     app.post('/api/capture/token', (c) => c.json({ token: newCaptureToken(store) }));
     app.get('/api/capture/collections', (c) => c.json(collectionsInUse(store).sort()));
-    app.post('/api/notes/:id/reprocess', (c) => {
-      const n = store.getNote(c.req.param('id'));
-      if (!n.capture) throw new Invalid('Only saved links can be read again.');
-      store.db.prepare('DELETE FROM notes WHERE id = ?').run(n.id);
-      return c.json(capture(store, { url: n.url || undefined, text: n.url ? '' : n.body }, n.capture.via), 201);
-    });
+    app.post('/api/notes/:id/reprocess', (c) => c.json(readAgain(store, c.req.param('id'))));
     app.get('/api/files/:id', (c) => {
       const f = getFile(store, c.req.param('id'));
       if (!f) throw new NotFound('File');

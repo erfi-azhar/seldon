@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
+import { wrapUntrusted } from '../agent/think.ts';
 import { tool } from '../agent/tools.ts';
 import { read } from '../http.ts';
 import { Invalid, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
@@ -27,29 +28,44 @@ const workSphere = (store: Store) => store.listSpheres().find((s) => s.key === '
 
 export interface Board {
   ats: JobBoardKind;
+  /** The board's name; "eu:acme" for a Greenhouse or Lever board hosted in their EU region. */
   board: string;
 }
 
+// Each pattern captures an optional EU region marker (group "eu") and the board name (group "b").
 const PATTERNS: [JobBoardKind, RegExp][] = [
-  ['greenhouse', /(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io\/(?:embed\/job_board(?:\/js)?\?for=)?([A-Za-z0-9_-]+)/],
-  ['greenhouse', /boards-api\.greenhouse\.io\/v1\/boards\/([A-Za-z0-9_-]+)/],
-  ['lever', /jobs\.(?:eu\.)?lever\.co\/([A-Za-z0-9_.-]+)/],
-  ['lever', /api\.lever\.co\/v0\/postings\/([A-Za-z0-9_.-]+)/],
-  ['ashby', /jobs\.ashbyhq\.com\/([A-Za-z0-9_.%-]+)/],
-  ['ashby', /api\.ashbyhq\.com\/posting-api\/job-board\/([A-Za-z0-9_.%-]+)/],
-  ['workable', /apply\.workable\.com\/(?:api\/v[13]\/(?:widget\/)?accounts\/)?([A-Za-z0-9_-]+)/],
-  ['smartrecruiters', /(?:jobs|careers)\.smartrecruiters\.com\/([A-Za-z0-9_-]+)/],
-  ['smartrecruiters', /api\.smartrecruiters\.com\/v1\/companies\/([A-Za-z0-9_-]+)/],
+  ['greenhouse', /(?:boards|job-boards)(?<eu>\.eu)?\.greenhouse\.io\/(?:embed\/job_(?:board(?:\/js)?|app)\?(?:[^"'\s<>]*?&(?:amp;)?)?for=)?(?<b>[A-Za-z0-9_-]+)/g],
+  ['greenhouse', /boards-api(?<eu>\.eu)?\.greenhouse\.io\/v1\/boards\/(?<b>[A-Za-z0-9_-]+)/g],
+  ['lever', /jobs(?<eu>\.eu)?\.lever\.co\/(?<b>[A-Za-z0-9_.-]+)/g],
+  ['lever', /api(?<eu>\.eu)?\.lever\.co\/v0\/postings\/(?<b>[A-Za-z0-9_.-]+)/g],
+  ['ashby', /jobs\.ashbyhq\.com\/(?<b>[A-Za-z0-9_.%-]+)/g],
+  ['ashby', /api\.ashbyhq\.com\/posting-api\/job-board\/(?<b>[A-Za-z0-9_.%-]+)/g],
+  // apply.workable.com/j/CODE is a shortlink to one job, not a board named "j".
+  ['workable', /apply\.workable\.com\/(?:api\/v[13]\/(?:widget\/)?accounts\/)?(?!j\/)(?<b>[A-Za-z0-9_-]+)/g],
+  ['smartrecruiters', /(?:jobs|careers)\.smartrecruiters\.com\/(?<b>[A-Za-z0-9_-]+)/g],
+  ['smartrecruiters', /api\.smartrecruiters\.com\/v1\/companies\/(?<b>[A-Za-z0-9_-]+)/g],
 ];
 const NOT_BOARDS = new Set(['embed', 'api', 'v0', 'v1', 'js', 'oauth', 'static']);
 
+/** "eu:acme" → the EU region and "acme". */
+const boardParts = (board: string) => (board.startsWith('eu:') ? { eu: true, slug: board.slice(3) } : { eu: false, slug: board });
+
 /** A job board in a URL or a page: "boards.greenhouse.io/stripe", "jobs.lever.co/acme", "greenhouse:stripe". */
 export function findBoard(text: string): Board | null {
-  const short = /^(greenhouse|lever|ashby|workable|smartrecruiters):([A-Za-z0-9_.-]+)$/i.exec(text.trim());
+  const short = /^(greenhouse|lever|ashby|workable|smartrecruiters):((?:eu:)?[A-Za-z0-9_.-]+)$/i.exec(text.trim());
   if (short) return { ats: short[1]!.toLowerCase() as JobBoardKind, board: short[2]! };
   for (const [ats, re] of PATTERNS) {
-    const m = re.exec(text);
-    if (m && !NOT_BOARDS.has(m[1]!.toLowerCase())) return { ats, board: decodeURIComponent(m[1]!) };
+    // A page can name "embed" or a broken link first and the real board later on.
+    for (const m of text.matchAll(re)) {
+      let board: string;
+      try {
+        board = decodeURIComponent(m.groups!.b!);
+      } catch {
+        continue;
+      }
+      if (!board || NOT_BOARDS.has(board.toLowerCase())) continue;
+      return { ats, board: m.groups!.eu ? `eu:${board}` : board };
+    }
   }
   return null;
 }
@@ -96,23 +112,46 @@ async function getJson(url: string): Promise<unknown> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type J = any;
 
+/** More than this many roles on one board, and only this many are recorded. */
+const MAX_POSTINGS = 2000;
+
+/** Greenhouse only names a job's department in the departments list (or the heavy content=true payload). */
+async function greenhouseDepartments(base: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  try {
+    const j = (await getJson(`${base}/departments`)) as J;
+    for (const d of (j?.departments ?? []) as J[]) {
+      const name = str(d.name);
+      if (!name || d.id === 0) continue; // id 0 is Greenhouse's "No Department"
+      for (const job of (d.jobs ?? []) as J[]) if (!out.has(str(job.id))) out.set(str(job.id), name);
+    }
+  } catch {
+    // Departments only sharpen "Leave out"; the roles themselves still count.
+  }
+  return out;
+}
+
 export async function fetchPostings(b: Board): Promise<RawPosting[]> {
-  const id = encodeURIComponent(b.board);
+  const { eu, slug } = boardParts(b.board);
+  const id = encodeURIComponent(slug);
   switch (b.ats) {
     case 'greenhouse': {
-      const j = (await getJson(`https://boards-api.greenhouse.io/v1/boards/${id}/jobs`)) as J;
-      return ((j?.jobs ?? []) as J[]).map((x) => ({
+      const base = `https://boards-api${eu ? '.eu' : ''}.greenhouse.io/v1/boards/${id}`;
+      const j = (await getJson(`${base}/jobs`)) as J;
+      const jobs = (j?.jobs ?? []) as J[];
+      const departments = jobs.length ? await greenhouseDepartments(base) : new Map<string, string>();
+      return jobs.map((x) => ({
         externalId: str(x.id),
         title: str(x.title),
         location: str(x.location?.name),
-        department: str(x.departments?.[0]?.name),
+        department: str(x.departments?.[0]?.name) || departments.get(str(x.id)) || '',
         remote: isRemote(x.location?.name),
         url: str(x.absolute_url),
         postedAt: iso(x.first_published ?? x.updated_at),
       }));
     }
     case 'lever': {
-      const j = (await getJson(`https://api.lever.co/v0/postings/${id}?mode=json`)) as J;
+      const j = (await getJson(`https://api${eu ? '.eu' : ''}.lever.co/v0/postings/${id}?mode=json`)) as J;
       return ((Array.isArray(j) ? j : []) as J[]).map((x) => ({
         externalId: str(x.id),
         title: str(x.text),
@@ -150,8 +189,16 @@ export async function fetchPostings(b: Board): Promise<RawPosting[]> {
       }));
     }
     case 'smartrecruiters': {
-      const j = (await getJson(`https://api.smartrecruiters.com/v1/companies/${id}/postings?limit=100`)) as J;
-      return ((j?.content ?? []) as J[]).map((x) => ({
+      // Paged, 100 at a time. Read one past the cap so checkWatch can tell the list was cut short.
+      const all: J[] = [];
+      for (let offset = 0; all.length <= MAX_POSTINGS; ) {
+        const j = (await getJson(`https://api.smartrecruiters.com/v1/companies/${id}/postings?limit=100${offset ? `&offset=${offset}` : ''}`)) as J;
+        const page = (j?.content ?? []) as J[];
+        all.push(...page);
+        offset += page.length;
+        if (!page.length || offset >= Number(j?.totalFound ?? 0)) break;
+      }
+      return all.map((x) => ({
         externalId: str(x.id),
         title: str(x.name),
         location: [str(x.location?.city), str(x.location?.country)?.toUpperCase()].filter(Boolean).join(', '),
@@ -164,6 +211,10 @@ export async function fetchPostings(b: Board): Promise<RawPosting[]> {
   }
 }
 
+// Job sites that list other companies' roles, and the boards themselves: their name says
+// nothing about the company, and guessing it would watch the site's own board instead.
+const NOT_COMPANY_HOSTS = /(^|\.)(linkedin|indeed|glassdoor|wellfound|angel|ziprecruiter|monster|jobstreet|mycareersfuture|seek|jobsdb|google|greenhouse|lever|ashbyhq|workable|smartrecruiters)\.[a-z.]+$/;
+
 /** Board names worth trying for a company: "Acme Labs", acme-labs.com → acmelabs, acme-labs. */
 export function slugGuesses(company: string, url: URL | null): string[] {
   const out: string[] = [];
@@ -171,14 +222,15 @@ export function slugGuesses(company: string, url: URL | null): string[] {
     const v = s.toLowerCase().replace(/[^a-z0-9-]/g, '');
     if (v.length >= 2 && !out.includes(v)) out.push(v);
   };
-  if (url) {
+  // The name the user gave comes first: it is what they meant.
+  add(company.replace(/\s+/g, ''));
+  add(company.trim().replace(/\s+/g, '-'));
+  if (url && !NOT_COMPANY_HOSTS.test(url.hostname.toLowerCase())) {
     const parts = url.hostname.replace(/^www\./, '').split('.');
     const label = parts.length > 2 && /^(careers|jobs|work)$/.test(parts[0]!) ? parts[1]! : parts[0]!;
     add(label);
     add(label.replace(/-/g, ''));
   }
-  add(company.replace(/\s+/g, ''));
-  add(company.trim().replace(/\s+/g, '-'));
   return out.slice(0, 4);
 }
 
@@ -292,14 +344,18 @@ export async function addWatch(store: Store, company: string, careersUrl: string
   const board = await resolveBoard(careersUrl.trim(), company);
   const existing = store.db.prepare('SELECT id FROM job_watches WHERE ats = ? AND board = ?').get(board.ats, board.board) as Row | undefined;
   if (existing) return listWatches(store).find((w) => w.id === existing.id)!;
-  // Prove the board is real before saving it.
-  await fetchPostings(board);
+  // Prove the board is real before saving it, and keep what it lists as the quiet first
+  // look, saved with the watch: a second fetch that failed would leave a watch with no
+  // baseline, and its next check would alert on every role already open.
+  const raw = await fetchPostings(board);
   const id = newId();
-  const name = company.trim().slice(0, 80) || board.board.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  store.db.prepare('INSERT INTO job_watches (id, company, careers_url, ats, board, created_at) VALUES (?,?,?,?,?,?)').run(id, name, careersUrl.trim().slice(0, 500), board.ats, board.board, nowIso());
+  const name = company.trim().slice(0, 80) || boardParts(board.board).slug.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  store.tx(() => {
+    store.db.prepare('INSERT INTO job_watches (id, company, careers_url, ats, board, created_at) VALUES (?,?,?,?,?,?)').run(id, name, careersUrl.trim().slice(0, 500), board.ats, board.board, nowIso());
+    recordPostings(store, store.db.prepare('SELECT * FROM job_watches WHERE id = ?').get(id) as Row, raw);
+  });
   if (!getIntegration(store, ID).enabled) updateIntegration(store, ID, (r) => void (r.enabled = true));
   if (!quiet) store.record('created', 'job_watch', id, workSphere(store), `Watching ${name} for openings`);
-  await checkWatch(store, id);
   return listWatches(store).find((w) => w.id === id)!;
 }
 
@@ -330,6 +386,14 @@ export async function checkWatch(store: Store, watchId: string): Promise<JobPost
     store.db.prepare('UPDATE job_watches SET last_checked_at = ?, last_error = ? WHERE id = ?').run(nowIso(), err instanceof Error ? err.message : String(err), watchId);
     throw err;
   }
+  const found = recordPostings(store, w, raw);
+  alert(store, w, found);
+  return found;
+}
+
+/** Bring the roles on file in line with what the board lists. Returns the newly opened roles that match. */
+function recordPostings(store: Store, w: Row, raw: RawPosting[]): JobPosting[] {
+  const watchId = w.id as string;
   const first = !w.last_checked_at;
   const prefs = jobPreferences(store);
   const now = nowIso();
@@ -340,7 +404,7 @@ export async function checkWatch(store: Store, watchId: string): Promise<JobPost
     'INSERT INTO job_postings (id, watch_id, external_id, title, location, department, remote, url, posted_at, first_seen_at, matched, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
   );
   const update = store.db.prepare('UPDATE job_postings SET title = ?, location = ?, department = ?, remote = ?, url = ?, closed_at = NULL, matched = ? WHERE id = ?');
-  for (const p of raw.slice(0, 2000)) {
+  for (const p of raw.slice(0, MAX_POSTINGS)) {
     if (!p.externalId || !p.title || seen.has(p.externalId)) continue;
     seen.add(p.externalId);
     const m = matches(p, prefs);
@@ -354,15 +418,16 @@ export async function checkWatch(store: Store, watchId: string): Promise<JobPost
       if (m && !first) fresh.push(id);
     }
   }
-  // Roles that are no longer listed have closed.
-  const open = store.db.prepare('SELECT id, external_id FROM job_postings WHERE watch_id = ? AND closed_at IS NULL').all(watchId) as Row[];
-  const close = store.db.prepare('UPDATE job_postings SET closed_at = ? WHERE id = ?');
-  for (const r of open) if (!seen.has(r.external_id)) close.run(now, r.id);
+  // Roles that are no longer listed have closed — unless the list was cut short, when a
+  // role past the cut is still open.
+  if (raw.length <= MAX_POSTINGS) {
+    const open = store.db.prepare('SELECT id, external_id FROM job_postings WHERE watch_id = ? AND closed_at IS NULL').all(watchId) as Row[];
+    const close = store.db.prepare('UPDATE job_postings SET closed_at = ? WHERE id = ?');
+    for (const r of open) if (!seen.has(r.external_id)) close.run(now, r.id);
+  }
   store.db.prepare('UPDATE job_watches SET last_checked_at = ?, last_error = NULL WHERE id = ?').run(now, watchId);
 
-  const found = fresh.map((id) => postingFromRow({ ...(store.db.prepare('SELECT * FROM job_postings WHERE id = ?').get(id) as Row), company: w.company }));
-  alert(store, w, found);
-  return found;
+  return fresh.map((id) => postingFromRow({ ...(store.db.prepare('SELECT * FROM job_postings WHERE id = ?').get(id) as Row), company: w.company }));
 }
 
 function alert(store: Store, w: Row, found: JobPosting[]): void {
@@ -433,7 +498,9 @@ registerSnapshotSection<Store>('Job alerts', (store) => {
   const prefs = jobPreferences(store);
   const fresh = listPostings(store, { limit: 50 }).filter((p) => p.status === 'new' || p.status === 'saved');
   const lines = [`Watching ${watches.map((w) => w.company).join(', ')} for ${prefs.keywords.length ? prefs.keywords.join(' / ') : 'any role'}${prefs.locations.length ? ` in ${prefs.locations.join(' / ')}${prefs.remote ? ' or remote' : ''}` : ''}.`];
-  for (const p of fresh.slice(0, 8)) lines.push(`${p.status === 'saved' ? 'Saved' : 'New'}: ${p.title} at ${p.company}${p.location ? ` (${p.location})` : ''}.`);
+  // Titles and places come from the companies' job boards: outside text, fenced as such.
+  const roles = fresh.slice(0, 8).map((p) => `${p.status === 'saved' ? 'Saved' : 'New'}: ${p.title} at ${p.company}${p.location ? ` (${p.location})` : ''}.`);
+  if (roles.length) lines.push(wrapUntrusted('job boards', roles.join('\n'), 4000));
   return lines.join('\n');
 });
 
@@ -451,7 +518,10 @@ registerFeature({
       z.object({}),
       (_, { store }) => {
         const s = jobsState(store);
-        return { data: { preferences: s.preferences, companies: s.watches.map((w) => ({ company: w.company, openings: w.openings, matching: w.matching, error: w.lastError ?? undefined })), roles: s.postings.slice(0, 40).map((p) => ({ title: p.title, company: p.company, location: p.location, remote: p.remote || undefined, status: p.status, url: p.url, posted: p.postedAt?.slice(0, 10) })) }, summary: 'Read job alerts' };
+        const mine = { preferences: s.preferences, companies: s.watches.map((w) => ({ company: w.company, openings: w.openings, matching: w.matching, error: w.lastError ?? undefined })) };
+        // The roles are read from the companies' job boards: the agent sees them fenced as untrusted.
+        const roles = s.postings.slice(0, 40).map((p) => ({ title: p.title, company: p.company, location: p.location, remote: p.remote || undefined, status: p.status, url: p.url, posted: p.postedAt?.slice(0, 10) }));
+        return { data: `${JSON.stringify(mine)}\n\nOpen roles that match:\n${wrapUntrusted('job boards', JSON.stringify(roles), 16_000)}`, summary: 'Read job alerts' };
       },
     ),
     tool(

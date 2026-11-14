@@ -127,6 +127,9 @@ export function registerDataTable(table: string): void {
   if (!FEATURE_TABLES.includes(table)) FEATURE_TABLES.push(table);
 }
 
+/** Entity type of the row that ties several rows from one action together. */
+const GROUP = 'activity_group';
+
 const UNDOABLE = new Set([
   'created:goal',
   'created:task',
@@ -1093,14 +1096,33 @@ export class Store {
       sphereId: r.sphere_id,
       summary: r.summary,
       undone: !!r.undone,
-      undoable: !r.undone && (UNDOABLE.has(`${r.verb}:${r.entity_type}`) || UNDO_HANDLERS.has(`${r.verb}:${r.entity_type}`)),
+      undoable:
+        !r.undone &&
+        (r.entity_type === GROUP
+          ? this.groupMembers(r.id).some((id) => this.getActivity(id)?.undoable)
+          : UNDOABLE.has(`${r.verb}:${r.entity_type}`) || UNDO_HANDLERS.has(`${r.verb}:${r.entity_type}`)),
     };
+  }
+
+  /**
+   * Ties the rows one action wrote (a meal of several foods, a reading plus its weight)
+   * together so a single undo reverses all of them. Returns the id to undo. The group
+   * row itself stays out of the feed, which already shows each part.
+   */
+  group(ids: number[], summary: string): number | null {
+    if (ids.length <= 1) return ids[0] ?? null;
+    return this.log('grouped', GROUP, newId(), null, summary, { ids });
+  }
+
+  private groupMembers(id: number): number[] {
+    const raw = this.get('SELECT undo_data FROM activity WHERE id = ?', id)?.undo_data as string | null | undefined;
+    return raw ? ((JSON.parse(raw) as { ids?: number[] }).ids ?? []) : [];
   }
 
   listActivity(filter: { sphereId?: string; limit?: number } = {}): Activity[] {
     const rows = filter.sphereId
       ? this.all('SELECT * FROM activity WHERE sphere_id = ? AND undone = 0 ORDER BY ts DESC, id DESC LIMIT ?', filter.sphereId, filter.limit ?? 30)
-      : this.all('SELECT * FROM activity WHERE undone = 0 ORDER BY ts DESC, id DESC LIMIT ?', filter.limit ?? 30);
+      : this.all('SELECT * FROM activity WHERE undone = 0 AND entity_type != ? ORDER BY ts DESC, id DESC LIMIT ?', GROUP, filter.limit ?? 30);
     return rows.map((r) => this.activityFromRow(r));
   }
 
@@ -1109,70 +1131,81 @@ export class Store {
     return r ? this.activityFromRow(r) : null;
   }
 
-  /** Reverse one logged action. Returns false when it cannot (or can no longer) be undone. */
   /** Mark the activity of records that no longer exist as undone. */
   private retire(entityType: string, ids: string[]): void {
     for (const id of ids) this.run('UPDATE activity SET undone = 1 WHERE entity_type = ? AND entity_id = ?', entityType, id);
   }
 
+  /** Reverse one logged action (or group). Returns false when it cannot (or can no longer) be undone. */
   undo(activityId: number): boolean {
     const a = this.getActivity(activityId);
     if (!a || !a.undoable) return false;
     this.tx(() => {
-      switch (`${a.verb}:${a.entityType}`) {
-        case 'created:goal':
-          // What happened to its steps goes with it, so the feed does not offer to undo those too.
-          this.retire('milestone', this.all('SELECT id FROM milestones WHERE goal_id = ?', a.entityId).map((r) => r.id as string));
-          this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'goal' AND entity_id = ?", a.entityId);
-          this.run('DELETE FROM goals WHERE id = ?', a.entityId);
-          break;
-        case 'created:task':
-          this.run('DELETE FROM tasks WHERE id = ?', a.entityId);
-          break;
-        case 'created:habit':
-          this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'habit_log' AND entity_id LIKE ? ESCAPE '\\'", `${likeEscape(a.entityId)}|%`);
-          this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'habit' AND entity_id = ?", a.entityId);
-          this.run('DELETE FROM habits WHERE id = ?', a.entityId);
-          break;
-        case 'created:metric':
-          this.retire('metric_entry', this.all('SELECT id FROM metric_entries WHERE metric_id = ?', a.entityId).map((r) => r.id as string));
-          this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'metric' AND entity_id = ?", a.entityId);
-          this.run('DELETE FROM metrics WHERE id = ?', a.entityId);
-          break;
-        case 'created:note':
-          this.run('DELETE FROM notes WHERE id = ?', a.entityId);
-          break;
-        case 'created:milestone':
-          this.run('DELETE FROM milestones WHERE id = ?', a.entityId);
-          break;
-        case 'created:memory':
-          this.run('DELETE FROM memories WHERE id = ?', a.entityId);
-          break;
-        case 'logged:metric_entry': {
-          const raw = this.get('SELECT undo_data FROM activity WHERE id = ?', activityId)?.undo_data as string | null | undefined;
-          const prev = raw ? (JSON.parse(raw) as { value: number; note: string }) : null;
-          if (prev) this.run('UPDATE metric_entries SET value = ?, note = ? WHERE id = ?', prev.value, prev.note, a.entityId);
-          else this.run('DELETE FROM metric_entries WHERE id = ?', a.entityId);
-          break;
-        }
-        case 'checked:habit_log': {
-          const [habitId, date] = a.entityId.split('|');
-          this.run('DELETE FROM habit_logs WHERE habit_id = ? AND date = ?', habitId!, date!);
-          break;
-        }
-        case 'completed:task':
-          this.run('UPDATE tasks SET done = 0, done_at = NULL WHERE id = ?', a.entityId);
-          break;
-        case 'completed:milestone':
-          this.run('UPDATE milestones SET done = 0, done_at = NULL WHERE id = ?', a.entityId);
-          break;
-        default:
-          UNDO_HANDLERS.get(`${a.verb}:${a.entityType}`)?.(this.db, a.entityId);
+      if (a.entityType !== GROUP) return this.reverse(a);
+      // Newest first, the reverse of the order they were made in. Each is looked up again
+      // because reversing one can take another with it.
+      for (const id of this.groupMembers(a.id).reverse()) {
+        const part = this.getActivity(id);
+        if (part?.undoable) this.reverse(part);
       }
-      // Anything logged against the same entity goes with it (e.g. a goal's "created" row).
-      this.run('UPDATE activity SET undone = 1 WHERE id = ? OR (entity_type = ? AND entity_id = ? AND id >= ?)', a.id, a.entityType, a.entityId, a.id);
+      this.run('UPDATE activity SET undone = 1 WHERE id = ?', a.id);
     });
     return true;
+  }
+
+  private reverse(a: Activity): void {
+    switch (`${a.verb}:${a.entityType}`) {
+      case 'created:goal':
+        // What happened to its steps goes with it, so the feed does not offer to undo those too.
+        this.retire('milestone', this.all('SELECT id FROM milestones WHERE goal_id = ?', a.entityId).map((r) => r.id as string));
+        this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'goal' AND entity_id = ?", a.entityId);
+        this.run('DELETE FROM goals WHERE id = ?', a.entityId);
+        break;
+      case 'created:task':
+        this.run('DELETE FROM tasks WHERE id = ?', a.entityId);
+        break;
+      case 'created:habit':
+        this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'habit_log' AND entity_id LIKE ? ESCAPE '\\'", `${likeEscape(a.entityId)}|%`);
+        this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'habit' AND entity_id = ?", a.entityId);
+        this.run('DELETE FROM habits WHERE id = ?', a.entityId);
+        break;
+      case 'created:metric':
+        this.retire('metric_entry', this.all('SELECT id FROM metric_entries WHERE metric_id = ?', a.entityId).map((r) => r.id as string));
+        this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'metric' AND entity_id = ?", a.entityId);
+        this.run('DELETE FROM metrics WHERE id = ?', a.entityId);
+        break;
+      case 'created:note':
+        this.run('DELETE FROM notes WHERE id = ?', a.entityId);
+        break;
+      case 'created:milestone':
+        this.run('DELETE FROM milestones WHERE id = ?', a.entityId);
+        break;
+      case 'created:memory':
+        this.run('DELETE FROM memories WHERE id = ?', a.entityId);
+        break;
+      case 'logged:metric_entry': {
+        const raw = this.get('SELECT undo_data FROM activity WHERE id = ?', a.id)?.undo_data as string | null | undefined;
+        const prev = raw ? (JSON.parse(raw) as { value: number; note: string }) : null;
+        if (prev) this.run('UPDATE metric_entries SET value = ?, note = ? WHERE id = ?', prev.value, prev.note, a.entityId);
+        else this.run('DELETE FROM metric_entries WHERE id = ?', a.entityId);
+        break;
+      }
+      case 'checked:habit_log': {
+        const [habitId, date] = a.entityId.split('|');
+        this.run('DELETE FROM habit_logs WHERE habit_id = ? AND date = ?', habitId!, date!);
+        break;
+      }
+      case 'completed:task':
+        this.run('UPDATE tasks SET done = 0, done_at = NULL WHERE id = ?', a.entityId);
+        break;
+      case 'completed:milestone':
+        this.run('UPDATE milestones SET done = 0, done_at = NULL WHERE id = ?', a.entityId);
+        break;
+      default:
+        UNDO_HANDLERS.get(`${a.verb}:${a.entityType}`)?.(this.db, a.entityId);
+    }
+    // Anything logged against the same entity goes with it (e.g. a goal's "created" row).
+    this.run('UPDATE activity SET undone = 1 WHERE id = ? OR (entity_type = ? AND entity_id = ? AND id >= ?)', a.id, a.entityType, a.entityId, a.id);
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -1603,6 +1636,13 @@ export class Store {
         }
       }
       if (d.profile) this.writeSetting('profile', { ...DEFAULT_PROFILE, ...d.profile });
+      // Brains are not exported, so an id from the exporting install means nothing here:
+      // those conversations go back to the chat brain.
+      const brains = this.storedConnections().map((c) => c.id);
+      this.run(
+        `UPDATE conversations SET connection_id = NULL WHERE connection_id IS NOT NULL AND connection_id NOT IN (${brains.map(() => '?').join(', ')})`,
+        ...brains,
+      );
     });
   }
 }

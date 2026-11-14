@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, FileText, Image as ImageIcon, Link2, Pin, Play, Plus, Search, Sparkles, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { Note, NoteKind } from '../../../shared/types.ts';
+import type { CaptureMeta, Note, NoteKind } from '../../../shared/types.ts';
 import { api, useNotes, useWrite, write } from '../api.ts';
 import { Loading, Seg, SphereChip, SphereSelect, Spinner } from '../components/ui.tsx';
 import { cx, monthDay, shortDay, todayStr, weekdayLong } from '../lib.ts';
@@ -79,17 +79,36 @@ function CaptureBar() {
 
 const KIND_ICON = { video: <Play size={12} fill="currentColor" />, image: <ImageIcon size={12} />, pdf: <FileText size={12} />, tweet: <span className="x-mark">𝕏</span>, article: <FileText size={12} />, link: <Link2 size={12} />, text: <Sparkles size={12} /> } as const;
 
+/** An inline action inside a card (the card itself is a button). */
+function CardAction({ onAct, children }: { onAct: () => void; children: React.ReactNode }) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className="link"
+      onClick={(e) => (e.stopPropagation(), onAct())}
+      onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), onAct())}
+    >
+      {children}
+    </span>
+  );
+}
+
 function CaptureCard({ n, onOpen }: { n: Note; onOpen: () => void }) {
   const c = n.capture!;
+  // The original file, when it is not the picture shown (a saved PDF).
+  const fileId = (c as CaptureMeta & { fileId?: string | null }).fileId;
+  const doc = fileId && fileId !== c.imageFileId ? fileId : null;
+  const { toast } = useApp();
   const reread = useWrite(() => write.post(`/notes/${n.id}/reprocess`));
   if (n.status === 'processing')
     return (
-      <div className="note-card capture-card is-processing" aria-busy="true">
+      <button type="button" className="note-card capture-card is-processing" aria-busy="true" onClick={onOpen}>
         <div className="capture-shimmer" />
         <span className="note-url">
           <Spinner /> Reading {c.site || 'it'}…
         </span>
-      </div>
+      </button>
     );
   return (
     <button type="button" className={cx('note-card capture-card', n.status === 'failed' && 'is-failed')} onClick={onOpen}>
@@ -109,18 +128,14 @@ function CaptureCard({ n, onOpen }: { n: Note; onOpen: () => void }) {
       </span>
       <h4>{n.title || host(n.url)}</h4>
       {c.summary && <p className="note-body">{c.summary}</p>}
+      {doc && (
+        <span className="note-url">
+          <FileText size={13} /> <CardAction onAct={() => window.location.assign(`/api/files/${doc}`)}>Download the file</CardAction>
+        </span>
+      )}
       {n.status === 'failed' && (
         <span className="note-url error-text">
-          <AlertCircle size={13} /> {c.error}{' '}
-          <span
-            role="button"
-            tabIndex={0}
-            className="link"
-            onClick={(e) => (e.stopPropagation(), reread.mutate())}
-            onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), reread.mutate())}
-          >
-            Try again
-          </span>
+          <AlertCircle size={13} /> {c.error} <CardAction onAct={() => reread.mutate(undefined, { onError: (err) => toast({ message: err.message }) })}>Try again</CardAction>
         </span>
       )}
       {c.tags.length > 0 && (

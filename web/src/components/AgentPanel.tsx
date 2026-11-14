@@ -101,7 +101,14 @@ export function AgentPanel({ chat, settings, onClose }: { chat: AgentChat; setti
 
   const { agentName, userName } = settings.profile;
   const { connections, brains } = settings;
-  const activeId = chat.connectionId ?? brains.chat ?? undefined;
+  // A brain removed since it was picked, or one from the install an export came from,
+  // falls back to the chat brain instead of leaving the composer locked.
+  const picked = connections.some((c) => c.id === chat.connectionId) ? chat.connectionId : undefined;
+  const activeId = picked ?? brains.chat ?? undefined;
+  const { setBrain } = chat;
+  useEffect(() => {
+    if (chat.connectionId && !picked) setBrain(undefined);
+  }, [chat.connectionId, picked, setBrain]);
   const active = connections.find((c) => c.id === activeId);
   const preset = active?.preset ? PRESET_BY_ID[active.preset] : undefined;
   const connected = !!active && (active.provider !== 'anthropic' || active.hasApiKey);

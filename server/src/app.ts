@@ -1,6 +1,8 @@
 // The HTTP API. Thin: validate, call the Store, return JSON.
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { streamSSE } from 'hono/streaming';
@@ -30,6 +32,41 @@ export interface AppOptions {
 const SESSION_COOKIE = 'terminus_session';
 const SESSION_DAYS = 30;
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+/** Failed sign-ins allowed per client, and from everyone together, in LOGIN_WINDOW_MS. */
+const LOGIN_WINDOW_MS = 5 * 60_000;
+const LOGIN_FAILURES_PER_CLIENT = 8;
+const LOGIN_FAILURES_TOTAL = 60;
+
+/** Loopback, private and link-local addresses: a proxy in front of us, not a visitor. */
+function isInternal(address: string): boolean {
+  const a = address.toLowerCase().replace(/^::ffff:(?=\d+\.)/, '');
+  if (isIP(a) === 4) {
+    const [x = 0, y = 0] = a.split('.').map(Number);
+    return x === 10 || x === 127 || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168) || (x === 169 && y === 254) || (x === 100 && y >= 64 && y <= 127);
+  }
+  return a === '::1' || /^f[cd]/.test(a) || /^fe[89ab]/.test(a);
+}
+
+/**
+ * Who is signing in, for throttling. Behind a proxy (Railway, Render, Caddy) the socket
+ * is the proxy, so take the last address it added to X-Forwarded-For: the entries before
+ * it come from the client and can be anything. Without a proxy the header is ignored.
+ */
+function clientAddress(c: Context): string {
+  let peer: string | undefined;
+  try {
+    peer = getConnInfo(c).remote.address;
+  } catch {
+    // Not served by Node (tests call app.request directly).
+  }
+  if (peer && isInternal(peer)) {
+    const hops = (c.req.header('x-forwarded-for') ?? '').split(',').map((h) => h.trim()).filter((h) => isIP(h.replace(/^\[|\]$/g, '')));
+    const outside = hops.reverse().find((h) => !isInternal(h));
+    if (outside) return outside;
+  }
+  return peer ?? 'unknown';
+}
 
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex');
 const sameSecret = (a: string, b: string): boolean => timingSafeEqual(Buffer.from(sha256(a)), Buffer.from(sha256(b)));
@@ -186,7 +223,10 @@ export function createApp(opts: AppOptions): Hono {
   const scheduler = opts.scheduler ?? new Scheduler(store);
   const anyHost = opts.allowedHosts?.includes('*') ?? false;
   const allowedHosts = new Set([...LOOPBACK, ...(opts.allowedHosts ?? []).map((h) => h.toLowerCase())]);
-  const failedLogins: number[] = [];
+  // Failed sign-ins per client address, plus every failure for a ceiling across all of
+  // them. Per client, so a stranger guessing cannot lock the owner out from elsewhere.
+  const failedLogins = new Map<string, number[]>();
+  const allFailedLogins: number[] = [];
   // Sessions belong to the passphrase they were made under: change it and everyone signs in again.
   if (opts.passphrase) {
     const marker = sha256(`terminus-sessions:${opts.passphrase}`);
@@ -255,11 +295,22 @@ export function createApp(opts: AppOptions): Hono {
     // Read the body first, then count and compare with no await in between, so guesses
     // sent at once cannot all slip past the limit while their bodies are in flight.
     const { passphrase } = await read(c, S.login);
-    const cutoff = Date.now() - 5 * 60_000;
-    while (failedLogins.length && failedLogins[0]! < cutoff) failedLogins.shift();
-    if (failedLogins.length >= 8) return c.json({ error: 'Too many attempts. Wait a few minutes.' }, 429);
+    const now = Date.now();
+    const cutoff = now - LOGIN_WINDOW_MS;
+    while (allFailedLogins.length && allFailedLogins[0]! < cutoff) allFailedLogins.shift();
+    for (const [key, times] of failedLogins) {
+      while (times.length && times[0]! < cutoff) times.shift();
+      if (times.length === 0) failedLogins.delete(key);
+    }
+    const client = clientAddress(c);
+    const mine = failedLogins.get(client) ?? [];
+    if (mine.length >= LOGIN_FAILURES_PER_CLIENT || allFailedLogins.length >= LOGIN_FAILURES_TOTAL) {
+      return c.json({ error: 'Too many attempts. Wait a few minutes.' }, 429);
+    }
     if (!sameSecret(passphrase, opts.passphrase)) {
-      failedLogins.push(Date.now());
+      mine.push(now);
+      failedLogins.set(client, mine);
+      allFailedLogins.push(now);
       return c.json({ error: 'That passphrase is not right.' }, 401);
     }
     const token = randomBytes(32).toString('base64url');
@@ -476,15 +527,19 @@ export function createApp(opts: AppOptions): Hono {
   app.post('/api/agent/chat', async (c) => {
     const input = await read(c, S.chat);
     // Which brain: the one asked for, else the conversation's own, else the chat brain.
+    // An id that no longer resolves (a brain removed since, or one from the install an
+    // export came from) is skipped rather than leaving the conversation unable to answer.
+    const known = (id: string | null | undefined): string | null => (id && store.getConnectionConfig(id) ? id : null);
     const saved = input.conversationId ? store.getConversationConnection(input.conversationId) : null;
-    const connectionId = input.connectionId ?? saved ?? store.getBrains().chat;
+    const connectionId = known(input.connectionId) ?? known(saved) ?? store.getBrains().chat;
     const cfg = connectionId ? store.getConnectionConfig(connectionId) : null;
     if (!cfg) return c.json({ error: 'No model is connected yet.', code: 'no_model' }, 409);
     if (cfg.provider === 'anthropic' && !cfg.apiKey) {
       return c.json({ error: 'Add your Anthropic API key in Settings → Brains.', code: 'no_model' }, 409);
     }
-    if (input.conversationId && input.connectionId && input.connectionId !== saved) {
-      store.setConversationConnection(input.conversationId, input.connectionId);
+    if (input.conversationId) {
+      const pinned = known(input.connectionId) ?? known(saved);
+      if (pinned !== saved) store.setConversationConnection(input.conversationId, pinned);
     }
     const provider = providerFor(cfg);
 

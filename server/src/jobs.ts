@@ -15,6 +15,10 @@ export interface Job {
 export class Scheduler {
   private readonly jobs = new Map<string, Job>();
   private readonly running = new Set<string>();
+  /** Asked to run while already running (settings changed mid-run): run once more after. */
+  private readonly again = new Set<string>();
+  /** How long a run may take before it is given up on. */
+  timeoutMs = 5 * 60_000;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly store: Store;
 
@@ -47,23 +51,34 @@ export class Scheduler {
     await Promise.all(
       [...this.jobs.values()].map(async (job) => {
         const rec = getIntegration(this.store, job.id);
-        if (!rec.enabled) return;
+        if (!rec.enabled || this.running.has(job.id)) return;
         const last = rec.lastRunAt ? Date.parse(rec.lastRunAt) : 0;
         if (now - last >= job.everyMs) await this.runNow(job.id).catch(() => undefined);
       }),
     );
   }
 
-  /** Run one job immediately. Resolves when it finishes; rejects with its error. */
+  /**
+   * Run one job immediately. Resolves when it finishes; rejects with its error. If it is already
+   * running, it runs again once that run ends, so a change made meanwhile is not left unchecked.
+   */
   async runNow(id: string): Promise<void> {
     const job = this.jobs.get(id);
     if (!job) throw new Error(`No job called ${id}`);
-    if (this.running.has(id)) return;
+    if (this.running.has(id)) {
+      this.again.add(id);
+      return;
+    }
     this.running.add(id);
     const abort = new AbortController();
-    const timeout = setTimeout(() => abort.abort(), 5 * 60_000);
+    const timeout = setTimeout(() => abort.abort(), this.timeoutMs);
+    // Jobs are asked to stop on abort, but one stuck where it cannot hear that must not hold the
+    // job as running for good.
+    const gaveUp = new Promise<never>((_, reject) =>
+      abort.signal.addEventListener('abort', () => reject(new Error(`Stopped after ${Math.round(this.timeoutMs / 60_000) || 1} min without finishing.`)), { once: true }),
+    );
     try {
-      await job.run(this.store.as('agent'), abort.signal);
+      await Promise.race([job.run(this.store.as('agent'), abort.signal), gaveUp]);
       markRun(this.store, id, null);
     } catch (err) {
       markRun(this.store, id, err instanceof Error ? err.message : String(err));
@@ -71,6 +86,7 @@ export class Scheduler {
     } finally {
       clearTimeout(timeout);
       this.running.delete(id);
+      if (this.again.delete(id)) void this.runNow(id).catch(() => undefined);
     }
   }
 }
