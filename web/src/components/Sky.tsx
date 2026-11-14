@@ -52,7 +52,7 @@ const BEACON: RGB = [255, 96, 84];
 /** Where the horizon sits, as a fraction of the band's height. */
 const HZ = 0.66;
 /** The bottom of the band dissolves into the page over this fraction of its height. */
-const FADE = 0.38;
+const FADE = 0.42;
 const CELL = 5;
 const SUN_R = 0.06;
 const MOON_R = 0.085;
@@ -193,6 +193,12 @@ function effectSegments(effects: Effect[], now: number): Segment[] {
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
+/** The page's background colour as it is now (it changes with the theme and phase). */
+function pageColor(): RGB {
+  const m = getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g);
+  return m && m.length >= 3 ? [Number(m[0]), Number(m[1]), Number(m[2])] : [238, 240, 244];
+}
+
 interface Scene {
   sun: SunState;
   effects: Effect[];
@@ -234,12 +240,16 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   const segments = [...effectSegments(scene.effects, seconds), ...(scene.plane ? planeSegments(scene.plane, 1) : [])];
   const beacon = scene.plane && Math.sin(seconds * 6) > 0.6 ? { x: scene.plane.x - 0.075, y: scene.plane.y - 0.035 } : null;
 
+  // Through the fade, the dots and the ground between them turn into the page's own
+  // colour, then let go of it at the very edge so the page's ambient tint shows through.
+  const page = pageColor();
   const bg = mul(pal.top, 0.4);
   const grad = ctx.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, css(bg));
-  // The ground between the dots goes first, so the last dots dissolve straight into the page.
-  grad.addColorStop(1 - FADE, css(bg));
-  grad.addColorStop(1 - FADE * 0.3, css(bg, 0));
+  for (let n = 0; n <= 12; n++) {
+    const into = n / 12;
+    grad.addColorStop(1 - FADE + FADE * into, css(mix(bg, page, smooth(0, 0.85, into)), 1 - smooth(0.6, 1, into)));
+  }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
 
@@ -249,8 +259,12 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   for (let j = 0; j < rows; j++) {
     const v = (j + 0.5) / rows;
     const k = v / HZ;
-    const fade = 1 - smooth(1 - FADE, 1, v);
-    if (fade <= 0.01) break;
+    // 0 above the fade, 1 at the bottom edge.
+    const into = (v - (1 - FADE)) / FADE;
+    if (into >= 0.995) break;
+    const fade = 1 - clamp(into);
+    const toPage = smooth(0, 0.85, into);
+    const alpha = 1 - smooth(0.6, 1, into);
     const base = k < 0.6 ? mix(pal.top, pal.mid, smooth(0, 0.6, k)) : mix(pal.mid, pal.low, smooth(0.6, 1, k));
     const band = Math.max(0, 1 - Math.abs(k - 0.42) * 1.7);
     for (let i = 0; i < cols; i++) {
@@ -321,16 +335,17 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       const cx = i * CELL + CELL / 2;
       const cy = j * CELL + CELL / 2;
       if (ink > 0) {
-        ctx.fillStyle = css(pal.ink, fade * ink);
+        ctx.fillStyle = css(pal.ink, Math.min(1, fade * 1.5) * ink);
         ctx.beginPath();
         ctx.arc(cx, cy, CELL * 0.44, 0, 6.2832);
         ctx.fill();
         continue;
       }
       const b = B4[j & 3]![i & 3]!;
-      const r = CELL * 0.5 * clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22) * fade;
+      const r = CELL * 0.5 * clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22);
       if (r < 0.3) continue;
-      ctx.fillStyle = css(mul(c, 0.9 + 0.25 * b));
+      const dot = mul(c, 0.9 + 0.25 * b);
+      ctx.fillStyle = toPage > 0 ? css(mix(dot, page, toPage), alpha) : css(dot);
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, 6.2832);
       ctx.fill();
