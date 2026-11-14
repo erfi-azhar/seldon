@@ -10,7 +10,7 @@ import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
 import { Loading } from '../components/ui.tsx';
-import { cx, hueStyle, monthDay, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
+import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
 
 /** Today's to-dos (due today or overdue, and done today), split into work and the rest. */
@@ -262,6 +262,7 @@ export function Today() {
   if (!o) return <Loading />;
 
   const today = todayStr();
+  const due = o.tasks.due.length;
   const horizon = o.goalsDue.length + o.tasks.upcoming.length > 0;
 
   return (
@@ -271,6 +272,11 @@ export function Today() {
         <div>
           <div className="hero-day">{weekdayLong(today)}</div>
           <h1 className="hero-date">{monthDay(today)}</h1>
+          <p className="hero-line">
+            {greeting()}
+            {o.profile.userName ? `, ${o.profile.userName}` : ''}.{' '}
+            {due === 0 ? 'Nothing is waiting on you — a good day to move something that matters.' : <><b>{plural(due, 'task')} due</b>.</>}
+          </p>
         </div>
         <div className="hero-side">
           <NextPrayerPill />
