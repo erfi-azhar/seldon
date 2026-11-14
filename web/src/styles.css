@@ -5573,48 +5573,50 @@ textarea.title-input {
 }
 :root[data-theme='dark'] .trip-hero {
   --th-bg:
-    radial-gradient(80% 120% at 100% 0%, oklch(0.6 0.12 215 / 0.9), transparent 60%),
-    radial-gradient(70% 120% at 0% 100%, oklch(0.45 0.11 255 / 0.9), transparent 60%),
-    linear-gradient(135deg, oklch(0.34 0.08 240), oklch(0.24 0.06 255));
-  --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.3 0.1 240 / 0.8);
-  --th-fg: #fff;
-  --th-ink-2: rgb(255 255 255 / 0.8);
-  --th-ink-3: rgb(255 255 255 / 0.62);
-  --th-ink-4: rgb(255 255 255 / 0.45);
-  --th-line: rgb(255 255 255 / 0.14);
-  --th-chip: rgb(255 255 255 / 0.12);
+    radial-gradient(50% 75% at 100% 0%, oklch(0.5 0.09 230 / 0.28), transparent 70%),
+    radial-gradient(35% 55% at 0% 100%, oklch(0.45 0.06 255 / 0.18), transparent 70%),
+    #17181e;
+  --th-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 40px -26px rgb(0 0 0 / 0.7);
+  --th-fg: #f1f2f6;
+  --th-ink-2: #a5a9b5;
+  --th-ink-3: #999daa;
+  --th-ink-4: #767a86;
+  --th-line: rgb(255 255 255 / 0.08);
+  --th-chip: rgb(255 255 255 / 0.06);
   --th-scheme: dark;
-  --th-accent: #fff;
+  --th-accent: oklch(0.8 0.11 235);
 }
 :root[data-theme='dark'] .trip-hero.is-leisure {
   --th-bg:
-    radial-gradient(80% 120% at 100% 0%, oklch(0.68 0.14 55 / 0.9), transparent 60%),
-    radial-gradient(70% 120% at 0% 100%, oklch(0.5 0.13 15 / 0.9), transparent 60%),
-    linear-gradient(135deg, oklch(0.4 0.1 30), oklch(0.28 0.07 10));
-  --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.35 0.12 30 / 0.8);
+    radial-gradient(50% 75% at 100% 0%, oklch(0.55 0.1 55 / 0.26), transparent 70%),
+    radial-gradient(35% 55% at 0% 100%, oklch(0.5 0.08 20 / 0.16), transparent 70%),
+    #17181e;
+  --th-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 40px -26px rgb(0 0 0 / 0.7);
+  --th-accent: oklch(0.82 0.12 60);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .trip-hero {
     --th-bg:
-      radial-gradient(80% 120% at 100% 0%, oklch(0.6 0.12 215 / 0.9), transparent 60%),
-      radial-gradient(70% 120% at 0% 100%, oklch(0.45 0.11 255 / 0.9), transparent 60%),
-      linear-gradient(135deg, oklch(0.34 0.08 240), oklch(0.24 0.06 255));
-    --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.3 0.1 240 / 0.8);
-    --th-fg: #fff;
-    --th-ink-2: rgb(255 255 255 / 0.8);
-    --th-ink-3: rgb(255 255 255 / 0.62);
-    --th-ink-4: rgb(255 255 255 / 0.45);
-    --th-line: rgb(255 255 255 / 0.14);
-    --th-chip: rgb(255 255 255 / 0.12);
+      radial-gradient(50% 75% at 100% 0%, oklch(0.5 0.09 230 / 0.28), transparent 70%),
+      radial-gradient(35% 55% at 0% 100%, oklch(0.45 0.06 255 / 0.18), transparent 70%),
+      #17181e;
+    --th-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 40px -26px rgb(0 0 0 / 0.7);
+    --th-fg: #f1f2f6;
+    --th-ink-2: #a5a9b5;
+    --th-ink-3: #999daa;
+    --th-ink-4: #767a86;
+    --th-line: rgb(255 255 255 / 0.08);
+    --th-chip: rgb(255 255 255 / 0.06);
     --th-scheme: dark;
-    --th-accent: #fff;
+    --th-accent: oklch(0.8 0.11 235);
   }
   :root:not([data-theme='light']) .trip-hero.is-leisure {
     --th-bg:
-      radial-gradient(80% 120% at 100% 0%, oklch(0.68 0.14 55 / 0.9), transparent 60%),
-      radial-gradient(70% 120% at 0% 100%, oklch(0.5 0.13 15 / 0.9), transparent 60%),
-      linear-gradient(135deg, oklch(0.4 0.1 30), oklch(0.28 0.07 10));
-    --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.35 0.12 30 / 0.8);
+      radial-gradient(50% 75% at 100% 0%, oklch(0.55 0.1 55 / 0.26), transparent 70%),
+      radial-gradient(35% 55% at 0% 100%, oklch(0.5 0.08 20 / 0.16), transparent 70%),
+      #17181e;
+    --th-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 1px 2px rgb(0 0 0 / 0.3), 0 18px 40px -26px rgb(0 0 0 / 0.7);
+    --th-accent: oklch(0.82 0.12 60);
   }
 }
 .trip-hero-head {
@@ -5794,21 +5796,21 @@ textarea.title-input {
   opacity: 0.6;
 }
 :root[data-theme='dark'] .trip-notch {
-  color: #fff;
-  background: linear-gradient(180deg, oklch(0.24 0.05 250), oklch(0.29 0.06 240));
-  box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.08), 0 12px 24px -16px rgb(0 0 0 / 0.6);
+  color: #f1f2f6;
+  background: linear-gradient(180deg, #1d1f26, #17181e 70%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 12px 24px -16px rgb(0 0 0 / 0.6);
 }
 :root[data-theme='dark'] .trip-notch.is-leisure {
-  background: linear-gradient(180deg, oklch(0.27 0.06 25), oklch(0.32 0.08 35));
+  background: linear-gradient(180deg, #211e1d, #17181e 70%);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .trip-notch {
-    color: #fff;
-    background: linear-gradient(180deg, oklch(0.24 0.05 250), oklch(0.29 0.06 240));
-    box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.08), 0 12px 24px -16px rgb(0 0 0 / 0.6);
+    color: #f1f2f6;
+    background: linear-gradient(180deg, #1d1f26, #17181e 70%);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 12px 24px -16px rgb(0 0 0 / 0.6);
   }
   :root:not([data-theme='light']) .trip-notch.is-leisure {
-    background: linear-gradient(180deg, oklch(0.27 0.06 25), oklch(0.32 0.08 35));
+    background: linear-gradient(180deg, #211e1d, #17181e 70%);
   }
 }
 .trip-card {
@@ -6680,15 +6682,21 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   }
 }
 
-/* The route globe on the trip card */
+/* The route globe on the trip card: colours the canvas reads, light and dark. */
 .trip-hero-globe {
-  display: grid;
-  gap: 6px;
-  margin: -4px -8px 0;
+  margin: -2px -8px 0;
 }
-.route-globe svg {
-  display: block;
-  overflow: visible;
+.route-globe {
+  display: grid;
+  gap: 8px;
+  --rg-sea-top: #cfe1f6;
+  --rg-sea-bottom: rgba(232, 241, 251, 0);
+  --rg-land: #3c6eae;
+  --rg-airport: #2f6fd0;
+  --rg-halo: rgba(47, 111, 208, 0.16);
+  --rg-label-bg: #ffffff;
+  --rg-label-fg: #1b2230;
+  --rg-route: #ffffff;
 }
 .rg-caption {
   display: flex;
@@ -6700,143 +6708,33 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 .rg-caption-end {
   font-weight: 550;
-  color: var(--th-accent, var(--ink-2));
+  color: oklch(0.55 0.13 155);
 }
-.rg-sea-top {
-  stop-color: oklch(0.86 0.07 235);
+:root[data-theme='dark'] .route-globe {
+  --rg-sea-top: rgba(150, 180, 225, 0.14);
+  --rg-sea-bottom: rgba(150, 180, 225, 0);
+  --rg-land: #c9d4e6;
+  --rg-airport: #5a9cf5;
+  --rg-halo: rgba(90, 156, 245, 0.2);
+  --rg-label-bg: #2a2d36;
+  --rg-label-fg: #f1f2f6;
+  --rg-route: #f1f2f6;
 }
-.rg-sea-bottom {
-  stop-color: oklch(0.95 0.03 235);
-  stop-opacity: 0.35;
-}
-.rg-halo {
-  fill: none;
-  stroke: oklch(0.86 0.07 235 / 0.45);
-  stroke-width: 10;
-  filter: blur(5px);
-}
-.rg-land circle {
-  fill: oklch(0.42 0.1 250);
-}
-.rg-route {
-  fill: none;
-  stroke: #fff;
-  stroke-opacity: 0.75;
-  stroke-width: 2;
-  stroke-dasharray: 2 5;
-  stroke-linecap: round;
-}
-.rg-trail {
-  fill: none;
-  stroke: #fff;
-  stroke-width: 3;
-  stroke-linecap: round;
-  filter: drop-shadow(0 1px 2px rgb(10 40 90 / 0.3));
-}
-.rg-airport {
-  fill: oklch(0.55 0.16 250);
-  stroke: #fff;
-  stroke-width: 2.5;
-}
-.rg-pulse {
-  fill: oklch(0.55 0.16 250 / 0.14);
-  stroke: oklch(0.55 0.16 250 / 0.45);
-  stroke-width: 1.5;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: rg-pulse 2.4s ease-out infinite;
-}
-@keyframes rg-pulse {
-  0% {
-    transform: scale(0.6);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
-}
-.rg-label {
-  fill: #fff;
-  stroke: rgb(20 30 50 / 0.08);
-  filter: drop-shadow(0 2px 4px rgb(20 40 80 / 0.15));
-}
-.rg-label-text {
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  fill: oklch(0.25 0.03 255);
-}
-.rg-plane-wing {
-  fill: #f05a28;
-}
-.rg-plane-body {
-  fill: #fff;
-  stroke: rgb(20 30 50 / 0.25);
-  stroke-width: 0.6;
-}
-.rg-plane-shadow path {
-  fill: rgb(10 30 60 / 0.18);
-  stroke: none;
-}
-:root[data-theme='dark'] .rg-sea-top {
-  stop-color: oklch(0.55 0.09 235);
-  stop-opacity: 0.55;
-}
-:root[data-theme='dark'] .rg-sea-bottom {
-  stop-color: oklch(0.4 0.06 245);
-  stop-opacity: 0.1;
-}
-:root[data-theme='dark'] .rg-halo {
-  stroke: oklch(0.7 0.1 225 / 0.25);
-}
-:root[data-theme='dark'] .rg-land circle {
-  fill: #fff;
-}
-:root[data-theme='dark'] .rg-label {
-  fill: rgb(255 255 255 / 0.16);
-  stroke: rgb(255 255 255 / 0.2);
-}
-:root[data-theme='dark'] .rg-label-text {
-  fill: #fff;
+:root[data-theme='dark'] .rg-caption-end {
+  color: oklch(0.8 0.13 155);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .rg-sea-top {
-    stop-color: oklch(0.55 0.09 235);
-    stop-opacity: 0.55;
+  :root:not([data-theme='light']) .route-globe {
+    --rg-sea-top: rgba(150, 180, 225, 0.14);
+    --rg-sea-bottom: rgba(150, 180, 225, 0);
+    --rg-land: #c9d4e6;
+    --rg-airport: #5a9cf5;
+    --rg-halo: rgba(90, 156, 245, 0.2);
+    --rg-label-bg: #2a2d36;
+    --rg-label-fg: #f1f2f6;
+    --rg-route: #f1f2f6;
   }
-  :root:not([data-theme='light']) .rg-sea-bottom {
-    stop-color: oklch(0.4 0.06 245);
-    stop-opacity: 0.1;
-  }
-  :root:not([data-theme='light']) .rg-halo {
-    stroke: oklch(0.7 0.1 225 / 0.25);
-  }
-  :root:not([data-theme='light']) .rg-land circle {
-    fill: #fff;
-  }
-  :root:not([data-theme='light']) .rg-label {
-    fill: rgb(255 255 255 / 0.16);
-    stroke: rgb(255 255 255 / 0.2);
-  }
-  :root:not([data-theme='light']) .rg-label-text {
-    fill: #fff;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .rg-pulse,
-  .rg-view {
-    animation: none;
-  }
-}
-.rg-view {
-  animation: rg-view-in 0.5s ease-out;
-}
-@keyframes rg-view-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
+  :root:not([data-theme='light']) .rg-caption-end {
+    color: oklch(0.8 0.13 155);
   }
 }
