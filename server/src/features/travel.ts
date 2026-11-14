@@ -110,6 +110,7 @@ function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store)): Trip 
     companion: JSON.parse(r.companion),
     segments: (store.db.prepare('SELECT * FROM trip_segments WHERE trip_id = ? ORDER BY start_utc').all(r.id) as Row[]).map((x) => segmentFromRow(x, accounts)),
     itinerary: (store.db.prepare("SELECT * FROM itinerary_items WHERE trip_id = ? ORDER BY date, COALESCE(time, '99:99'), created_at").all(r.id) as Row[]).map(itemFromRow),
+    todos: store.listTasks({ tripId: r.id, status: 'all', limit: 100 }),
   };
 }
 
@@ -829,7 +830,11 @@ registerSnapshotSection<Store>('Travel', (store, today) => {
   }
   for (const l of ctx.layovers) lines.push(`Layover: ${l.hours} h at ${l.airport}.`);
   if (ctx.mode === 'away' && ctx.trip) lines.push(`Away now: day ${ctx.dayOfTrip} of ${ctx.tripDays} in ${ctx.trip.title}${ctx.stay ? `, staying at ${ctx.stay.title}` : ''}.`);
-  for (const t of trips) lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items.`);
+  for (const t of trips) {
+    const open = t.todos.filter((x) => !x.done);
+    lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items, ${open.length} open to-dos.`);
+    for (const x of open.slice(0, 8)) lines.push(`  To-do [${x.id}] ${x.title}${x.dueDate ? ` (due ${x.dueDate})` : ''}`);
+  }
   for (const a of loyalty) lines.push(`${a.program}: ${[a.tier, a.points !== null ? `${a.points.toLocaleString('en')} ${a.kind === 'airline' ? 'miles' : 'points'}` : '', a.progress !== null && a.progressTarget ? `${a.progress}/${a.progressTarget} ${a.progressLabel}` : ''].filter(Boolean).join(', ')} (as of ${a.updatedAt.slice(0, 10)}).`);
   // Names of trips, hotels, carriers and programmes are often copied out of mail and screenshots.
   return wrapUntrusted('travel bookings and loyalty, partly read from mail and screenshots', lines.join('\n'), 8000);
@@ -882,6 +887,7 @@ async function imageFrom(form: FormData) {
 const compactTrip = (t: Trip) => ({
   ...t,
   segments: t.segments.map((s) => ({ id: s.id, kind: s.kind, what: describeSegment(s), seat: s.seat || undefined, confirmation: s.confirmation || undefined, lounges: s.lounges.length ? s.lounges : undefined, perks: s.perks.length ? s.perks : undefined })),
+  todos: t.todos.map((x) => ({ id: x.id, title: x.title, due: x.dueDate, done: x.done })),
 });
 
 registerFeature({

@@ -138,6 +138,7 @@ const S = {
     notes: text(2000).optional(),
     sphereId: optId,
     goalId: optId,
+    tripId: optId,
     dueDate: date.nullable().optional(),
   }),
   taskPatch: z.object({
@@ -145,6 +146,7 @@ const S = {
     notes: text(2000).optional(),
     sphereId: optId,
     goalId: optId,
+    tripId: optId,
     dueDate: date.nullable().optional(),
     done: z.boolean().optional(),
   }),

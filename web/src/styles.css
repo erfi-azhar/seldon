@@ -5174,6 +5174,62 @@ textarea.title-input {
   color: var(--ink);
   font-weight: 600;
 }
+
+/* Trips ahead, each with its to-dos */
+.trips-ahead {
+  gap: 14px;
+}
+.ta-trip {
+  display: grid;
+  gap: 8px;
+}
+.ta-trip + .ta-trip {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.ta-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ta-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ta-when {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+.trip-todos ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.trip-todos .task {
+  padding: 5px 0;
+}
+.trip-todos .task:hover {
+  background: transparent;
+}
+.trip-todos .add-row {
+  padding: 4px 0;
+  margin-top: 0;
+  border-top: 0;
+}
+.trip-todos-done summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  padding: 4px 0;
+}
+.trip-body .trip-todos {
+  margin-bottom: 6px;
+}
 .tm-route {
   display: grid;
   grid-template-columns: auto 1fr auto;
