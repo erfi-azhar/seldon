@@ -203,6 +203,20 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (date, prayer)
   );
   `,
+  `
+  ALTER TABLE notes ADD COLUMN capture TEXT;
+  ALTER TABLE notes ADD COLUMN status TEXT NOT NULL DEFAULT 'ready';
+
+  -- Pictures and thumbnails kept with your data, so the app never loads them from elsewhere.
+  CREATE TABLE files (
+    id TEXT PRIMARY KEY,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    data BLOB NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

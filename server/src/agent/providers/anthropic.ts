@@ -29,7 +29,22 @@ function toMessages(turns: Turn[], stripThinking: boolean): Anthropic.Beta.BetaM
   const out: Anthropic.Beta.BetaMessageParam[] = [];
   for (const turn of turns) {
     if (turn.role === 'user') {
-      out.push({ role: 'user', content: turn.text });
+      if (turn.images?.length) {
+        out.push({
+          role: 'user',
+          content: [
+            ...turn.images.map(
+              (img): Anthropic.Beta.BetaImageBlockParam => ({
+                type: 'image',
+                source: { type: 'base64', media_type: img.mediaType as 'image/png', data: img.data },
+              }),
+            ),
+            { type: 'text', text: turn.text },
+          ],
+        });
+      } else {
+        out.push({ role: 'user', content: turn.text });
+      }
     } else if (turn.role === 'assistant') {
       // Replay what Anthropic sent, untouched: thinking blocks are bound to the exact
       // history that produced them. Turns from another provider are rebuilt from text.

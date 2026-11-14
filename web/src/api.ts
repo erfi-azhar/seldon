@@ -100,7 +100,7 @@ export const useTasks = (params: { goalId?: string; status?: 'open' | 'done' | '
 
 export const useMetrics = () => useQuery({ queryKey: ['metrics'], queryFn: () => api<Metric[]>('GET', '/metrics') });
 
-export const useNotes = (filter: { kind?: NoteKind; sphereId?: string; q?: string }) =>
+export const useNotes = (filter: { kind?: NoteKind; sphereId?: string; q?: string; saved?: boolean; collection?: string }) =>
   useQuery({
     queryKey: ['notes', filter],
     queryFn: () => {
@@ -108,9 +108,13 @@ export const useNotes = (filter: { kind?: NoteKind; sphereId?: string; q?: strin
       if (filter.kind) p.set('kind', filter.kind);
       if (filter.sphereId) p.set('sphereId', filter.sphereId);
       if (filter.q) p.set('q', filter.q);
+      if (filter.saved) p.set('saved', '1');
+      if (filter.collection) p.set('collection', filter.collection);
       return api<Note[]>('GET', `/notes?${p}`);
     },
     placeholderData: (prev) => prev,
+    // Saved links are read in the background: look again until they're done.
+    refetchInterval: (q) => (q.state.data?.some((n) => n.status === 'processing') ? 2_000 : false),
   });
 
 export const useMemories = () => useQuery({ queryKey: ['memories'], queryFn: () => api<Memory[]>('GET', '/memories') });

@@ -14,6 +14,8 @@ import type { Provider, ProviderResponse } from '../server/src/agent/types.ts';
 import { openDb } from '../server/src/db.ts';
 import { addDays, localDate, Store } from '../server/src/store.ts';
 import { addSignal } from '../server/src/features/signals.ts';
+import { saveFile } from '../server/src/features/capture.ts';
+import { deflateSync } from 'node:zlib';
 
 const path = resolve(process.argv[2] ?? 'data/demo.db');
 for (const suffix of ['', '-wal', '-shm']) rmSync(path + suffix, { force: true });
@@ -249,6 +251,60 @@ await chat({
   context: { date: today, time: '07:42', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, viewing: 'Today' },
   emit: () => undefined,
 });
+
+// ── Saved links, as if shared from a phone ─────────────────────────────────
+// Thumbnails are generated soft gradients: the demo never fetches the real pages.
+function png(w: number, h: number, colour: (x: number, y: number) => [number, number, number]): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf: Buffer) => {
+    let c = 0xffffffff;
+    for (const b of buf) c = crcTable[(c ^ b) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w * 3 + 1)] = 0;
+    for (let x = 0; x < w; x++) raw.set(colour(x, y), y * (w * 3 + 1) + 1 + x * 3);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+const gradient = (a: [number, number, number], b: [number, number, number], glow: [number, number, number]) =>
+  png(320, 200, (x, y) => {
+    const t = (x / 320) * 0.6 + (y / 200) * 0.4;
+    const d = Math.max(0, 1 - Math.hypot(x - 230, y - 60) / 170);
+    return [0, 1, 2].map((i) => Math.max(0, Math.min(255, Math.round(a[i]! * (1 - t) + b[i]! * t + (glow[i]! - 128) * d * 0.6)))) as [number, number, number];
+  });
+const saved = (ago: number, n: { url: string; title: string; summary: string; points?: string[]; kind: string; site: string; author?: string; tags: string[]; collection: string; sphere?: string; image?: Buffer; via: string }) => {
+  const id = Math.random().toString(36).slice(2, 12);
+  const ts = new Date(`${day(ago)}T19:30:00`).toISOString();
+  const imageFileId = n.image ? saveFile(store, n.image, 'image/png', n.title) : null;
+  const body = [n.summary, ...(n.points ?? []).map((p) => `• ${p}`)].join('\n');
+  store.db.prepare("INSERT INTO notes (id, sphere_id, kind, title, body, url, created_at, updated_at, capture, status) VALUES (?,?,?,?,?,?,?,?,?, 'ready')").run(
+    id, n.sphere ?? null, 'link', n.title, body, n.url, ts, ts,
+    JSON.stringify({ kind: n.kind, site: n.site, author: n.author ?? '', imageFileId, summary: n.summary, keyPoints: n.points ?? [], tags: n.tags, collection: n.collection, via: n.via }),
+  );
+};
+saved(5, { url: 'https://www.tiktok.com/@demo/video/1', title: '15-minute high-protein breakfast bowl', summary: 'Greek yoghurt, oats, berries and a scoop of whey — about 45 g of protein in a quarter of an hour.', points: ['Overnight oats save the morning rush', 'Swap honey for berries to cut sugar'], kind: 'video', site: 'TikTok', author: '@fitfoodie', tags: ['breakfast', 'protein', 'recipes'], collection: 'Recipes', sphere: sphere.health!, image: gradient([250, 196, 140], [232, 120, 92], [255, 236, 200]), via: 'share' });
+saved(4, { url: 'https://x.com/demo/status/1', title: 'Do things that don’t scale', summary: 'A reminder that early products grow by hand-recruiting users one at a time, not by waiting for scale.', kind: 'tweet', site: 'X', author: 'Paul Graham', tags: ['startups', 'growth'], collection: 'Side project ideas', sphere: sphere['side-projects']!, via: 'shortcut' });
+saved(3, { url: 'https://www.youtube.com/watch?v=demo', title: 'Tajweed for beginners — lesson 1', summary: 'The first lesson in a series on reciting the Quran with tajweed: makharij, the points where letters are pronounced.', points: ['Practise ten minutes after Fajr'], kind: 'video', site: 'YouTube', author: 'Quran Academy', tags: ['quran', 'tajweed', 'learning'], collection: 'Learning', sphere: sphere.faith!, image: gradient([120, 110, 200], [60, 70, 150], [220, 210, 255]), via: 'app' });
+saved(2, { url: 'https://example.com/shelf.png', title: 'Floating oak shelves for the living room', summary: 'A wall of thin oak shelves with plants and books — the look for the reading corner.', kind: 'image', site: 'Pinterest', tags: ['home', 'interiors'], collection: 'Home ideas', image: gradient([200, 220, 205], [150, 180, 160], [240, 255, 240]), via: 'share' });
+saved(1, { url: 'https://example.com/kyoto-autumn', title: 'Kyoto’s quiet temples in late autumn', summary: 'Five temples away from the crowds, best visited early on weekday mornings in late November.', points: ['Tofuku-ji before 8:30', 'Book the Okochi Sanso teahouse'], kind: 'article', site: 'Trail Notes', author: 'Mika Sato', tags: ['japan', 'kyoto', 'travel'], collection: 'Trips to plan', sphere: sphere.travels!, image: gradient([230, 150, 110], [170, 80, 90], [255, 220, 160]), via: 'shortcut' });
 
 // ── A few signals, as if Gmail had been watching ───────────────────────────
 const ago = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();

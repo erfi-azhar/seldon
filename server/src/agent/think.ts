@@ -42,6 +42,8 @@ export interface ThinkRequest<T> {
   task: string;
   /** The material to work on — wrap outside text with wrapUntrusted(). */
   input: string;
+  /** Pictures to look at (screenshots, photos), for models that can see. */
+  images?: { mediaType: string; data: string }[];
   schema: z.ZodType<T>;
   role?: keyof Brains;
   /** Use this connection instead of a brain role (tests, explicit choice). */
@@ -53,7 +55,7 @@ export async function think<T>(req: ThinkRequest<T>): Promise<T> {
   const cfg = req.config ?? req.store.getModelConfig(req.role ?? 'background');
   if (!cfg) throw new NoBrain();
   const provider = providerFor(cfg);
-  const turns: Turn[] = [{ role: 'user', text: `${req.task}\n\n${req.input}`, display: '' }];
+  const turns: Turn[] = [{ role: 'user', text: `${req.task}\n\n${req.input}`, display: '', images: req.images }];
 
   let lastProblem = '';
   for (let attempt = 0; attempt < 2; attempt++) {

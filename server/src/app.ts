@@ -10,6 +10,7 @@ import { ProviderError } from './agent/types.ts';
 import type { DB } from './db.ts';
 import { read, today } from './http.ts';
 import { installFeatures } from './features/index.ts';
+import { hasCaptureToken } from './features/capture.ts';
 import { Scheduler } from './jobs.ts';
 import { Invalid, localDate, NotFound, nowIso, Store } from './store.ts';
 import { CATALOG_BY_KEY } from '../../shared/catalog.ts';
@@ -216,7 +217,9 @@ export function createApp(opts: AppOptions): Hono {
         : !!origin && new URL(origin).host !== new URL(c.req.url).host;
       if (crossSite) return c.json({ error: 'Cross-site requests are not allowed.' }, 403);
     }
-    if (!c.req.path.startsWith('/api/auth/') && !signedIn(c)) {
+    // Shortcuts and other apps save links with the capture token instead of a session.
+    const tokenCapture = c.req.method === 'POST' && c.req.path === '/api/capture' && hasCaptureToken(store, c);
+    if (!c.req.path.startsWith('/api/auth/') && !tokenCapture && !signedIn(c)) {
       return c.json({ error: 'Sign in first.' }, 401);
     }
     await next();
@@ -361,7 +364,9 @@ export function createApp(opts: AppOptions): Hono {
 
   app.get('/api/notes', (c) => {
     const kind = z.enum(['note', 'link', 'journal']).safeParse(c.req.query('kind')).data;
-    return c.json(store.listNotes({ kind, sphereId: c.req.query('sphereId') || undefined, q: c.req.query('q') || undefined }));
+    return c.json(
+      store.listNotes({ kind, sphereId: c.req.query('sphereId') || undefined, q: c.req.query('q') || undefined, saved: c.req.query('saved') === '1', collection: c.req.query('collection') || undefined }),
+    );
   });
   app.post('/api/notes', async (c) => c.json(store.createNote(await read(c, S.noteCreate)), 201));
   app.get('/api/notes/:id', (c) => c.json(store.getNote(c.req.param('id'))));

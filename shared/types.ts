@@ -140,6 +140,27 @@ export interface Note {
   pinned: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Saved links and pictures: what Seldon made of them. */
+  capture: CaptureMeta | null;
+  /** "processing" while a saved link is being read. */
+  status: 'ready' | 'processing' | 'failed';
+}
+
+export type CaptureKind = 'tweet' | 'video' | 'article' | 'image' | 'pdf' | 'link' | 'text';
+
+export interface CaptureMeta {
+  kind: CaptureKind;
+  site: string;
+  author: string;
+  /** A locally stored picture or thumbnail, served from /api/files/:id. */
+  imageFileId: string | null;
+  summary: string;
+  keyPoints: string[];
+  tags: string[];
+  collection: string;
+  /** How it arrived: app, shortcut, share sheet, Seldon. */
+  via: string;
+  error?: string;
 }
 
 export interface Memory {

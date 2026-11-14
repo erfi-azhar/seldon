@@ -25,6 +25,8 @@ export type Turn =
       text: string;
       /** What the person typed. */
       display: string;
+      /** Pictures sent with the message (base64), for models that can see. */
+      images?: { mediaType: string; data: string }[];
     }
   | {
       role: 'assistant';

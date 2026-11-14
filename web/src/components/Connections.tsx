@@ -1,6 +1,6 @@
 // Connections to outside services, managed in Settings.
 
-import { Mail, RefreshCw } from 'lucide-react';
+import { KeyRound, Mail, RefreshCw, Share2 } from 'lucide-react';
 import { useState } from 'react';
 import type { IntegrationStatus } from '../../../shared/types.ts';
 import { useIntegration, useWrite, write } from '../api.ts';
@@ -113,6 +113,43 @@ export function GmailConnection() {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+export function CaptureSetup() {
+  const [token, setToken] = useState<string | null>(null);
+  const make = useWrite(() => write.post<{ token: string }>('/capture/token'));
+  const origin = typeof location === 'undefined' ? '' : location.origin;
+  return (
+    <div className="conn-card">
+      <div className="conn-head">
+        <span className="brain-icon">
+          <Share2 size={18} />
+        </span>
+        <div className="grow">
+          <b>Capture from anywhere</b>
+          <span className="hint" style={{ display: 'block' }}>
+            Send a link or picture from any app; it lands in the Library, read and filed.
+          </span>
+        </div>
+      </div>
+      <ol className="steps-list">
+        <li>
+          <b>Android:</b> install Terminus from your browser's menu (<i>Install app</i>). It then appears in the share sheet of every app.
+        </li>
+        <li>
+          <b>iPhone and Mac:</b> make a Shortcut that shows in the share sheet and accepts URLs, text and images. Add <i>Get Contents of URL</i>: method <code>POST</code>, URL <code>{origin}/api/capture</code>, header <code>Authorization</code> = <code>Bearer</code> + your token, request body <i>Form</i> with a field <code>text</code> set to the Shortcut Input (or a <i>File</i> field <code>file</code> for pictures).
+        </li>
+        <li>Your phone must be able to reach this Terminus (the same Wi-Fi, or a private network such as Tailscale).</li>
+      </ol>
+      <div className="row-wrap">
+        <button type="button" className="btn" onClick={() => make.mutate(undefined, { onSuccess: (r) => setToken(r.token) })}>
+          <KeyRound size={14} /> {token ? 'Make a new token' : 'Create a capture token'}
+        </button>
+        {token && <code className="token">{token}</code>}
+      </div>
+      {token && <p className="hint">Copy it now — it is shown once. Making a new one turns the old one off. It can only save things, nothing else.</p>}
     </div>
   );
 }

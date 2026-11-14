@@ -896,10 +896,12 @@ export class Store {
       pinned: !!r.pinned,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      capture: r.capture ? (JSON.parse(r.capture) as Note['capture']) : null,
+      status: r.status ?? 'ready',
     };
   }
 
-  listNotes(filter: { kind?: NoteKind; sphereId?: string; q?: string; limit?: number } = {}): Note[] {
+  listNotes(filter: { kind?: NoteKind; sphereId?: string; q?: string; limit?: number; saved?: boolean; collection?: string } = {}): Note[] {
     const where: string[] = [];
     const params: SqlValue[] = [];
     if (filter.kind) {
@@ -909,6 +911,11 @@ export class Store {
     if (filter.sphereId) {
       where.push('sphere_id = ?');
       params.push(filter.sphereId);
+    }
+    if (filter.saved) where.push('capture IS NOT NULL');
+    if (filter.collection) {
+      where.push("json_extract(capture, '$.collection') = ?");
+      params.push(filter.collection);
     }
     if (filter.q?.trim()) {
       where.push("(title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\')");

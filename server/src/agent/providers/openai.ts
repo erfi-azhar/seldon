@@ -8,9 +8,11 @@ import { ProviderError, type Provider, type ProviderRequest, type ProviderRespon
 
 export const DEFAULT_OPENAI_BASE = 'http://localhost:11434/v1';
 
+type WirePart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+
 interface WireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content: string | WirePart[] | null;
   tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
   tool_call_id?: string;
 }
@@ -19,7 +21,12 @@ function toMessages(system: string, turns: Turn[]): WireMessage[] {
   const out: WireMessage[] = [{ role: 'system', content: system }];
   for (const turn of turns) {
     if (turn.role === 'user') {
-      out.push({ role: 'user', content: turn.text });
+      out.push({
+        role: 'user',
+        content: turn.images?.length
+          ? [...turn.images.map((img): WirePart => ({ type: 'image_url', image_url: { url: `data:${img.mediaType};base64,${img.data}` } })), { type: 'text', text: turn.text }]
+          : turn.text,
+      });
     } else if (turn.role === 'assistant') {
       const msg: WireMessage = { role: 'assistant', content: turn.text || null };
       if (turn.toolCalls.length > 0) {

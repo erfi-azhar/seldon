@@ -361,6 +361,32 @@ function NoteForm({ note, sphereId, onClose }: { note: Note | null; sphereId?: s
         </>
       }
     >
+      {note?.capture && (
+        <>
+          {note.capture.imageFileId && (
+            <div className="capture-detail-image">
+              <img src={`/api/files/${note.capture.imageFileId}`} alt="" />
+            </div>
+          )}
+          <div className="row-wrap" style={{ gap: 6 }}>
+            <span className="chip">
+              {note.capture.site || note.capture.kind}
+              {note.capture.author ? ` · ${note.capture.author}` : ''}
+            </span>
+            {note.capture.collection && <span className="chip chip-outline">{note.capture.collection}</span>}
+            {note.capture.tags.map((t) => (
+              <span key={t} className="tag-chip">
+                #{t}
+              </span>
+            ))}
+            {note.url && /^https?:\/\//i.test(note.url) && (
+              <a className="btn btn-sm" href={note.url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink size={13} /> Open original
+              </a>
+            )}
+          </div>
+        </>
+      )}
       {journal ? (
         <h3 className="title-input">
           {weekdayLong(note!.date!)}, {monthDay(note!.date!)}

@@ -8,6 +8,7 @@ import { features, type FeatureContext } from './registry.ts';
 import './signals.ts';
 import './gmail.ts';
 import './faith.ts';
+import './capture.ts';
 
 /** Mount every feature's routes and register its jobs. */
 export function installFeatures(app: Hono, ctx: FeatureContext): void {

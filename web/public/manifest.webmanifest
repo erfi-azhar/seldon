@@ -1,7 +1,7 @@
 {
   "name": "Terminus",
   "short_name": "Terminus",
-  "description": "Your life, in spheres — with an agent that lives there.",
+  "description": "Your life, in spheres \u2014 with an agent that lives there.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,12 +9,52 @@
   "background_color": "#eef0f4",
   "theme_color": "#eef0f4",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Today", "url": "/" },
-    { "name": "Goals", "url": "/goals" }
-  ]
+    {
+      "name": "Today",
+      "url": "/"
+    },
+    {
+      "name": "Goals",
+      "url": "/goals"
+    }
+  ],
+  "share_target": {
+    "action": "/api/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "file",
+          "accept": [
+            "image/*",
+            "application/pdf"
+          ]
+        }
+      ]
+    }
+  }
 }
