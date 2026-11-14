@@ -12,6 +12,7 @@ import { AgentOrb, Orb } from './components/Orb.tsx';
 import { Loading } from './components/ui.tsx';
 import { cx } from './lib.ts';
 import { useSunClock } from './sun.ts';
+import { useNewVersionReload } from './update.ts';
 import { AppContext, type AppState, type Sheet, type Toast } from './state.tsx';
 import { Goals } from './views/Goals.tsx';
 import { Library } from './views/Library.tsx';
@@ -76,6 +77,7 @@ function Shell({ settings }: { settings: SettingsData }) {
   const [toast, setToast] = useState<Toast | null>(null);
   const agentName = settings.profile.agentName;
   useSunClock();
+  useNewVersionReload(location);
 
   // What the agent is told the person is looking at, read at send time.
   const where = useRef('Today');
