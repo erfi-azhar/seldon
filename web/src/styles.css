@@ -1406,9 +1406,8 @@ p.lately {
   margin-bottom: 10px;
 }
 .sphere-hero .vision {
-  font-family: var(--serif);
-  font-size: 20px;
-  line-height: 1.4;
+  font-size: 16px;
+  line-height: 1.55;
   color: var(--ink-2);
 }
 .hero-stats {
