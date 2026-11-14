@@ -273,3 +273,16 @@ test('travel API: trips, bookings, a plan you edit, settings; imports need a bra
   assert.equal((await call('POST', `/travel/trips/${id}/draft`)).status, 400);
   assert.equal((await call('DELETE', `/travel/trips/${id}`)).json.trips.length, 0);
 });
+
+test('flights carry each airport’s city and coordinates, for the flight cards and the route globe', () => {
+  const store = travelStore();
+  const trip = createTrip(store, { title: 'Shenzhen', startDate: '2026-11-24', endDate: '2026-11-29' });
+  const { segment } = addSegment(store, trip.id, { kind: 'flight', carrier: 'SQ', number: '856', fromCode: 'SIN', toCode: 'SZX', startLocal: '2026-11-24T18:45', endLocal: '2026-11-24T23:00' });
+  assert.equal(segment.fromCity, 'Singapore');
+  assert.equal(segment.toCity, 'Shenzhen');
+  assert.deepEqual(segment.fromGeo, [1.36, 103.99]);
+  assert.deepEqual(segment.toGeo, [22.64, 113.81]);
+  const unknown = addSegment(store, trip.id, { kind: 'flight', carrier: 'XX', number: '1', fromCode: 'ZZZ', toCode: 'SZX', startLocal: '2026-11-25T08:00' }).segment;
+  assert.equal(unknown.fromGeo, null, 'an airport not in the table has no coordinates');
+  assert.equal(unknown.fromCity, '');
+});

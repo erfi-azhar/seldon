@@ -638,6 +638,9 @@ export interface Segment {
   /** Flights: the cities at each end, when the airports are known. */
   fromCity?: string;
   toCity?: string;
+  /** Flights: each airport's latitude and longitude, when known, for drawing the route. */
+  fromGeo?: [number, number] | null;
+  toGeo?: [number, number] | null;
   /** Flights: lounges your fare and status get you into. */
   lounges: LoungeAccess[];
   /** Stays: what your hotel status gets you there. */

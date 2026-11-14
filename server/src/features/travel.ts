@@ -64,6 +64,11 @@ function loyaltyFromRow(r: Row): LoyaltyAccount {
 
 export const listLoyalty = (store: Store): LoyaltyAccount[] => (store.db.prepare('SELECT * FROM loyalty_accounts ORDER BY kind, program').all() as Row[]).map(loyaltyFromRow);
 
+const geo = (code: string): [number, number] | null => {
+  const a = airport(code ?? '');
+  return a ? [a.lat, a.lon] : null;
+};
+
 function segmentFromRow(r: Row, accounts: LoyaltyAccount[]): Segment {
   const s: Segment = {
     id: r.id,
@@ -90,6 +95,8 @@ function segmentFromRow(r: Row, accounts: LoyaltyAccount[]): Segment {
     source: r.source,
     fromCity: airport(r.from_code)?.city ?? '',
     toCity: airport(r.to_code)?.city ?? '',
+    fromGeo: geo(r.from_code),
+    toGeo: geo(r.to_code),
     lounges: [],
     perks: [],
   };

@@ -12,6 +12,8 @@ import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, to
 import { useApp } from '../state.tsx';
 import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
+import { AirlineTail } from './Tails.tsx';
+import { distanceKm, RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, Seg, Spinner } from './ui.tsx';
 
 // ── Small helpers ───────────────────────────────────────────────────────────
@@ -563,7 +565,7 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
     <button type="button" className={cx('flight-card', until < 0 && 'is-past')} onClick={onEdit} aria-label={`${airline} ${s.carrier} ${s.number}, ${s.fromCode} to ${s.toCode}, ${weekday(day)} at ${time(s.startLocal)}. Edit`}>
       <span className="fc-head">
         <span className="fc-logo" aria-hidden>
-          {code || <Plane size={15} />}
+          <AirlineTail code={code} size={30} />
         </span>
         <span className="fc-airline">
           <b>{airline}</b>
@@ -950,6 +952,11 @@ function TripCountdown({ trip }: { trip: Trip }) {
   const out = flights[0];
   const back = flights.length > 1 ? flights[flights.length - 1] : undefined;
   const openTodos = trip.todos.filter((x) => !x.done).length;
+  const legs: GlobeLeg[] = flights
+    .filter((s) => s.fromGeo && s.toGeo)
+    .map((s) => ({ from: { code: s.fromCode, lat: s.fromGeo![0], lon: s.fromGeo![1] }, to: { code: s.toCode, lat: s.toGeo![0], lon: s.toGeo![1] } }));
+  const km = legs.reduce((n, l) => n + distanceKm(l), 0);
+  const chain = legs.length ? [legs[0]!.from.code, ...legs.map((l) => l.to.code)].join(' → ') : '';
   const [showTodos, toggleTodos] = useTodosShown();
   const leg = (s: Segment) => `${`${s.carrier} ${s.number}`.trim()} · ${s.startLocal.slice(11, 16)} from ${s.fromCode || s.fromName}`;
 
@@ -970,6 +977,17 @@ function TripCountdown({ trip }: { trip: Trip }) {
           <PlaneTakeoff size={13} aria-hidden /> {trip.purpose === 'work' ? 'Work' : 'Personal'}
         </span>
       </div>
+      {legs.length > 0 && (
+        <div className="trip-hero-globe">
+          <RouteGlobe legs={legs} />
+          <div className="rg-caption">
+            <span>
+              {chain} · {km.toLocaleString()} km
+            </span>
+            <span className="rg-caption-end">{legs.length === 1 ? 'Nonstop' : `${legs.length} flights`}</span>
+          </div>
+        </div>
+      )}
       <dl className="trip-hero-legs">
         <div>
           <dt>{out ? 'Flies out' : 'Starts'}</dt>
