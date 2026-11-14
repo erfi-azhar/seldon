@@ -1,0 +1,164 @@
+<title>Terminus Welcome Demo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Instrument+Serif&display=swap">
+<style>
+  /* Layout: the stage fills the screen; the mock screens sit centred over it; a small panel floats in a corner. */
+  :root {
+    --bg: #ececee;
+    --ink: #16181d;
+    --ink-2: #4f535d;
+    --line: rgb(22 26 45 / 0.14);
+    --field: rgb(255 255 255 / 0.72);
+    --panel: rgb(255 255 255 / 0.78);
+    --button: #16181d;
+    --button-ink: #ffffff;
+    --focus: #6b6bd8;
+    --serif: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+    --sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+    --vault-sky: radial-gradient(120% 90% at 50% 30%, #fbfbfc 0%, #ececee 52%, #d9dadd 100%);
+    --vault-ink: #23252b;
+    --vault-glow: rgb(255 255 255 / 0.97);
+    --vault-glow-edge: rgb(255 255 255 / 0);
+    --vault-holo-s: 78;
+    --vault-holo-l: 52;
+    --vault-blend: normal;
+    --vault-flash:
+      conic-gradient(from 210deg at 50% 46%, rgb(160 220 255 / 0.28), rgb(255 170 230 / 0.24), rgb(255 236 170 / 0.24), rgb(170 255 220 / 0.24), rgb(160 220 255 / 0.28)),
+      radial-gradient(circle at 50% 46%, rgb(255 255 255) 0%, rgb(250 250 252 / 0.96) 45%, rgb(240 241 245 / 0.92) 100%);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b0c0f; --ink: #f1f2f6; --ink-2: #a8acb8; --line: rgb(255 255 255 / 0.16); --field: rgb(255 255 255 / 0.06);
+      --panel: rgb(24 25 30 / 0.78); --button: #f1f2f6; --button-ink: #0b0c0f; --focus: #a8a8ff;
+      --vault-sky: radial-gradient(120% 90% at 50% 30%, #1b1c20 0%, #0d0e11 55%, #050506 100%);
+      --vault-ink: #e8eaef; --vault-glow: rgb(255 255 255 / 0.92); --vault-glow-edge: rgb(255 255 255 / 0);
+      --vault-holo-s: 92; --vault-holo-l: 74; --vault-blend: lighter;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0c0f; --ink: #f1f2f6; --ink-2: #a8acb8; --line: rgb(255 255 255 / 0.16); --field: rgb(255 255 255 / 0.06);
+    --panel: rgb(24 25 30 / 0.78); --button: #f1f2f6; --button-ink: #0b0c0f; --focus: #a8a8ff;
+    --vault-sky: radial-gradient(120% 90% at 50% 30%, #1b1c20 0%, #0d0e11 55%, #050506 100%);
+    --vault-ink: #e8eaef; --vault-glow: rgb(255 255 255 / 0.92); --vault-glow-edge: rgb(255 255 255 / 0);
+    --vault-holo-s: 92; --vault-holo-l: 74; --vault-blend: lighter;
+    color-scheme: dark;
+  }
+
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  body::after { content: ''; position: fixed; inset: 0; z-index: 0; background: var(--vault-sky); pointer-events: none; }
+
+  .vault-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; z-index: 1; pointer-events: none; transition: opacity 0.6s ease; }
+  .vault-canvas.is-gone { opacity: 0; }
+  .vault-flash { position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: 0; background: var(--vault-flash); }
+
+  main { position: relative; z-index: 2; min-height: 100%; display: grid; justify-items: center; padding-block: 24px 120px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .screen { width: min(100%, 560px); display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
+  .anchor { width: 100%; flex: none; }
+  .signin .anchor { height: min(54vh, 520px); }
+  .names .anchor { height: min(44vh, 420px); }
+  .spheres .anchor { height: min(42vh, 380px); }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(38px, 7vw, 54px); line-height: 1.04; margin: 0; letter-spacing: -0.015em; text-wrap: balance; text-shadow: 0 1px 18px var(--bg); }
+  .lede { margin: 0; color: var(--ink-2); max-width: 46ch; text-wrap: pretty; text-shadow: 0 1px 12px var(--bg); }
+  form { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .fields { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: left; }
+  .field { display: grid; gap: 6px; width: 100%; }
+  .field label { font-size: 12.5px; color: var(--ink-2); }
+  .signin .field label { text-align: center; }
+  input { font: inherit; width: 100%; box-sizing: border-box; padding: 11px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--field); color: var(--ink); backdrop-filter: blur(10px); }
+  .signin input { text-align: center; max-width: 380px; justify-self: center; }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .btn { font: inherit; font-weight: 500; font-size: 14.5px; border: 0; border-radius: 999px; padding: 10px 20px; background: var(--button); color: var(--button-ink); cursor: pointer; }
+  .btn-ghost { background: transparent; color: var(--ink-2); }
+  .hint { font-size: 12.5px; color: var(--ink-2); min-height: 1.2em; margin: 0; }
+  .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .steps { display: flex; gap: 6px; justify-content: center; }
+  .steps i { width: 26px; height: 3px; border-radius: 3px; background: var(--line); }
+  .steps i.on { background: var(--ink); }
+  #signin-form.is-opening > * { opacity: 0; transform: translateY(8px); transition: opacity 0.5s ease, transform 0.5s ease; }
+
+  .panel { position: fixed; z-index: 70; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 10px; justify-items: end; }
+  .panel-body { display: none; gap: 12px; padding: 14px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(18px) saturate(1.4); box-shadow: 0 18px 40px -20px rgb(0 0 0 / 0.5); width: min(300px, calc(100vw - 32px)); box-sizing: border-box; }
+  .panel[data-open="true"] .panel-body { display: grid; }
+  .panel h2 { margin: 0; font-size: 11.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--button); color: var(--button-ink); border-color: transparent; }
+  .panel-toggle { font: inherit; font-size: 13px; font-weight: 500; padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); backdrop-filter: blur(18px); cursor: pointer; }
+  .panel p { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+
+  @media (max-width: 560px) {
+    .fields { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vault-canvas, #signin-form.is-opening > * { transition: none; }
+  }
+</style>
+
+<main>
+  <section class="screen signin" data-step="signin">
+    <form id="signin-form" autocomplete="off">
+      <div class="anchor" aria-hidden="true"></div>
+      <h1>Terminus</h1>
+      <div class="field">
+        <label for="pass">Passphrase</label>
+        <input id="pass" type="password" placeholder="Type anything">
+      </div>
+      <p class="hint" id="pass-hint"></p>
+      <button class="btn" type="submit">Unlock</button>
+    </form>
+  </section>
+
+  <section class="screen names" data-step="names" hidden>
+    <div class="steps" aria-hidden="true"><i class="on"></i><i></i><i></i></div>
+    <form id="names-form" autocomplete="off">
+      <div class="anchor" aria-hidden="true"></div>
+      <h1>A place for your whole life, and someone to help you tend it.</h1>
+      <p class="lede">An agent lives here with you: it reads what you track, captures what you tell it, and helps you see what needs attention.</p>
+      <div class="fields">
+        <div class="field"><label for="you">What should it call you?</label><input id="you" placeholder="Your first name" maxlength="40"></div>
+        <div class="field"><label for="agent">And what will you call it?</label><input id="agent" value="Seldon" maxlength="40"></div>
+      </div>
+      <button class="btn" type="submit">Continue →</button>
+    </form>
+  </section>
+
+  <section class="screen spheres" data-step="spheres" hidden>
+    <div class="steps" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></div>
+    <div class="anchor" aria-hidden="true"></div>
+    <h1 id="greet">Seldon is here.</h1>
+    <p class="lede">In Terminus this is where you choose your spheres and connect a brain. The rest of the setup is left out of this demo.</p>
+    <div class="row"><button class="btn btn-ghost" id="back" type="button">← Back to names</button></div>
+  </section>
+</main>
+
+<div class="panel" id="panel" data-open="true">
+  <div class="panel-body">
+    <h2>Jump to</h2>
+    <div class="chips">
+      <button class="chip" type="button" data-go="signin">Sign-in</button>
+      <button class="chip" type="button" data-go="unlock">Unlock</button>
+      <button class="chip" type="button" data-go="names">Names</button>
+      <button class="chip" type="button" data-go="spheres">Seldon</button>
+    </div>
+    <h2>Theme</h2>
+    <div class="chips">
+      <button class="chip" type="button" data-theme-pick="system">Device</button>
+      <button class="chip" type="button" data-theme-pick="dark">Dusk</button>
+      <button class="chip" type="button" data-theme-pick="light">Daylight</button>
+    </div>
+    <div class="row" style="justify-content: flex-start"><button class="chip" type="button" id="replay">↺ Replay from the start</button></div>
+    <p>Type anything as the passphrase. Nothing you enter leaves this page.</p>
+  </div>
+  <button class="panel-toggle" id="panel-toggle" type="button" aria-expanded="true" aria-controls="panel">Controls</button>
+</div>
+
+<script>
+  // On a phone the controls start folded away.
+  if (innerWidth < 640) { document.getElementById('panel').dataset.open = 'false'; document.getElementById('panel-toggle').setAttribute('aria-expanded', 'false'); }
+</script>
+<script>/*BUNDLE*/</script>
