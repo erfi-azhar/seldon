@@ -13,7 +13,7 @@ import { useApp } from '../state.tsx';
 import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
-import { distanceKm, RouteGlobe, type GlobeLeg } from './Globe.tsx';
+import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, Seg, Spinner } from './ui.tsx';
 
 // ── Small helpers ───────────────────────────────────────────────────────────
@@ -954,9 +954,11 @@ function TripCountdown({ trip }: { trip: Trip }) {
   const openTodos = trip.todos.filter((x) => !x.done).length;
   const legs: GlobeLeg[] = flights
     .filter((s) => s.fromGeo && s.toGeo)
-    .map((s) => ({ from: { code: s.fromCode, lat: s.fromGeo![0], lon: s.fromGeo![1] }, to: { code: s.toCode, lat: s.toGeo![0], lon: s.toGeo![1] } }));
-  const km = legs.reduce((n, l) => n + distanceKm(l), 0);
-  const chain = legs.length ? [legs[0]!.from.code, ...legs.map((l) => l.to.code)].join(' → ') : '';
+    .map((s) => ({
+      from: { code: s.fromCode, lat: s.fromGeo![0], lon: s.fromGeo![1] },
+      to: { code: s.toCode, lat: s.toGeo![0], lon: s.toGeo![1] },
+      minutes: Math.max(0, Math.round((Date.parse(s.endUtc) - Date.parse(s.startUtc)) / 60_000)) || undefined,
+    }));
   const [showTodos, toggleTodos] = useTodosShown();
   const leg = (s: Segment) => `${`${s.carrier} ${s.number}`.trim()} · ${s.startLocal.slice(11, 16)} from ${s.fromCode || s.fromName}`;
 
@@ -980,12 +982,6 @@ function TripCountdown({ trip }: { trip: Trip }) {
       {legs.length > 0 && (
         <div className="trip-hero-globe">
           <RouteGlobe legs={legs} />
-          <div className="rg-caption">
-            <span>
-              {chain} · {km.toLocaleString()} km
-            </span>
-            <span className="rg-caption-end">{legs.length === 1 ? 'Nonstop' : `${legs.length} flights`}</span>
-          </div>
         </div>
       )}
       <dl className="trip-hero-legs">

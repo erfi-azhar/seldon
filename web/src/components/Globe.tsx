@@ -1,151 +1,148 @@
-// A dotted globe with a trip's flights drawn on it as great-circle arcs, a plane flying each
-// leg in turn on a loop. The globe turns so the first flight runs left to right across the top
-// of the dome, and zooms so a short hop fills the card as well as a long haul does. Land comes
-// from a 1° grid shipped with the app (land.ts); nothing is fetched. With reduced motion the
-// plane rests part-way along the first flight.
+// A dotted globe for a trip's flights, after the flight-search pattern: the globe spins to the
+// departure airport, then turns to frame the whole route as the arrival appears, the route draws
+// itself, and a plane flies it, climbing a little (it grows) and settling as it lands. Then the
+// next flight, on a loop. North stays up; the Earth spins rather than tilts.
+//
+// Drawn on a canvas so the globe can turn smoothly: the sphere and its dots are redrawn only
+// while it turns and blitted otherwise; the route, markers, labels and plane are drawn on top
+// each frame. It pauses when off screen or in a background tab. Land comes from a 1° grid shipped
+// with the app (land.ts); nothing is fetched. With reduced motion it shows the first flight still.
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LAND } from '../land.ts';
 
 export interface GlobeLeg {
   from: { code: string; lat: number; lon: number };
   to: { code: string; lat: number; lon: number };
+  /** Scheduled time in the air, for the caption. */
+  minutes?: number;
 }
 
 type V3 = [number, number, number];
 const RAD = Math.PI / 180;
 const vec = (lat: number, lon: number): V3 => [Math.cos(lat * RAD) * Math.cos(lon * RAD), Math.cos(lat * RAD) * Math.sin(lon * RAD), Math.sin(lat * RAD)];
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const add = (a: V3, b: V3, k = 1): V3 => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
-const scale = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
-const norm = (a: V3): V3 => scale(a, 1 / (Math.hypot(a[0], a[1], a[2]) || 1));
+const norm = (a: V3): V3 => {
+  const l = Math.hypot(a[0], a[1], a[2]) || 1;
+  return [a[0] / l, a[1] / l, a[2] / l];
+};
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const angle = (a: V3, b: V3) => Math.acos(Math.max(-1, Math.min(1, dot(a, b))));
+const latLon = (p: V3): [number, number] => [Math.asin(Math.max(-1, Math.min(1, p[2]))) / RAD, Math.atan2(p[1], p[0]) / RAD];
 
-/** Points along the great circle from a to b. */
-function arc(a: V3, b: V3, n = 64): V3[] {
+/** The point a fraction t of the way along the great circle from a to b. */
+function slerp(a: V3, b: V3, t: number): V3 {
   const w = angle(a, b);
-  if (w < 1e-6) return [a, b];
+  if (w < 1e-6) return a;
   const s = Math.sin(w);
-  return Array.from({ length: n + 1 }, (_, i) => {
-    const t = i / n;
-    return add(scale(a, Math.sin((1 - t) * w) / s), b, Math.sin(t * w) / s);
-  });
+  const k1 = Math.sin((1 - t) * w) / s;
+  const k2 = Math.sin(t * w) / s;
+  return [a[0] * k1 + b[0] * k2, a[1] * k1 + b[1] * k2, a[2] * k1 + b[2] * k2];
 }
 
 /** Great-circle distance in kilometres. */
 export const distanceKm = (l: GlobeLeg) => Math.round(angle(vec(l.from.lat, l.from.lon), vec(l.to.lat, l.to.lon)) * 6371);
 
-const landBits = (() => {
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+const easeOut = (t: number) => 1 - (1 - t) ** 3;
+const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
+
+// ── The dot grid, as unit vectors: land cells, and the sea between them ─────────
+
+const { LAND_POINTS, SEA_POINTS } = (() => {
   const raw = atob(LAND.bits);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
+  const bits = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bits[i] = raw.charCodeAt(i);
+  const land: number[] = [];
+  const sea: number[] = [];
+  for (let r = 0; r < LAND.rows; r++)
+    for (let c = 0; c < LAND.cols; c++) {
+      const i = r * LAND.cols + c;
+      const p = vec(LAND.lat0 - r - 0.5, -180 + c + 0.5);
+      // The sea a little sparser than the land, so the coastlines carry the picture.
+      if ((bits[i >> 3]! >> (i & 7)) & 1) land.push(p[0], p[1], p[2]);
+      else if ((r + c) % 2 === 0) sea.push(p[0], p[1], p[2]);
+    }
+  return { LAND_POINTS: new Float32Array(land), SEA_POINTS: new Float32Array(sea) };
 })();
-const isLand = (r: number, c: number) => {
-  const i = r * LAND.cols + c;
-  return (landBits[i >> 3]! >> (i & 7)) & 1;
-};
+
+// ── The view: where the globe faces and how big it is ───────────────────────────
+
+interface View {
+  centre: V3;
+  R: number;
+}
+
+/** North-up axes for a view centred on c. */
+function axes(c: V3): { e: V3; n: V3 } {
+  let e = cross([0, 0, 1], c);
+  if (Math.hypot(...e) < 1e-6) e = [0, 1, 0];
+  e = norm(e);
+  return { e, n: cross(c, e) };
+}
+
+const H = 210;
+const TOP = 14;
+
+/** Face a point, turning the globe so it sits at a given height on the card (north stays up). */
+function facing(p: V3, R: number, y = H * 0.48): View {
+  const cy = TOP + R;
+  const lift = Math.asin(Math.max(-0.95, Math.min(0.95, (cy - y) / R))) / RAD;
+  const [lat, lon] = latLon(p);
+  return { centre: vec(Math.max(-80, Math.min(80, lat - lift)), lon), R };
+}
+
+/** Where a point lands on the card for a view of width w. */
+function onCard(p: V3, v: View, w: number) {
+  const { e, n } = axes(v.centre);
+  return { x: w / 2 + v.R * dot(p, e), y: TOP + v.R - v.R * dot(p, n), z: dot(p, v.centre) };
+}
+
+interface Theme {
+  seaTop: string;
+  seaBottom: string;
+  land: string;
+  airport: string;
+  halo: string;
+  labelBg: string;
+  labelFg: string;
+  route: string;
+  font: string;
+}
+
+function readTheme(el: Element): Theme {
+  const s = getComputedStyle(el);
+  const v = (k: string, d: string) => s.getPropertyValue(k).trim() || d;
+  return {
+    seaTop: v('--rg-sea-top', '#cfe1f6'),
+    seaBottom: v('--rg-sea-bottom', 'rgba(232, 241, 251, 0)'),
+    land: v('--rg-land', '#3c6eae'),
+    airport: v('--rg-airport', '#2f6fd0'),
+    halo: v('--rg-halo', 'rgba(47, 111, 208, 0.16)'),
+    labelBg: v('--rg-label-bg', '#ffffff'),
+    labelFg: v('--rg-label-fg', '#1b2230'),
+    route: v('--rg-route', '#ffffff'),
+    font: getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif',
+  };
+}
 
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-const H = 190;
 
-/**
- * Legs grouped into views: consecutive legs share a view while all their airports sit within
- * 55° of the view's centre. Singapore and São Paulo are nearly opposite, so such a trip is shown
- * a part at a time, the globe fading from one view to the next as the plane goes.
- */
-function views(legs: GlobeLeg[]): GlobeLeg[][] {
-  const out: GlobeLeg[][] = [];
-  for (const leg of legs) {
-    const cur = out[out.length - 1];
-    const trial = cur ? [...cur, leg] : [leg];
-    const ends = trial.flatMap((l) => [vec(l.from.lat, l.from.lon), vec(l.to.lat, l.to.lon)]);
-    const centre = norm(ends.reduce((s, p) => add(s, p), [0, 0, 0] as V3));
-    if (cur && ends.every((p) => angle(p, centre) <= 55 * RAD)) cur.push(leg);
-    else out.push([leg]);
-  }
-  return out;
-}
+// ── Timeline for one flight, in milliseconds ───────────────────────────────────
 
-/** One view of the globe: its dots, its legs' arcs and its airports, in card pixels. */
-function scene(legs: GlobeLeg[], w: number) {
-  const ends = legs.flatMap((l) => [vec(l.from.lat, l.from.lon), vec(l.to.lat, l.to.lon)]);
-  const centre = norm(ends.reduce((s, p) => add(s, p), [0, 0, 0] as V3));
-  // North stays up: the map turns by at most 35° towards the route, so coastlines read the right way round.
-  const east = norm(cross([0, 0, 1], centre));
-  const north = cross(centre, east);
-  const dir = add(vec(legs[0]!.to.lat, legs[0]!.to.lon), vec(legs[0]!.from.lat, legs[0]!.from.lon), -1);
-  let tilt = Math.atan2(dot(dir, north), dot(dir, east));
-  if (tilt > Math.PI / 2) tilt -= Math.PI; // a westbound flight flies right to left
-  if (tilt < -Math.PI / 2) tilt += Math.PI;
-  tilt = Math.max(-35 * RAD, Math.min(35 * RAD, tilt));
-  const t = add(scale(east, Math.cos(tilt)), north, Math.sin(tilt));
-  const n = cross(centre, t);
-  // The view for a globe of radius R: the dome's top just inside the card, the route's centre a
-  // little above mid-height.
-  const cx = w / 2;
-  const frame = (R: number) => {
-    const cy = 16 + R;
-    const theta = Math.asin(Math.min(0.97, (cy - H * 0.52) / R));
-    const up = add(scale(n, Math.cos(theta)), centre, Math.sin(theta));
-    const view = add(scale(centre, Math.cos(theta)), n, -Math.sin(theta));
-    return { cy, up, view };
-  };
-  // Zoom in as far as every airport, as drawn, still fits with room for its label.
-  const fits = (R: number) => {
-    const f = frame(R);
-    return ends.every((p) => {
-      const x = cx + R * dot(p, t);
-      const y = f.cy - R * dot(p, f.up);
-      return dot(p, f.view) > 0.05 && x >= 44 && x <= w - 44 && y >= 30 && y <= H - 34;
-    });
-  };
-  let lo = H * 1.2;
-  let hi = 1600;
-  if (fits(hi)) lo = hi;
-  else for (let i = 0; i < 24; i++) (fits((lo + hi) / 2) ? (lo = (lo + hi) / 2) : (hi = (lo + hi) / 2));
-  const R = lo;
-  const { cy, up, view } = frame(R);
-  const project = (p: V3) => ({ x: cx + R * dot(p, t), y: cy - R * dot(p, up), z: dot(p, view) });
-
-  // Dots: each land cell, split into k×k dots when zoomed in so the land stays dense.
-  const cellPx = R * RAD;
-  const k = Math.max(1, Math.min(4, Math.round(cellPx / 6.5)));
-  const dots: { x: number; y: number; o: number }[] = [];
-  for (let r = 0; r < LAND.rows; r++) {
-    const latTop = LAND.lat0 - r;
-    for (let c = 0; c < LAND.cols; c++) {
-      if (!isLand(r, c)) continue;
-      const mid = project(vec(latTop - 0.5, -180 + c + 0.5));
-      if (mid.z <= 0 || mid.x < -cellPx || mid.x > w + cellPx || mid.y < -cellPx || mid.y > H + cellPx) continue;
-      for (let i = 0; i < k; i++)
-        for (let j = 0; j < k; j++) {
-          const p = k === 1 ? mid : project(vec(latTop - (i + 0.5) / k, -180 + c + (j + 0.5) / k));
-          if (p.z <= 0.02 || p.x < 0 || p.x > w || p.y < 0 || p.y > H) continue;
-          // Fade towards the limb and towards the bottom of the card.
-          dots.push({ x: p.x, y: p.y, o: Math.min(1, p.z * 2.2) * Math.max(0, 1 - Math.max(0, p.y - H * 0.66) / (H * 0.34)) });
-        }
-    }
-  }
-  const paths = legs.map((l) =>
-    arc(vec(l.from.lat, l.from.lon), vec(l.to.lat, l.to.lon))
-      .map(project)
-      .map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
-      .join(' '),
-  );
-  const airports = new Map<string, { code: string; x: number; y: number }>();
-  for (const l of legs)
-    for (const e of [l.from, l.to]) {
-      const p = project(vec(e.lat, e.lon));
-      airports.set(e.code, { code: e.code, x: p.x, y: p.y });
-    }
-  return { R, cx, cy, dots, paths, airports: [...airports.values()], origin: legs[0]!.from.code };
-}
+const T_FOCUS = 1100; // spin to the departure airport
+const T_FRAME = 1200; // turn to frame the route; the arrival appears
+const T_DRAW = 800; // the route draws itself
+const T_HOLD = 900; // the plane rests at the arrival
+const T_FADE = 500; // the route and plane fade before the next flight
+const flyTime = (km: number) => Math.min(4200, 2400 + km / 6);
 
 export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
   const box = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
   const [w, setW] = useState(520);
+  const [legIndex, setLegIndex] = useState(0);
+
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -154,139 +151,332 @@ export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
     return () => ro.disconnect();
   }, []);
 
-  const groups = useMemo(() => views(legs), [legs]);
-  // Which view each leg belongs to, and its index within that view.
-  const where = useMemo(() => groups.flatMap((g, gi) => g.map((_, li) => ({ view: gi, index: li }))), [groups]);
-  const [active, setActive] = useState(0);
-  const shown = Math.min(active, groups.length - 1);
-  const current = useMemo(() => scene(groups[shown]!, w), [groups, shown, w]);
+  // Each flight's two views: facing its departure, then framing the route.
+  const plan = useMemo(() => {
+    const R0 = Math.min(w * 0.31, (H - TOP) / 1.25);
+    return legs.map((l) => {
+      const a = vec(l.from.lat, l.from.lon);
+      const b = vec(l.to.lat, l.to.lon);
+      const arc = angle(a, b) / RAD;
+      // Short hops get a little closer, so the route is not a speck; long hauls stay true to scale.
+      // Then shrink, if need be, until both airports sit inside the dome with room for labels.
+      const mid = slerp(a, b, 0.5);
+      const fits = (R: number) => {
+        const v = facing(mid, R);
+        return [a, b].every((p) => {
+          const q = onCard(p, v, w);
+          return q.z > 0.08 && q.x > 34 && q.x < w - 34 && q.y > 40 && q.y < H - 30;
+        });
+      };
+      let R = R0 * Math.max(1, Math.min(1.75, 50 / Math.max(arc, 1)));
+      for (let i = 0; i < 30 && !fits(R) && R > R0 * 0.55; i++) R *= 0.94;
+      const km = distanceKm(l);
+      return { leg: l, a, b, km, focus: facing(a, R, H * 0.5), frame: facing(mid, R), fly: flyTime(km) };
+    });
+  }, [legs, w]);
 
-  // The loop: each leg in turn, the trail drawing behind the plane, a pause, then the next. The
-  // clock lives outside the effect, so moving to another view carries on where it was.
-  const trail = useRef<(SVGPathElement | null)[]>([]);
-  const guide = useRef<(SVGPathElement | null)[]>([]);
-  const plane = useRef<SVGGElement>(null);
-  const clock = useRef<number | null>(null);
   useEffect(() => {
-    const count = groups[shown]!.length;
-    const els = guide.current.slice(0, count);
-    if (!els.length || els.some((e) => !e) || !plane.current) return;
-    const lens = els.map((e) => e!.getTotalLength());
-    const place = (index: number, p: number) => {
-      const path = els[index]!;
-      const L = lens[index]!;
-      const a = path.getPointAtLength(L * p);
-      const ahead = path.getPointAtLength(Math.min(L, L * p + 1));
-      const behind = path.getPointAtLength(Math.max(0, L * p - 1));
-      const [from, to] = p > 0.999 ? [behind, a] : [a, ahead];
-      const deg = (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
-      plane.current!.setAttribute('transform', `translate(${a.x.toFixed(1)} ${a.y.toFixed(1)}) rotate(${deg.toFixed(1)})`);
-      trail.current.slice(0, count).forEach((el, i) => {
-        if (!el) return;
-        const Li = lens[i]!;
-        el.style.strokeDasharray = `${Li}`;
-        el.style.strokeDashoffset = `${i < index ? 0 : i > index ? Li : Li * (1 - p)}`;
-      });
+    const cv = canvas.current;
+    if (!cv || !plan.length) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d');
+    if (!ctx) return;
+    const layer = document.createElement('canvas');
+    layer.width = cv.width;
+    layer.height = cv.height;
+    const lctx = layer.getContext('2d')!;
+    let theme = readTheme(cv);
+    let themeAt = 0;
+
+    // Loose dots around the rim, fixed relative to the sphere.
+    const rim = Array.from({ length: 520 }, () => ({ a: Math.random() * Math.PI * 2, r: 1 + Math.random() ** 2.2 * 0.11 - 0.012, s: 0.6 + Math.random() * 0.9, o: 0.15 + Math.random() * 0.6 }));
+
+    const cx = w / 2;
+    let drawn: View | null = null;
+
+    /** Sphere, dots and rim for a view, onto the layer. */
+    const paintGlobe = (v: View) => {
+      const { R } = v;
+      const cy = TOP + R;
+      const { e, n } = axes(v.centre);
+      lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      lctx.clearRect(0, 0, w, H);
+      const g = lctx.createLinearGradient(0, TOP, 0, H);
+      g.addColorStop(0, theme.seaTop);
+      g.addColorStop(1, theme.seaBottom);
+      lctx.fillStyle = g;
+      lctx.beginPath();
+      lctx.arc(cx, cy, R, 0, Math.PI * 2);
+      lctx.fill();
+      lctx.fillStyle = theme.land;
+      const c = v.centre;
+      const size = Math.max(1, Math.min(1.7, R / 190));
+      const dots = (P: Float32Array, strength: number) => {
+        for (let i = 0; i < P.length; i += 3) {
+          const z = P[i]! * c[0] + P[i + 1]! * c[1] + P[i + 2]! * c[2];
+          if (z <= 0.02) continue;
+          const y = cy - R * (P[i]! * n[0] + P[i + 1]! * n[1] + P[i + 2]! * n[2]);
+          if (y < 0 || y > H) continue;
+          const x = cx + R * (P[i]! * e[0] + P[i + 1]! * e[1] + P[i + 2]! * e[2]);
+          if (x < 0 || x > w) continue;
+          // Fainter towards the rim and towards the bottom, where the globe fades out.
+          lctx.globalAlpha = strength * Math.min(1, z * 2) * (1 - clamp01((y - H * 0.58) / (H * 0.42)));
+          lctx.fillRect(x - size / 2, y - size / 2, size, size);
+        }
+      };
+      dots(SEA_POINTS, 0.16);
+      dots(LAND_POINTS, 0.7);
+      for (const d of rim) {
+        const x = cx + Math.cos(d.a) * R * d.r;
+        const y = cy + Math.sin(d.a) * R * d.r;
+        if (y < 0 || y > H) continue;
+        lctx.globalAlpha = d.o * (1 - clamp01((y - H * 0.55) / (H * 0.45)));
+        lctx.fillRect(x - d.s / 2, y - d.s / 2, d.s, d.s);
+      }
+      lctx.globalAlpha = 1;
+      drawn = v;
     };
+
+    const project = (p: V3, v: View) => onCard(p, v, w);
+
+    const marker = (x: number, y: number, alpha: number, halo: number) => {
+      if (alpha <= 0) return;
+      ctx.globalAlpha = alpha;
+      if (halo > 0) {
+        ctx.fillStyle = theme.halo;
+        ctx.beginPath();
+        ctx.arc(x, y, 7 + 9 * halo, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = theme.airport;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    };
+
+    const label = (text: string, x: number, y: number, alpha: number) => {
+      if (alpha <= 0) return;
+      ctx.globalAlpha = alpha;
+      ctx.font = `600 12px ${theme.font}`;
+      const tw = ctx.measureText(text).width;
+      const bw = tw + 16;
+      const below = y < 40;
+      const bx = Math.max(4, Math.min(w - bw - 4, x - bw / 2));
+      const by = below ? y + 12 : y - 34;
+      ctx.shadowColor = 'rgba(20, 40, 80, 0.16)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetY = 2;
+      ctx.fillStyle = theme.labelBg;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, 22, 7);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.fillStyle = theme.labelFg;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, bx + bw / 2, by + 11.5);
+      ctx.globalAlpha = 1;
+    };
+
+    /** The route's points on screen, for a view. */
+    const routePoints = (a: V3, b: V3, v: View) => Array.from({ length: 81 }, (_, i) => project(slerp(a, b, i / 80), v));
+
+    const plane = (x: number, y: number, deg: number, scale: number, lift: number) => {
+      const draw = (body: string, wing: string, dark: string) => {
+        ctx.fillStyle = wing;
+        ctx.fill(WINGS);
+        ctx.fill(TAIL);
+        ctx.fillStyle = dark;
+        ctx.fill(ENGINES);
+        ctx.fillStyle = body;
+        ctx.fill(BODY);
+      };
+      // Its shadow falls further away the higher it flies.
+      ctx.save();
+      ctx.translate(x + 4 + 7 * lift, y + 6 + 9 * lift);
+      ctx.rotate(deg);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha *= 0.16;
+      draw('#0a1e3c', '#0a1e3c', '#0a1e3c');
+      ctx.restore();
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(deg);
+      ctx.scale(scale, scale);
+      draw('#ffffff', '#ec4a26', '#c23a1c');
+      ctx.strokeStyle = 'rgba(20, 30, 50, 0.22)';
+      ctx.lineWidth = 0.6 / scale;
+      ctx.stroke(BODY);
+      ctx.restore();
+    };
+
+    // The timeline: every flight in turn, then round again.
+    const spans = plan.map((p) => T_FOCUS + T_FRAME + T_DRAW + p.fly + T_HOLD + T_FADE);
+    const cycle = spans.reduce((s, d) => s + d, 0);
+    let shownLeg = -1;
+
+    const frame = (time: number) => {
+      if (time - themeAt > 1000) {
+        const next = readTheme(cv);
+        if (JSON.stringify(next) !== JSON.stringify(theme)) drawn = null;
+        theme = next;
+        themeAt = time;
+      }
+      let t = ((time % cycle) + cycle) % cycle;
+      let li = 0;
+      while (li < plan.length - 1 && t >= spans[li]!) t -= spans[li++]!;
+      const p = plan[li]!;
+      if (li !== shownLeg) {
+        shownLeg = li;
+        setLegIndex(li);
+      }
+      const prev = plan[(li - 1 + plan.length) % plan.length]!;
+
+      // Where the globe faces now.
+      let view: View;
+      let destIn = 0;
+      let haloA = 0;
+      if (t < T_FOCUS) {
+        const k = easeInOut(t / T_FOCUS);
+        view = { centre: norm(slerp(prev.frame.centre, p.focus.centre, k)), R: prev.frame.R + (p.focus.R - prev.frame.R) * k };
+        haloA = k;
+      } else if (t < T_FOCUS + T_FRAME) {
+        const k = easeInOut((t - T_FOCUS) / T_FRAME);
+        view = { centre: norm(slerp(p.focus.centre, p.frame.centre, k)), R: p.focus.R + (p.frame.R - p.focus.R) * k };
+        destIn = clamp01((t - T_FOCUS - T_FRAME * 0.4) / (T_FRAME * 0.5));
+        haloA = 1;
+      } else {
+        view = p.frame;
+        destIn = 1;
+        haloA = 1;
+      }
+      if (!drawn || angle(drawn.centre, view.centre) > 1e-5 || Math.abs(drawn.R - view.R) > 0.01) paintGlobe(view);
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, H);
+      ctx.drawImage(layer, 0, 0, w, H);
+
+      const after = t - T_FOCUS - T_FRAME;
+      const drawK = clamp01(after / T_DRAW);
+      const flyK = clamp01((after - T_DRAW) / p.fly);
+      const fade = 1 - clamp01((after - T_DRAW - p.fly - T_HOLD) / T_FADE);
+      const pts = routePoints(p.a, p.b, view);
+
+      // The route, drawing itself from the departure.
+      if (drawK > 0) {
+        const upto = Math.max(1, Math.round(easeOut(drawK) * (pts.length - 1)));
+        ctx.globalAlpha = fade;
+        ctx.strokeStyle = theme.route;
+        ctx.lineWidth = 2.6;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = 'rgba(15, 45, 95, 0.28)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetY = 1;
+        ctx.beginPath();
+        pts.slice(0, upto + 1).forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+        ctx.stroke();
+        ctx.shadowColor = 'transparent';
+        ctx.globalAlpha = 1;
+      }
+
+      const A = project(p.a, view);
+      const B = project(p.b, view);
+      const pulse = 0.5 + 0.5 * Math.sin(time / 380);
+      marker(A.x, A.y, fade, haloA * (0.6 + 0.4 * pulse));
+      marker(B.x, B.y, destIn * fade, flyK >= 1 ? 0.6 + 0.4 * pulse : 0);
+      label(p.leg.from.code, A.x, A.y, fade);
+      label(p.leg.to.code, B.x, B.y, destIn * fade);
+
+      // The plane, once the route is drawn.
+      if (after > T_DRAW && fade > 0) {
+        const k = easeInOut(flyK);
+        const at = k * (pts.length - 1);
+        const i = Math.min(pts.length - 2, Math.floor(at));
+        const f = at - i;
+        const q0 = pts[i]!;
+        const q1 = pts[i + 1]!;
+        const x = q0.x + (q1.x - q0.x) * f;
+        const y = q0.y + (q1.y - q0.y) * f;
+        const deg = Math.atan2(q1.y - q0.y, q1.x - q0.x);
+        const lift = Math.sin(Math.PI * k);
+        const size = Math.max(0.75, Math.min(1.15, view.R / 170));
+        ctx.globalAlpha = fade;
+        plane(x, y, deg, size * (0.78 + 0.32 * lift), lift);
+        ctx.globalAlpha = 1;
+      }
+    };
+
     if (reduced()) {
-      place(0, 0.55);
+      // Still: the first flight framed, its route drawn, the plane part-way along.
+      frame(T_FOCUS + T_FRAME + T_DRAW + plan[0]!.fly * 0.5);
       return;
     }
-    const fly = legs.map((l) => Math.min(5200, 2600 + distanceKm(l) / 4));
-    const pause = 900;
-    const total = fly.reduce((s, d) => s + d + pause, 0);
-    clock.current ??= performance.now();
-    let raf = 0;
-    const tick = (now: number) => {
-      let t = (now - clock.current!) % total;
-      let leg = 0;
-      while (leg < fly.length - 1 && t > fly[leg]! + pause) t -= fly[leg++]! + pause;
-      const at = where[leg]!;
-      if (at.view !== shown) {
-        setActive(at.view);
-        return;
-      }
-      const p = Math.min(1, t / fly[leg]!);
-      // Ease in and out, as a plane does.
-      place(at.index, p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [current, groups, shown, where, legs]);
 
-  const { R, cx, cy, dots, paths, airports, origin } = current;
-  const id = `g${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+    let raf = 0;
+    let running = false;
+    let offset = performance.now(); // keeps the timeline continuous across pauses
+    let pausedAt = 0;
+    const loop = (now: number) => {
+      frame(now - offset);
+      raf = requestAnimationFrame(loop);
+    };
+    const start = () => {
+      if (running) return;
+      running = true;
+      if (pausedAt) offset += performance.now() - pausedAt;
+      raf = requestAnimationFrame(loop);
+    };
+    const stop = () => {
+      if (!running) return;
+      running = false;
+      pausedAt = performance.now();
+      cancelAnimationFrame(raf);
+    };
+    let onScreen = true;
+    const sync = () => (onScreen && !document.hidden ? start() : stop());
+    const io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver(([e]) => ((onScreen = !!e?.isIntersecting), sync())) : null;
+    io?.observe(cv);
+    document.addEventListener('visibilitychange', sync);
+    sync();
+    return () => {
+      stop();
+      io?.disconnect();
+      document.removeEventListener('visibilitychange', sync);
+    };
+  }, [plan, w]);
+
+  const current = plan[Math.min(legIndex, plan.length - 1)];
+  const minutes = current?.leg.minutes;
   return (
     <div ref={box} className="route-globe">
-      <svg width="100%" height={H} viewBox={`0 0 ${w} ${H}`} role="img" aria-label={`Map of the flights: ${legs.map((l) => `${l.from.code} to ${l.to.code}`).join(', ')}`}>
-        <defs>
-          <radialGradient id={`${id}-sea`} cx="50%" cy="0%" r="75%">
-            <stop offset="0%" className="rg-sea-top" />
-            <stop offset="100%" className="rg-sea-bottom" />
-          </radialGradient>
-          <linearGradient id={`${id}-fade`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0.62" stopColor="#fff" stopOpacity="1" />
-            <stop offset="1" stopColor="#fff" stopOpacity="0" />
-          </linearGradient>
-          <mask id={`${id}-mask`}>
-            <rect width={w} height={H} fill={`url(#${id}-fade)`} />
-          </mask>
-        </defs>
-        <g key={shown} className={cx_(groups.length > 1 && 'rg-view')}>
-          <g mask={`url(#${id}-mask)`}>
-            <circle cx={cx} cy={cy} r={R + 5} className="rg-halo" />
-            <circle cx={cx} cy={cy} r={R} fill={`url(#${id}-sea)`} />
-            <g className="rg-land">
-              {dots.map((d, i) => (
-                <circle key={i} cx={d.x.toFixed(1)} cy={d.y.toFixed(1)} r="1.15" opacity={d.o.toFixed(2)} />
-              ))}
-            </g>
-          </g>
-          {paths.map((d, i) => (
-            <g key={i}>
-              <path d={d} className="rg-route" />
-              <path d={d} className="rg-trail" ref={(el) => void (trail.current[i] = el)} />
-              <path d={d} fill="none" stroke="none" ref={(el) => void (guide.current[i] = el)} />
-            </g>
-          ))}
-          {airports.map((a) => {
-            const below = a.y < 40;
-            const lx = Math.min(w - 24, Math.max(24, a.x));
-            return (
-              <g key={a.code}>
-                {a.code === origin && <circle cx={a.x} cy={a.y} r="11" className="rg-pulse" />}
-                <circle cx={a.x} cy={a.y} r="5.5" className="rg-airport" />
-                <g transform={`translate(${lx} ${below ? a.y + 22 : a.y - 22})`}>
-                  <rect x="-21" y="-11" width="42" height="22" rx="7" className="rg-label" />
-                  <text y="4.5" textAnchor="middle" className="rg-label-text">
-                    {a.code}
-                  </text>
-                </g>
-              </g>
-            );
-          })}
-        </g>
-        <g ref={plane} className="rg-plane">
-          <g transform="translate(3 4)" className="rg-plane-shadow">
-            <PlaneShape />
-          </g>
-          <PlaneShape />
-        </g>
-      </svg>
+      <canvas
+        ref={canvas}
+        style={{ width: '100%', height: H, display: 'block' }}
+        role="img"
+        aria-label={`Map of the flights: ${legs.map((l) => `${l.from.code} to ${l.to.code}`).join(', ')}`}
+      />
+      {current && (
+        <div className="rg-caption">
+          <span>
+            {current.leg.from.code} → {current.leg.to.code} · {current.km.toLocaleString()} km
+            {minutes ? ` · ${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m` : ''}
+          </span>
+          <span className="rg-caption-end">Nonstop</span>
+        </div>
+      )}
     </div>
   );
 }
 
-const cx_ = (...c: (string | false)[]) => c.filter(Boolean).join(' ') || undefined;
-
-/** A small airliner seen from above, nose to the right. */
-function PlaneShape() {
-  return (
-    <>
-      <path d="M3 -1.6 L-5 -12 L-8.5 -12 L-3.5 -1.6 Z M3 1.6 L-5 12 L-8.5 12 L-3.5 1.6 Z" className="rg-plane-wing" />
-      <path d="M-9 -1.2 L-13 -5.5 L-15 -5.5 L-12.5 -1 Z M-9 1.2 L-13 5.5 L-15 5.5 L-12.5 1 Z" className="rg-plane-wing" />
-      <path d="M14 0 C14 1.3 12 1.9 10 1.9 L-10 1.9 L-14 0.9 L-14 -0.9 L-10 -1.9 L10 -1.9 C12 -1.9 14 -1.3 14 0 Z" className="rg-plane-body" />
-    </>
-  );
-}
+// A small airliner seen from above, nose to +x, about 40 units long.
+const BODY = new Path2D('M19 0 C19 2 16.5 2.7 14 2.7 L-14 2.5 L-19 1.1 L-19 -1.1 L-14 -2.5 L14 -2.7 C16.5 -2.7 19 -2 19 0 Z');
+const WINGS = new Path2D('M5 -2.2 L-5 -18 L-9.5 -18 L-4.5 -2.2 Z M5 2.2 L-5 18 L-9.5 18 L-4.5 2.2 Z');
+const TAIL = new Path2D('M-12.5 -2 L-17 -8.5 L-19.5 -8.5 L-16.8 -2 Z M-12.5 2 L-17 8.5 L-19.5 8.5 L-16.8 2 Z');
+const ENGINES = new Path2D('M0.5 -9.5 L-4.5 -9.5 L-4.5 -7.3 L0.5 -7.3 Z M0.5 7.3 L-4.5 7.3 L-4.5 9.5 L0.5 9.5 Z');
