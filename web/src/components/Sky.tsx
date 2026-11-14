@@ -281,6 +281,8 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       const x = ((i + 0.5) / cols) * aspect;
       let c = base;
       let ink = 0;
+      // How much of this dot is the sun's disc, which stays out of the fade into the page.
+      let disc = 0;
 
       // The sun's glow, even from below the horizon.
       const dx = x - sun.x;
@@ -318,7 +320,10 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
 
       if (sun.y < HZ + SUN_R) {
         const d = Math.sqrt(d2);
-        if (d < SUN_R * 1.05) c = mix(c, pal.core, smooth(SUN_R * 1.05, SUN_R * 0.8, d));
+        if (d < SUN_R * 1.05) {
+          disc = smooth(SUN_R * 1.05, SUN_R * 0.8, d);
+          c = mix(c, pal.core, disc);
+        }
       }
 
       if (moonShows && m2 < MOON_R * MOON_R) {
@@ -365,7 +370,8 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       const r = cell * 0.5 * clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22);
       if (r < 0.3) continue;
       const dot = mul(c, 0.9 + 0.25 * b);
-      ctx.fillStyle = toPage > 0 ? css(mix(dot, page, toPage), alpha) : css(dot);
+      const fadeTo = toPage * (1 - disc);
+      ctx.fillStyle = fadeTo > 0 ? css(mix(dot, page, fadeTo), alpha + (1 - alpha) * disc) : css(dot);
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, 6.2832);
       ctx.fill();
