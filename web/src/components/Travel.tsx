@@ -867,47 +867,74 @@ function TripTodos({ trip, past = false }: { trip: Trip; past?: boolean }) {
   );
 }
 
-/** Every trip still ahead, each with its bookings at a glance and its to-dos. */
+/** Every trip still ahead, each as its own countdown card with its flights and to-dos. */
 function TripsAhead({ trips }: { trips: Trip[] }) {
-  const { agentName } = useApp();
-  const draft = useWrite((id: string) => travelWrite.post(`/trips/${id}/draft`));
-  const today = todayStr();
   return (
-    <section className="card travel-mode tm-upcoming trips-ahead">
-      <div className="tm-head">
-        <span className="tm-kicker">
-          <PlaneTakeoff size={13} /> {trips.length === 1 ? 'Trip ahead' : `${trips.length} trips ahead`}
-        </span>
+    <>
+      {trips.map((trip) => (
+        <TripCountdown key={trip.id} trip={trip} />
+      ))}
+    </>
+  );
+}
+
+const weekdayShort = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+/** One trip ahead, in the manner of the Ramadan countdown: days to go, the way out and back, then what is left to do. */
+function TripCountdown({ trip }: { trip: Trip }) {
+  const { agentName } = useApp();
+  const draft = useWrite(() => travelWrite.post(`/trips/${trip.id}/draft`));
+  const today = todayStr();
+  const days = daysFrom(today, trip.startDate);
+  const flights = trip.segments.filter((s) => s.kind === 'flight');
+  const stays = trip.segments.filter((s) => s.kind === 'stay');
+  const out = flights[0];
+  const back = flights.length > 1 ? flights[flights.length - 1] : undefined;
+  const leg = (s: Segment) => `${`${s.carrier} ${s.number}`.trim()} · ${s.startLocal.slice(11, 16)} from ${s.fromCode || s.fromName}`;
+  const summary = [
+    trip.purpose === 'work' ? 'Work trip' : 'Leisure',
+    flights.length || stays.length ? `${plural(flights.length, 'flight')}, ${plural(stays.length, 'stay')}` : 'nothing booked yet',
+    trip.itinerary.length ? `${plural(trip.itinerary.length, 'thing')} planned` : 'no plan yet',
+  ].join(' · ');
+
+  return (
+    <section className={cx('trip-hero', trip.purpose === 'work' ? 'is-work' : 'is-leisure')}>
+      <div className="trip-hero-head">
+        {days > 0 ? (
+          <>
+            <span className="trip-hero-count num">{days}</span>
+            <b>
+              {days === 1 ? 'day' : 'days'} until {trip.title}
+            </b>
+          </>
+        ) : (
+          <b>{trip.title} starts today</b>
+        )}
+        <PlaneTakeoff size={22} className="trip-hero-icon" />
       </div>
-      {trips.map((trip) => {
-        const flights = trip.segments.filter((s) => s.kind === 'flight').length;
-        const stays = trip.segments.filter((s) => s.kind === 'stay').length;
-        const open = trip.todos.filter((t) => !t.done).length;
-        return (
-          <article key={trip.id} className="ta-trip">
-            <div className="ta-head">
-              <div className="grow">
-                <b className="ta-title">{trip.title}</b>
-                <span className="ta-when">
-                  {dates(trip.startDate, trip.endDate)} · {whenLabel(trip, today)}
-                </span>
-              </div>
-              <PurposeChip purpose={trip.purpose} />
-            </div>
-            <p className="tm-line">
-              {flights || stays ? `${plural(flights, 'flight')}, ${plural(stays, 'stay')}` : 'Nothing booked yet'} · {trip.itinerary.length ? plural(trip.itinerary.length, 'thing') + ' planned' : 'no plan yet'}
-              {open > 0 && ` · ${plural(open, 'to-do')}`}
-            </p>
-            {!trip.itinerary.length && trip.segments.length > 0 && (
-              <button type="button" className="btn btn-sm" disabled={draft.isPending} onClick={() => draft.mutate(trip.id)}>
-                {draft.isPending && draft.variables === trip.id ? <Spinner /> : <Wand2 size={13} />} Draft a plan with {agentName}
-              </button>
-            )}
-            {draft.error && draft.variables === trip.id && <p className="error-text">{draft.error.message}</p>}
-            <TripTodos trip={trip} />
-          </article>
-        );
-      })}
+      <dl className="trip-hero-legs">
+        <div>
+          <dt>{out ? 'Flies out' : 'Starts'}</dt>
+          <dd>{weekdayShort(out ? out.startLocal.slice(0, 10) : trip.startDate)}</dd>
+          <dd className="trip-hero-sub">{out ? leg(out) : 'No flight booked yet'}</dd>
+        </div>
+        <div>
+          <dt>{back ? 'Flies home' : 'Ends'}</dt>
+          <dd>{weekdayShort(back ? back.startLocal.slice(0, 10) : trip.endDate)}</dd>
+          <dd className="trip-hero-sub">{back ? leg(back) : stays[0]?.title || plural(daysFrom(trip.startDate, trip.endDate) + 1, 'day')}</dd>
+        </div>
+      </dl>
+      <p className="trip-hero-note">{summary}</p>
+      {!trip.itinerary.length && trip.segments.length > 0 && (
+        <button type="button" className="btn btn-sm trip-hero-btn" disabled={draft.isPending} onClick={() => draft.mutate()}>
+          {draft.isPending ? <Spinner /> : <Wand2 size={13} />} Draft a plan with {agentName}
+        </button>
+      )}
+      {draft.error && <p className="trip-hero-note">{draft.error.message}</p>}
+      <div className="trip-hero-todos">
+        <div className="trip-hero-label">To do</div>
+        <TripTodos trip={trip} />
+      </div>
     </section>
   );
 }
