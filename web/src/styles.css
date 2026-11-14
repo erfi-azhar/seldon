@@ -5283,10 +5283,6 @@ textarea.title-input {
     --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.35 0.12 30 / 0.8);
   }
 }
-.trip-hero-top {
-  display: grid;
-  gap: 6px;
-}
 .trip-hero-head {
   display: flex;
   align-items: baseline;
@@ -5305,12 +5301,20 @@ textarea.title-input {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.trip-hero-icon {
-  align-self: center;
+.trip-hero-tag {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin-left: auto;
-  color: var(--th-accent);
-  opacity: 0.85;
   flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--th-accent);
+  background: var(--th-chip);
+  box-shadow: inset 0 0 0 1px var(--th-line);
 }
 .trip-hero-legs {
   display: grid;
@@ -5358,6 +5362,35 @@ textarea.title-input {
   gap: 4px;
   padding-top: 14px;
   border-top: 1px solid var(--th-line);
+}
+.trip-hero-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-self: start;
+  padding: 2px 0;
+  color: inherit;
+  cursor: pointer;
+}
+.trip-hero-toggle:hover {
+  opacity: 0.85;
+}
+.trip-hero-badge {
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  letter-spacing: 0;
+  text-align: center;
+  color: var(--th-accent);
+  background: var(--th-chip);
+  box-shadow: inset 0 0 0 1px var(--th-line);
+}
+.trip-hero-chev {
+  transition: transform 0.18s;
+}
+.trip-hero-todos.is-collapsed .trip-hero-chev {
+  transform: rotate(-90deg);
 }
 .trip-hero .add-row input {
   color: inherit;
