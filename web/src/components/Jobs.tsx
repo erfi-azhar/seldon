@@ -2,8 +2,8 @@
 // The companies behind them fold into one line; the full list, grouped by how each
 // board is doing, lives in a sheet — so a long watch list never buries the roles.
 
-import { Bookmark, BookmarkCheck, Briefcase, CircleAlert, ExternalLink, Plus, RefreshCw, Search, SlidersHorizontal, Star, X } from 'lucide-react';
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Bookmark, BookmarkCheck, CircleAlert, ExternalLink, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, X } from 'lucide-react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { JobBoardKind, JobPosting, JobPreferences, JobsState, JobWatch } from '../../../shared/types.ts';
 import { jobsWrite, useJobs, useWrite } from '../api.ts';
 import { cx, plural, timeAgo } from '../lib.ts';
@@ -300,35 +300,92 @@ function CompaniesSheet({ watches, onAdd, onClose }: { watches: JobWatch[]; onAd
   );
 }
 
+/**
+ * Boards write places every which way: "Singapore, Central Singapore, Singapore",
+ * "SG - Singapore", "Singapore, SG". Keep each place once, in its plainest form.
+ */
+export function tidyLocation(raw: string): string {
+  const parts = raw
+    .split(/\s*[,·;|]\s*/)
+    .map((x) => x.replace(/^[A-Z]{2}\s+-\s+/, '').trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  for (const part of parts) {
+    // A country or state code beside a place says nothing new.
+    if (/^[A-Z]{2,3}$/.test(part) && parts.length > 1) continue;
+    const low = part.toLowerCase();
+    // "Central Singapore" beside "Singapore": keep the shorter.
+    if (out.some((o) => low.includes(o.toLowerCase()))) continue;
+    for (let i = out.length - 1; i >= 0; i--) if (out[i]!.toLowerCase().includes(low)) out.splice(i, 1);
+    out.push(part);
+  }
+  return out.length > 3 ? `${out.slice(0, 3).join(' · ')} +${out.length - 3}` : out.join(' · ');
+}
+
+/** "today", "3d", "2w", "4mo": how long a role has been up, at a glance. */
+function age(iso: string | null): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (Number.isNaN(t)) return '';
+  const d = Math.floor((Date.now() - t) / 86_400_000);
+  if (d < 1) return 'today';
+  if (d < 7) return `${d}d`;
+  if (d < 60) return `${Math.floor(d / 7)}w`;
+  return `${Math.floor(d / 30)}mo`;
+}
+
+/** Two letters and a steady colour per company, so a long list can be scanned by who. */
+function Monogram({ name }: { name: string }) {
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean);
+  const first = words[0] ?? '?';
+  // "Open Government Products" → OG; "GovTech" → GT; "OKX" → OK; "Grab" → G.
+  const letters = words.length > 1 ? first[0]! + words[1]![0]! : first[0]! + (first.slice(1).match(/\p{Lu}/u)?.[0] ?? '');
+  let hue = 0;
+  for (const c of name) hue = (hue * 31 + c.codePointAt(0)!) % 360;
+  return (
+    <span className="job-mono" style={{ '--h': hue } as CSSProperties} aria-hidden="true">
+      {letters.toUpperCase()}
+    </span>
+  );
+}
+
 function Posting({ p }: { p: JobPosting }) {
   const mark = useWrite(({ status }: { status: 'seen' | 'saved' | 'dismissed' }) => jobsWrite.mark(p.id, status));
   // Opening a role is looking at it: it stops counting as new.
   const opened = () => p.status === 'new' && p.url && mark.mutate({ status: 'seen' });
+  const where = tidyLocation(p.location);
+  const when = p.postedAt ?? p.firstSeenAt;
+  const saved = p.status === 'saved';
   return (
-    <li className={cx('job', p.status === 'new' && 'is-new', p.highlighted && 'is-highlight')}>
-      <div className="grow">
+    <li className={cx('job', p.status === 'new' && 'is-new', saved && 'is-saved')}>
+      <Monogram name={p.company} />
+      <div className="job-main">
         <a className="job-title" href={p.url || undefined} target="_blank" rel="noreferrer noopener" onClick={opened} onAuxClick={(e) => e.button === 1 && opened()}>
           {p.title}
-          {p.url && <ExternalLink size={11} />}
+          {p.url && <ExternalLink size={12} aria-label="opens in a new tab" />}
         </a>
         <div className="job-meta">
-          {p.highlighted && (
-            <span className="job-star" title="Highlighted" role="img" aria-label="Highlighted">
-              <Star size={11} fill="currentColor" />
-            </span>
-          )}
+          {p.highlighted && <Star size={12} fill="currentColor" className="job-star" aria-label="Highlighted" />}
           <b>{p.company}</b>
-          {p.location && ` · ${p.location}`}
-          {p.remote && !/remote/i.test(p.location) && ' · remote'}
-          {p.status === 'new' && <span className="job-new">new</span>}
+          <span className="job-facts">
+            {where && <span>{where}</span>}
+            {p.remote && !/remote/i.test(where) && <span>Remote</span>}
+            {when && p.status !== 'new' && (
+              <span className="job-age" title={`First seen ${new Date(when).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}>
+                {age(when)}
+              </span>
+            )}
+          </span>
+          {p.status === 'new' && <span className="job-new">New</span>}
         </div>
       </div>
-      <button type="button" className="icon-btn icon-btn-sm" aria-label={p.status === 'saved' ? 'Unsave' : 'Save'} onClick={() => mark.mutate({ status: p.status === 'saved' ? 'seen' : 'saved' })}>
-        {p.status === 'saved' ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
-      </button>
-      <button type="button" className="icon-btn icon-btn-sm" aria-label="Not for me" onClick={() => mark.mutate({ status: 'dismissed' })}>
-        <X size={15} />
-      </button>
+      <div className="job-actions">
+        <button type="button" className={cx('icon-btn', 'icon-btn-sm', saved && 'is-on')} aria-label={saved ? 'Unsave' : 'Save'} aria-pressed={saved} onClick={() => mark.mutate({ status: saved ? 'seen' : 'saved' })}>
+          {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
+        </button>
+        <button type="button" className="icon-btn icon-btn-sm" aria-label="Not for me" onClick={() => mark.mutate({ status: 'dismissed' })}>
+          <X size={15} />
+        </button>
+      </div>
     </li>
   );
 }
@@ -345,7 +402,14 @@ function filterRoles(ps: JobPosting[], f: Filter, places: string[]): JobPosting[
   return ps;
 }
 
-/** "Senior Product Designer, Staff Product Designer +11 · Singapore": the whole list lives under Fit. */
+const EMPTY_FILTER: Record<Filter, string> = {
+  all: '',
+  highlighted: 'Nothing highlighted is open right now.',
+  place: 'Nothing open in your places right now.',
+  remote: 'No remote roles open right now.',
+};
+
+/** "Product Designer, Product Design +9 · Singapore": the whole list lives under Fit. */
 function prefLine(p: JobPreferences): string {
   const k = p.keywords;
   const what = !k.length ? 'Any role' : k.length <= 2 ? join(k) : `${join(k.slice(0, 2))} +${k.length - 2}`;
@@ -362,13 +426,18 @@ export function JobAlertsCard() {
   const [filter, setFilter] = useState<Filter>('all');
   const check = useWrite(jobsWrite.check);
   const list = useScrollEdges<HTMLUListElement>('y', [data, filter]);
-  const fitsRow = useScrollEdges<HTMLDivElement>('x', [data]);
   if (!data) return null;
   const s: JobsState = data;
   const places = s.preferences.locations;
-  const counts: [Filter, string, number][] = [
+  const counts: [Filter, ReactNode, number][] = [
     ['all', 'All', s.postings.length],
-    ['highlighted', 'Highlighted', filterRoles(s.postings, 'highlighted', places).length],
+    [
+      'highlighted',
+      <>
+        <Star size={12} fill="currentColor" /> Highlighted
+      </>,
+      filterRoles(s.postings, 'highlighted', places).length,
+    ],
     ['place', places.length === 1 ? places[0]! : 'Your places', places.length ? filterRoles(s.postings, 'place', places).length : 0],
     ['remote', 'Remote', filterRoles(s.postings, 'remote', places).length],
   ];
@@ -378,107 +447,94 @@ export function JobAlertsCard() {
   const roles = filterRoles(s.postings, active, places);
   const fresh = s.postings.filter((p) => p.status === 'new').length;
   const g = group(s.watches);
+  const pick = (f: Filter) => {
+    setFilter(f);
+    list.ref.current?.scrollTo({ top: 0 });
+  };
 
   return (
     <section className="card jobs-card">
-      <div className="card-head">
-        <h2 className="card-title">
-          Job alerts {fresh > 0 && <span className="chip chip-tint">{fresh} new</span>}
-        </h2>
-        <div className="row" style={{ gap: 2 }}>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrefs(true)}>
-            <SlidersHorizontal size={13} /> Fit
+      <header className="jobs-head">
+        <div className="jobs-head-text">
+          <h2 className="card-title">
+            Job alerts {fresh > 0 && <span className="chip chip-tint">{fresh} new</span>}
+          </h2>
+          {s.watches.length > 0 && (
+            <button type="button" className="jobs-pref" onClick={() => setPrefs(true)} title={`${join(s.preferences.keywords) || 'Any role'} — change what fits`}>
+              {prefLine(s.preferences)}
+            </button>
+          )}
+        </div>
+        <div className="jobs-head-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrefs(true)} aria-label="Roles that fit">
+            <SlidersHorizontal size={13} /> <span className="jobs-btn-label">Fit</span>
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding(true)}>
-            <Plus size={13} /> Company
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding(true)} aria-label="Watch a company">
+            <Plus size={13} /> <span className="jobs-btn-label">Company</span>
           </button>
         </div>
-      </div>
+      </header>
       {s.watches.length === 0 ? (
         <p className="empty">Name the companies you would join and what you are looking for. New roles that fit show up here, and in Needs you.</p>
       ) : (
         <>
-          <button type="button" className="jobs-pref" onClick={() => setPrefs(true)} title={`${join(s.preferences.keywords) || 'Any role'} — change what fits`}>
-            <Briefcase size={13} /> <span className="jobs-pref-text">{prefLine(s.preferences)}</span>
-          </button>
-          {filters.length > 1 && (
-            <div className="jobs-filters" role="group" aria-label="Show roles">
-              {filters.map(([f, label, n]) => (
-                <button
-                  key={f}
-                  type="button"
-                  className={cx('chip', active === f && 'chip-on')}
-                  aria-pressed={active === f}
-                  onClick={() => {
-                    setFilter(f);
-                    list.ref.current?.scrollTo({ top: 0 });
-                  }}
-                >
-                  {f === 'highlighted' && <Star size={11} fill="currentColor" />}
-                  {label} <span className="jobs-filter-n">{n}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="jobs-toolbar">
+            {filters.length > 1 ? (
+              <div className="seg jobs-seg" role="group" aria-label="Show roles">
+                {filters.map(([f, label, n]) => (
+                  <button key={f} type="button" aria-pressed={active === f} onClick={() => pick(f)}>
+                    {label} <span className="jobs-seg-n">{n}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="hint">{plural(s.postings.length, 'open role')}</span>
+            )}
+            <span className="jobs-checked" title={s.lastRunAt ? `Checked ${timeAgo(s.lastRunAt)}` : 'Not checked yet'}>
+              <span className="jobs-checked-text">{s.lastRunAt ? `Checked ${timeAgo(s.lastRunAt)}` : 'Not checked yet'}</span>
+              <button type="button" className="icon-btn icon-btn-sm" aria-label="Check now" disabled={check.isPending || s.running} onClick={() => check.mutate()}>
+                <RefreshCw size={13} className={cx((check.isPending || s.running) && 'spin')} />
+              </button>
+            </span>
+          </div>
           {s.postings.length === 0 ? (
             <p className="empty">Nothing open that fits right now. You'll hear when something does.</p>
+          ) : roles.length === 0 ? (
+            <p className="empty">{EMPTY_FILTER[active]}</p>
           ) : (
             // Scrolls inside the card once the list outgrows it; focusable so the keys scroll it too.
-            <ul ref={list.ref} onScroll={list.onScroll} className={cx('jobs-list', 'jobs-scroll', list.fade)} tabIndex={list.scrolls ? 0 : undefined} aria-label={`${plural(roles.length, 'open role')}`}>
+            <ul ref={list.ref} onScroll={list.onScroll} className={cx('jobs-list', 'jobs-scroll', list.fade)} tabIndex={list.scrolls ? 0 : undefined} aria-label={plural(roles.length, 'open role')}>
               {roles.map((p) => (
                 <Posting key={p.id} p={p} />
               ))}
             </ul>
           )}
-          <div className="jobs-companies">
-            <div className="jobs-companies-line">
-              <span className="muted">Watching {plural(s.watches.length, 'company', 'companies')}</span>
-              {g.fits.length > 0 && (
-                <>
-                  <span className="faint">·</span>
-                  <span className="muted">hiring for you</span>
-                </>
-              )}
-              <button type="button" className="link" onClick={() => setManaging(true)}>
-                Manage
+          <footer className="jobs-foot">
+            <span className="jobs-foot-text">
+              <button type="button" className="link-quiet" onClick={() => setManaging(true)}>
+                Watching {plural(s.watches.length, 'company', 'companies')}
               </button>
-            </div>
-            {g.fits.length > 0 && (
-              <div ref={fitsRow.ref} onScroll={fitsRow.onScroll} className={cx('jobs-fits', fitsRow.fade)}>
-                {g.fits.map((w) => (
-                  <span key={w.id} className="chip">
-                    {w.company} <b>{w.matching}</b>
-                  </span>
-                ))}
-              </div>
-            )}
-            {g.quiet.length > 0 && (
-              <button type="button" className="jobs-warn" onClick={() => setManaging(true)}>
-                <CircleAlert size={14} />
-                {g.quiet.length === 1 ? `${g.quiet[0]!.company} isn't listing any roles.` : `${g.quiet.length} companies aren't listing any roles.`} <u>Review</u>
-              </button>
-            )}
-          </div>
-          <div className="card-foot jobs-foot">
-            <span className="hint">{roles.length > 0 && plural(roles.length, 'role')}</span>
-            <span className="hint">
-              {s.lastRunAt ? `Checked ${timeAgo(s.lastRunAt)}` : ''}
-              <button type="button" className="icon-btn icon-btn-sm" aria-label="Check now" disabled={check.isPending || s.running} onClick={() => check.mutate()}>
-                <RefreshCw size={13} className={cx((check.isPending || s.running) && 'spin')} />
-              </button>
-              {s.postings.length > 0 && (
-                <button type="button" className="link" onClick={() => ask('Look at the open roles in my job alerts. Which fit me best and why? Suggest how to approach the top one or two.')}>
-                  Ask {agentName}
+              {g.quiet.length > 0 && (
+                <button type="button" className="jobs-warn" onClick={() => setManaging(true)} title="These boards list no roles, so they will never alert. Review them in Manage.">
+                  <CircleAlert size={13} /> {g.quiet.length} not listing roles
                 </button>
               )}
             </span>
-          </div>
+            <span className="jobs-foot-actions">
+              <button type="button" className="btn btn-sm" onClick={() => setManaging(true)}>
+                Manage
+              </button>
+              {s.postings.length > 0 && (
+                <button type="button" className="btn btn-sm btn-tint" onClick={() => ask('Look at the open roles in my job alerts. Which fit me best and why? Suggest how to approach the top one or two.')}>
+                  <Sparkles size={13} /> Ask {agentName}
+                </button>
+              )}
+            </span>
+          </footer>
         </>
       )}
       {prefs && <PreferencesSheet prefs={s.preferences} onClose={() => setPrefs(false)} />}
-      {managing && !adding && (
-<CompaniesSheet watches={s.watches} onAdd={() => setAdding(true)} onClose={() => setManaging(false)} />
-      )}
+      {managing && !adding && <CompaniesSheet watches={s.watches} onAdd={() => setAdding(true)} onClose={() => setManaging(false)} />}
       {adding && <WatchSheet known={s.watches} onClose={() => setAdding(false)} />}
     </section>
   );

@@ -5757,110 +5757,247 @@ textarea.title-input {
 
 /* ── Job alerts ─────────────────────────────────────────────────────────── */
 
+.jobs-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 12px;
+}
+.jobs-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
 .jobs-card .card-title {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .jobs-pref {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: -2px 20px 10px;
-  font-size: 13.5px;
-  color: var(--ink-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink-3);
   text-align: left;
 }
 .jobs-pref:hover {
   color: var(--ink);
 }
-.jobs-pref {
-  max-width: calc(100% - 40px);
-}
-.jobs-pref svg {
-  flex: none;
-}
-.jobs-pref-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.jobs-filters {
+.jobs-head-actions {
   display: flex;
-  gap: 6px;
+  flex: none;
+  gap: 2px;
+  margin: -4px -8px 0 0;
+}
+
+/* Filters on the left, freshness on the right. */
+.jobs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 0 20px 10px;
-  /* One line; on a narrow screen it scrolls sideways instead of wrapping. */
+}
+.jobs-seg {
+  max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
 }
-.jobs-filters::-webkit-scrollbar {
+.jobs-seg::-webkit-scrollbar {
   display: none;
 }
-.jobs-filters .chip {
-  flex: none;
-}
-.jobs-filters .chip {
-  border: 1px solid transparent;
-}
-.jobs-filter-n {
-  opacity: 0.7;
-  font-variant-numeric: tabular-nums;
-}
-.job.is-highlight {
-  box-shadow: inset 3px 0 0 var(--sphere-ink);
-  background: linear-gradient(90deg, var(--sphere-soft), transparent 60%);
-}
-.job-star {
+.jobs-seg button {
   display: inline-flex;
-  vertical-align: -1px;
-  margin-right: 5px;
-  color: var(--sphere-ink);
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  white-space: nowrap;
 }
-.jobs-companies {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 4px 20px 0;
-  padding: 12px 0 2px;
+.jobs-seg-n {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.jobs-seg button[aria-pressed='true'] .jobs-seg-n {
+  color: var(--ink-2);
+}
+.jobs-checked {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* A role: who, what, where and how long, with its actions out of the way. */
+.jobs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px;
   border-top: 1px solid var(--line);
-  font-size: 13px;
 }
-.jobs-companies-line {
+.job {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  transition: background 0.15s;
+}
+.job + .job::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 56px;
+  right: 12px;
+  border-top: 1px solid var(--line);
+}
+.job:hover,
+.job:focus-within {
+  background: color-mix(in oklab, var(--ink) 4.5%, transparent);
+}
+.job:hover::before,
+.job:hover + .job::before,
+.job:focus-within::before,
+.job:focus-within + .job::before {
+  border-color: transparent;
+}
+.job-mono {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-top: 1px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  background: oklch(0.94 0.035 var(--h));
+  color: oklch(0.42 0.09 var(--h));
+}
+:root[data-theme='dark'] .job-mono {
+  background: oklch(0.3 0.04 var(--h));
+  color: oklch(0.86 0.07 var(--h));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .job-mono {
+    background: oklch(0.3 0.04 var(--h));
+    color: oklch(0.86 0.07 var(--h));
+  }
+}
+.job-main {
+  flex: 1;
+  min-width: 0;
+}
+.job-title {
+  font-size: 14.5px;
+  font-weight: 550;
+  line-height: 1.35;
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+/* The link mark flows with the last word instead of standing in its own column. */
+.job-title svg {
+  display: inline;
+  margin-left: 5px;
+  vertical-align: -1px;
+  color: var(--ink-4);
+}
+.job-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.job-title:hover svg {
+  color: var(--ink-2);
+}
+.job-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  column-gap: 6px;
+  row-gap: 2px;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--ink-2);
 }
-.jobs-fits {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  overscroll-behavior-x: contain;
+.job-meta {
+  column-gap: 8px;
 }
-.jobs-fits::-webkit-scrollbar {
+/* Where, remote and age stay together; dots sit only between them, never at a line start. */
+.job-facts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: 6px;
+}
+.job-facts:empty {
   display: none;
 }
-.jobs-fits .chip {
-  flex: none;
+.job-facts > span + span::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--ink-4);
 }
-.jobs-fits .chip b {
-  font-weight: 650;
+.job-meta b {
+  font-weight: 550;
   color: var(--ink);
 }
-.jobs-fits.fade-end {
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+.job-star {
+  flex: none;
+  margin-right: -2px;
+  color: var(--sphere-ink);
 }
-.jobs-fits.fade-start {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px);
-  mask-image: linear-gradient(to right, transparent, #000 32px);
+.job-age {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
 }
-.jobs-fits.fade-start.fade-end {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
-  mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+.job-new {
+  margin-left: 2px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  background: oklch(0.94 0.05 150);
+  color: oklch(0.42 0.11 150);
 }
+:root[data-theme='dark'] .job-new {
+  background: oklch(0.3 0.06 150);
+  color: oklch(0.85 0.1 150);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .job-new {
+    background: oklch(0.3 0.06 150);
+    color: oklch(0.85 0.1 150);
+  }
+}
+.job-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin: -2px -4px 0 0;
+}
+.job-actions .is-on {
+  color: var(--sphere-ink);
+}
+/* With a pointer, actions wait for the row; a saved mark always shows. On touch they stay. */
+@media (hover: hover) {
+  .job-actions button {
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .job:hover .job-actions button,
+  .job:focus-within .job-actions button,
+  .job-actions .is-on {
+    opacity: 1;
+  }
+}
+
 /* The roles: about five and a half rows, then the list scrolls inside the card. */
 .jobs-scroll {
   max-height: min(460px, 62vh);
@@ -5886,32 +6023,60 @@ textarea.title-input {
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 40px), transparent);
   mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 40px), transparent);
 }
-.jobs-companies-line .chip b {
-  font-weight: 650;
-  color: var(--ink);
+
+/* On a phone the header keeps its icons and the toolbar its filter; the words step aside. */
+@media (max-width: 560px) {
+  .jobs-btn-label,
+  .jobs-checked-text {
+    display: none;
+  }
+  .jobs-head-actions .btn-sm {
+    padding: 0 9px;
+  }
 }
-.jobs-companies-line .link {
-  margin-left: auto;
+
+/* One line under the list: what is watched, what needs a look, and what to do. */
+.jobs-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--line);
+}
+.jobs-foot-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.link-quiet {
+  color: inherit;
+}
+.link-quiet:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .jobs-warn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  align-self: flex-start;
+  gap: 5px;
   font-size: 12.5px;
-  color: var(--ink-2);
-  text-align: left;
-}
-.jobs-warn svg {
-  flex: none;
   color: var(--bad);
 }
-.jobs-warn u {
+.jobs-warn:hover {
+  text-decoration: underline;
   text-underline-offset: 3px;
 }
-.jobs-warn:hover {
-  color: var(--ink);
+.jobs-foot-actions {
+  display: flex;
+  gap: 6px;
 }
+
 .jobs-empty-note {
   display: flex;
   gap: 10px;
@@ -6005,77 +6170,6 @@ textarea.title-input {
 .watch-note.is-quiet {
   color: var(--ink-3);
 }
-.jobs-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 12px;
-}
-.job {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 8px;
-  border-top: 1px solid var(--line);
-}
-.job .grow {
-  min-width: 0;
-}
-.job-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 14.5px;
-  font-weight: 500;
-  color: var(--ink);
-  text-decoration: none;
-}
-.job-title svg {
-  color: var(--ink-3);
-  flex: none;
-}
-.job-title:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.job-meta {
-  margin-top: 2px;
-  font-size: 12.5px;
-  color: var(--ink-2);
-}
-.job-meta b {
-  font-weight: 550;
-  color: var(--ink);
-}
-.job-new {
-  margin-left: 7px;
-  padding: 1px 7px;
-  border-radius: 99px;
-  font-size: 11px;
-  font-weight: 600;
-  background: oklch(0.94 0.05 150);
-  color: oklch(0.42 0.11 150);
-}
-:root[data-theme='dark'] .job-new {
-  background: oklch(0.3 0.06 150);
-  color: oklch(0.85 0.1 150);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .job-new {
-    background: oklch(0.3 0.06 150);
-    color: oklch(0.85 0.1 150);
-  }
-}
-.jobs-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.jobs-foot .hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
 /* ── The welcome stage: monochrome, with holographic light ─────────────── */
 
 :root {
