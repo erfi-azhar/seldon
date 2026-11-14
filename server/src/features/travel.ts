@@ -470,15 +470,69 @@ export function chooseOption(store: Store, id: string): Trip {
   const r = store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Option');
   const o = optionFromRow(r);
+  if (o.chosenAt) return getTrip(store, o.tripId);
   const settings = travelSettings(store);
+  const before = getTrip(store, o.tripId);
+  const segments: string[] = [];
   for (const l of o.legs) {
     const cabin = { economy: 'Economy', premium: 'Premium Economy', business: 'Business' }[l.cabin ?? 'economy'];
     const input: SegmentInput = { kind: 'flight', carrier: l.carrier, number: l.number, fromCode: l.fromCode, toCode: l.toCode, startLocal: l.startLocal, endLocal: l.endLocal, startTz: l.startTz, endTz: l.endTz, cabin, notes: `Planned from the option “${o.title}”, not booked yet.` };
     // A flight already booked on any trip (SQ857 home from Shenzhen, say) stays where it is.
     if (findSame(store, null, normalise(input, settings))) continue;
-    addSegment(store, o.tripId, input, 'option');
+    segments.push(addSegment(store, o.tripId, input, 'option').segment.id);
   }
-  store.db.prepare('UPDATE trip_options SET chosen_at = ? WHERE id = ?').run(nowIso(), id);
+  // Remember what was added, and the trip's dates before, so it can all be taken back.
+  store.db
+    .prepare('UPDATE trip_options SET chosen_at = ?, added = ? WHERE id = ?')
+    .run(nowIso(), JSON.stringify({ segments, startDate: before.startDate, endDate: before.endDate }), id);
+  return getTrip(store, o.tripId);
+}
+
+/**
+ * Take back what choosing an option added: its planned flights come off the trip (unless another chosen option
+ * still flies them) and the trip's dates go back to what they were. Flights you booked or edited by hand stay.
+ */
+export function unchooseOption(store: Store, id: string): Trip {
+  const r = store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Option');
+  const o = optionFromRow(r);
+  if (!o.chosenAt) return getTrip(store, o.tripId);
+  const added = JSON.parse(r.added || '{}') as { segments?: string[]; startDate?: string; endDate?: string };
+  const key = (carrier: string, number: string, startLocal: string) => `${carrier}${number}|${startLocal.slice(0, 16)}`;
+  // Other chosen options on this trip, and the flights they rely on.
+  const others = (store.db.prepare('SELECT * FROM trip_options WHERE trip_id = ? AND id != ? AND chosen_at IS NOT NULL').all(o.tripId, id) as Row[]).map((x) => ({
+    row: x,
+    keys: new Set(optionFromRow(x).legs.map((l) => key(l.carrier, l.number, l.startLocal))),
+  }));
+  const planned = store.db.prepare("SELECT * FROM trip_segments WHERE trip_id = ? AND source = 'option'").all(o.tripId) as Row[];
+  // Chosen before additions were recorded: the option's own planned flights, matched by flight and time.
+  const mine = new Set(o.legs.map((l) => key(l.carrier, l.number, l.startLocal)));
+  const ids = added.segments ?? planned.filter((s) => mine.has(key(s.carrier, s.number, s.start_local)) && String(s.notes).includes(`“${o.title}”`)).map((s) => s.id as string);
+  const drop = store.db.prepare("DELETE FROM trip_segments WHERE id = ? AND source = 'option'");
+  for (const sid of ids) {
+    const s = planned.find((p) => p.id === sid);
+    const heir = s && others.find((x) => x.keys.has(key(s.carrier, s.number, s.start_local)));
+    if (heir) {
+      // Still flown by another chosen option: it stays, and that option now owns it.
+      // Choosing only ever widens a trip, so the narrowest dates on record are the trip's own: they go along too.
+      const theirs = JSON.parse(heir.row.added || '{}') as { segments?: string[]; startDate?: string; endDate?: string };
+      theirs.segments = [...new Set([...(theirs.segments ?? []), sid])];
+      if (added.startDate) theirs.startDate = theirs.startDate && theirs.startDate > added.startDate ? theirs.startDate : added.startDate;
+      if (added.endDate) theirs.endDate = theirs.endDate && theirs.endDate < added.endDate ? theirs.endDate : added.endDate;
+      heir.row.added = JSON.stringify(theirs);
+      store.db.prepare('UPDATE trip_options SET added = ? WHERE id = ?').run(heir.row.added, heir.row.id);
+      continue;
+    }
+    drop.run(sid);
+  }
+  if (added.startDate && added.endDate) {
+    // Back to the dates before, stretched only as far as the flights that remain need.
+    const left = getTrip(store, o.tripId).segments;
+    const start = left.reduce((m, s) => (s.startLocal.slice(0, 10) < m ? s.startLocal.slice(0, 10) : m), added.startDate);
+    const end = left.reduce((m, s) => ((s.endLocal || s.startLocal).slice(0, 10) > m ? (s.endLocal || s.startLocal).slice(0, 10) : m), added.endDate);
+    store.db.prepare('UPDATE trips SET start_date = ?, end_date = ? WHERE id = ?').run(start, end, o.tripId);
+  }
+  store.db.prepare("UPDATE trip_options SET chosen_at = NULL, added = '{}' WHERE id = ?").run(id);
   return getTrip(store, o.tripId);
 }
 
@@ -560,6 +614,7 @@ export function chooseStayOption(store: Store, id: string): Trip {
   const r = store.db.prepare('SELECT * FROM trip_stay_options WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Hotel option');
   const o = stayOptionFromRow(r);
+  if (o.chosenAt) return getTrip(store, o.tripId);
   const trip = getTrip(store, o.tripId);
   // Check in the day the flight out lands and check out the day the flight home leaves: the last flight landing
   // in the first half of the trip, and the first leaving in the second half. Without them, the trip's own dates.
@@ -579,10 +634,19 @@ export function chooseStayOption(store: Store, id: string): Trip {
     endTz: tz,
     notes: `Planned from the hotel options, not booked yet.${o.gettingThere ? ` ${o.gettingThere}${o.distanceFrom ? ` to ${o.distanceFrom}` : ''}.` : ''}`,
   };
-  // Choosing again, or a hotel already booked under that name for these dates, adds nothing twice.
-  if (!findSame(store, o.tripId, normalise(input, travelSettings(store)))) addSegment(store, o.tripId, input, 'option');
-  store.db.prepare('UPDATE trip_stay_options SET chosen_at = ? WHERE id = ?').run(nowIso(), id);
+  // A hotel already booked under that name for these dates is not added twice, and is not ours to take back.
+  const added = findSame(store, o.tripId, normalise(input, travelSettings(store))) ? null : addSegment(store, o.tripId, input, 'option').segment.id;
+  store.db.prepare('UPDATE trip_stay_options SET chosen_at = ?, added_segment = ? WHERE id = ?').run(nowIso(), added, id);
   return getTrip(store, o.tripId);
+}
+
+/** Take back the planned stay choosing a hotel added. A stay you booked or edited since stays. */
+export function unchooseStayOption(store: Store, id: string): Trip {
+  const r = store.db.prepare('SELECT * FROM trip_stay_options WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Hotel option');
+  if (r.added_segment) store.db.prepare("DELETE FROM trip_segments WHERE id = ? AND source = 'option'").run(r.added_segment);
+  store.db.prepare('UPDATE trip_stay_options SET chosen_at = NULL, added_segment = NULL WHERE id = ?').run(id);
+  return getTrip(store, r.trip_id);
 }
 
 export interface ItemInput {
@@ -1292,6 +1356,10 @@ registerFeature({
       chooseOption(store, c.req.param('id'));
       return c.json(state(c));
     });
+    app.post('/api/travel/options/:id/unchoose', (c) => {
+      unchooseOption(store, c.req.param('id'));
+      return c.json(state(c));
+    });
     app.delete('/api/travel/options/:id', (c) => {
       if (!store.db.prepare('DELETE FROM trip_options WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Option');
       return c.json(state(c));
@@ -1306,6 +1374,10 @@ registerFeature({
     });
     app.post('/api/travel/stay-options/:id/choose', (c) => {
       chooseStayOption(store, c.req.param('id'));
+      return c.json(state(c));
+    });
+    app.post('/api/travel/stay-options/:id/unchoose', (c) => {
+      unchooseStayOption(store, c.req.param('id'));
       return c.json(state(c));
     });
     app.delete('/api/travel/stay-options/:id', (c) => {

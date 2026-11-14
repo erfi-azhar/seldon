@@ -424,6 +424,10 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX trip_options_by_trip ON trip_options(trip_id, position);
   `,
+  // What choosing a flight option put on its trip, so it can be taken off again.
+  `
+  ALTER TABLE trip_options ADD COLUMN added TEXT NOT NULL DEFAULT '{}';
+  `,
   // Hotel options for a trip: places to stay to weigh before booking, nearest to where the days are spent first.
   `
   CREATE TABLE trip_stay_options (
@@ -441,6 +445,7 @@ const MIGRATIONS: string[] = [
     recommended INTEGER NOT NULL DEFAULT 0,
     position INTEGER NOT NULL DEFAULT 0,
     chosen_at TEXT,
+    added_segment TEXT,
     created_at TEXT NOT NULL
   );
   CREATE INDEX trip_stay_options_by_trip ON trip_stay_options(trip_id, position);
