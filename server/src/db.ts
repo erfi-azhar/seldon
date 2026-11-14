@@ -193,6 +193,16 @@ const MIGRATIONS: string[] = [
     last_error TEXT
   );
   `,
+  `
+  CREATE TABLE prayer_log (
+    date TEXT NOT NULL,
+    prayer TEXT NOT NULL,
+    status TEXT NOT NULL,
+    logged_at TEXT NOT NULL,
+    made_up_at TEXT,
+    PRIMARY KEY (date, prayer)
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

@@ -6,6 +6,7 @@ import { useOverview, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, HabitRow, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
+import { NextPrayerPill } from '../components/Prayer.tsx';
 import { Loading } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -132,9 +133,12 @@ export function Today() {
             )}
           </p>
         </div>
-        <button type="button" className="btn" onClick={() => ask('Help me plan today. Look at what is due, my habits and how each sphere has been going, then suggest a realistic plan.')}>
+        <div className="hero-side">
+          <NextPrayerPill />
+          <button type="button" className="btn" onClick={() => ask('Help me plan today. Look at what is due, my habits and how each sphere has been going, then suggest a realistic plan.')}>
           Plan today with {agentName} <ArrowUpRight size={15} />
-        </button>
+          </button>
+        </div>
       </header>
 
       {o.spheres.length > 0 && <SphereStrip overview={o} />}

@@ -111,11 +111,6 @@ export const CATALOG: CatalogSphere[] = [
     visionPrompt: 'What does a life lived for Allah look like, day to day?',
     core: true,
     habits: [
-      daily('Fajr'),
-      daily('Dhuhr'),
-      daily('Asr'),
-      daily('Maghrib'),
-      daily('Isha'),
       daily('Quran reading'),
       daily('Morning and evening adhkar'),
       weekly('Fast Monday and Thursday', 2),

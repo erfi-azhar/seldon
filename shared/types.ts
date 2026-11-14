@@ -420,3 +420,47 @@ export interface IntegrationStatus {
   lastError: string | null;
   running: boolean;
 }
+
+// ── Faith: prayer ───────────────────────────────────────────────────────────
+
+export const PRAYERS = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] as const;
+export type PrayerName = (typeof PRAYERS)[number];
+/** prayed: in its time · late: prayed after its time · missed: still owed. */
+export type PrayerStatus = 'prayed' | 'late' | 'missed';
+
+export interface PrayerSettings {
+  lat: number | null;
+  lng: number | null;
+  label: string;
+  timezone: string;
+  method: string;
+  madhab: 'shafi' | 'hanafi';
+  /** Minutes added to each calculated time, to match a local timetable. */
+  adjustments: Record<PrayerName, number>;
+  /** Missed prayers from before you started tracking, still to make up. */
+  backlog: Record<PrayerName, number>;
+}
+
+export interface PrayerDay {
+  date: string;
+  /** ISO instants; sunrise marks the end of Fajr's time. */
+  times: Record<PrayerName | 'sunrise', string>;
+  log: Partial<Record<PrayerName, PrayerStatus>>;
+}
+
+export interface FaithState {
+  configured: boolean;
+  settings: PrayerSettings;
+  today: PrayerDay | null;
+  /** The prayer whose time it is now, and the next one to come. */
+  current: { prayer: PrayerName; endsAt: string } | null;
+  next: { prayer: PrayerName; at: string } | null;
+  /** The last seven days, oldest first, including today. */
+  week: PrayerDay[];
+  /** Past prayers in the last week you haven't marked. */
+  unmarked: { date: string; prayer: PrayerName }[];
+  /** Missed prayers still to make up: logged misses plus the backlog. */
+  owed: Record<PrayerName, number>;
+  hijri: string;
+  ramadan: { start: string; daysUntil: number; inRamadan: boolean; day: number | null } | null;
+}

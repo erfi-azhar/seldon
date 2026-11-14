@@ -142,9 +142,20 @@ at(16, () => store.createTask({ title: 'Renew passports', sphereId: sphere.trave
 
 // ── Faith ───────────────────────────────────────────────────────────────────
 at(88, () => store.updateSphere(sphere.faith!, { vision: 'Five prayers on time, the Quran every day, and a heart that remembers between them.' }));
-const prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((name) => at(80, () => store.createHabit({ sphereId: sphere.faith!, name })));
-const rates = [0.72, 0.9, 0.84, 0.95, 0.9];
-prayers.forEach((p, i) => logHabit(p.id, [...(i === 0 || i === 1 ? [0] : []), 1, 2, ...often(rates[i]!).filter((d) => d > 2)]));
+// Prayers live in the prayer tracker, at Singapore's times.
+store.db.prepare("INSERT INTO settings (key, value) VALUES ('prayer', ?)").run(
+  JSON.stringify({ lat: 1.3521, lng: 103.8198, label: 'Singapore', timezone: 'Asia/Singapore', method: 'Singapore', madhab: 'shafi', backlog: { fajr: 3, dhuhr: 0, asr: 1, maghrib: 0, isha: 0 } }),
+);
+const rates = { fajr: 0.72, dhuhr: 0.9, asr: 0.84, maghrib: 0.97, isha: 0.9 } as const;
+for (let ago = 1; ago <= 34; ago++) {
+  for (const [prayer, rate] of Object.entries(rates)) {
+    if (ago <= 6 && ago % 3 === 0 && prayer === 'asr') continue; // a few left unmarked
+    const r = rand();
+    const status = r < rate ? 'prayed' : r < rate + 0.06 ? 'late' : 'missed';
+    store.db.prepare('INSERT INTO prayer_log (date, prayer, status, logged_at, made_up_at) VALUES (?,?,?,?,?)').run(day(ago), prayer, status, new Date().toISOString(), status === 'missed' && ago > 20 ? new Date().toISOString() : null);
+  }
+}
+store.db.prepare("INSERT INTO prayer_log (date, prayer, status, logged_at) VALUES (?, 'fajr', 'prayed', ?)").run(today, new Date().toISOString());
 const reading = at(80, () => store.createHabit({ sphereId: sphere.faith!, name: 'Quran reading' }));
 logHabit(reading.id, [0, 1, ...often(0.6).filter((d) => d > 2)]);
 const fasting = at(40, () => store.createHabit({ sphereId: sphere.faith!, name: 'Fast Monday and Thursday', cadence: 'weekly', targetPerWeek: 2 }));

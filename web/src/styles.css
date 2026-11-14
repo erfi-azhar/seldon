@@ -4030,3 +4030,236 @@ body::before {
   font-size: 13.5px;
   list-style: decimal;
 }
+
+/* ── Prayer ─────────────────────────────────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.prayer-list {
+  padding: 0 8px;
+}
+.prayer-row {
+  display: grid;
+  grid-template-columns: 74px 70px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: 14px;
+}
+.prayer-row.is-current {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--sphere-soft) 90%, transparent), color-mix(in oklab, var(--sphere-soft) 55%, transparent));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5);
+}
+.prayer-name {
+  font-weight: 550;
+}
+.prayer-time {
+  font-size: 14px;
+}
+.prayer-when {
+  font-size: 12.5px;
+  color: var(--sphere-ink, var(--ink-2));
+}
+.prayer-buttons {
+  display: flex;
+  gap: 4px;
+}
+.pb {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--ink-3);
+  background: var(--tile);
+  border: 1px solid var(--line);
+  transition: background 0.15s, color 0.15s, transform 0.12s;
+}
+.pb:hover:not(:disabled) {
+  color: var(--ink);
+  transform: scale(1.06);
+}
+.pb:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pb-prayed[aria-pressed='true'] {
+  background: var(--sphere);
+  border-color: var(--sphere);
+  color: #fff;
+}
+.pb-late[aria-pressed='true'] {
+  background: oklch(0.78 0.14 75);
+  border-color: transparent;
+  color: #fff;
+}
+.pb-missed[aria-pressed='true'] {
+  background: var(--bad);
+  border-color: transparent;
+  color: #fff;
+}
+.prayer-note {
+  margin: 0 20px 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--tile);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.prayer-week {
+  display: grid;
+  grid-template-columns: 70px repeat(7, 1fr);
+  gap: 6px 4px;
+  align-items: center;
+  justify-items: center;
+  margin: 12px 20px 4px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--tile);
+  border: 1px solid var(--line);
+}
+.pw-day {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.pw-day.is-today {
+  color: var(--ink);
+  font-weight: 600;
+}
+.pw-name {
+  justify-self: start;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.pw-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--ink) 10%, transparent);
+}
+.pw-prayed {
+  background: var(--sphere);
+}
+.pw-late {
+  background: oklch(0.78 0.14 75);
+}
+.pw-missed {
+  background: var(--bad);
+}
+.prayer-unmarked {
+  margin: 12px 8px 0;
+  padding: 0 12px;
+}
+.prayer-unmarked .prayer-row {
+  padding: 5px 0;
+}
+.prayer-qada {
+  margin: 12px 20px 18px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--tile);
+  border: 1px solid var(--line);
+}
+.qada-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+.qada {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.qada b {
+  font-size: 20px;
+  font-weight: 500;
+}
+.adjust-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.adjust-row label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.ramadan {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  border-radius: 26px;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(80% 120% at 100% 0%, oklch(0.55 0.12 300 / 0.9), transparent 60%),
+    radial-gradient(70% 120% at 0% 100%, oklch(0.45 0.1 250 / 0.9), transparent 60%),
+    linear-gradient(135deg, oklch(0.32 0.08 280), oklch(0.24 0.06 260));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.3 0.1 280 / 0.8);
+}
+.ramadan b {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+}
+.ramadan span {
+  display: block;
+  font-size: 13px;
+  opacity: 0.8;
+  max-width: 46ch;
+}
+.ramadan-count {
+  font-size: 46px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+.ramadan-moon {
+  margin-left: auto;
+  opacity: 0.8;
+  flex: none;
+}
+.glass-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--glass-float, var(--glass));
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-float-shadow, var(--glass-shadow));
+}
+@media (max-width: 720px) {
+  .prayer-row {
+    grid-template-columns: 62px 64px 1fr auto;
+    gap: 6px;
+    padding: 7px 8px;
+  }
+  .qada-grid,
+  .adjust-row {
+    gap: 4px;
+  }
+}
+.hero-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+@media (max-width: 720px) {
+  .hero-side {
+    align-items: flex-start;
+  }
+}

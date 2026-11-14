@@ -8,6 +8,7 @@
 // reasoning back.
 
 import { formatValue, type Store } from '../store.ts';
+import { snapshotSections } from './snapshot-hooks.ts';
 import type { ChatContext, Profile } from '../../../shared/types.ts';
 
 export function buildSystemPrompt(profile: Profile): string {
@@ -98,6 +99,16 @@ export function renderSnapshot(store: Store, today: string): string {
 
   lines.push("\nTODAY'S JOURNAL");
   lines.push(o.journal?.body.trim() ? o.journal.body.trim() : '(nothing written yet)');
+
+  for (const section of snapshotSections()) {
+    let body: string | null = null;
+    try {
+      body = section.render(store as never, today);
+    } catch {
+      body = null;
+    }
+    if (body) lines.push(`\n${section.title.toUpperCase()}`, body);
+  }
 
   const memories = store.listMemories();
   lines.push('\nWHAT YOU REMEMBER ABOUT THEM');

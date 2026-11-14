@@ -4,6 +4,7 @@ import type {
   ChatContext,
   Conversation,
   ConversationSummary,
+  FaithState,
   Goal,
   IntegrationStatus,
   Memory,
@@ -204,3 +205,12 @@ export const useSignals = (filter: { sphereId?: string; source?: string } = {}) 
 
 export const useIntegration = (id: string) =>
   useQuery({ queryKey: ['integration', id], queryFn: () => api<IntegrationStatus>('GET', `/integrations/${id}`), refetchInterval: (q) => (q.state.data?.running ? 3_000 : 30_000) });
+
+export const useFaith = () =>
+  useQuery({ queryKey: ['faith', todayStr()], queryFn: () => api<FaithState>('GET', withDate('/faith')), refetchInterval: 60_000 });
+
+export const faithWrite = {
+  settings: (body: object) => api<FaithState>('PUT', withDate('/faith/settings'), body),
+  log: (body: object) => api<FaithState>('POST', withDate('/faith/log'), body),
+  qada: (body: object) => api<FaithState>('POST', withDate('/faith/qada'), body),
+};

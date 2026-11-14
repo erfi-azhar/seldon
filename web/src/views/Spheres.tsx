@@ -6,6 +6,7 @@ import { useSphere, useSpheres, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
+import { PrayerCard } from '../components/Prayer.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
 import { cx, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -218,6 +219,7 @@ export function SphereDetail({ id }: { id: string }) {
         </div>
 
         <div className="col">
+          {s.key === 'faith' && <PrayerCard />}
           <section className="card">
             <div className="card-head">
               <h2 className="card-title">Habits</h2>
