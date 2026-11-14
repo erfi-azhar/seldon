@@ -30,6 +30,12 @@ const hm = (mins: number) => (mins > 0 ? `${Math.floor(mins / 60)}h ${String(min
 const minutesBetween = (fromUtc: string, toUtc: string) => Math.round((Date.parse(toUtc) - Date.parse(fromUtc)) / 60_000);
 /** A hotel's everyday name: "The Mercury Garden Shenzhen Nanshan, A Tribute Portfolio Hotel" → before the comma. */
 const shortStay = (title: string) => title.split(',')[0]!.trim() || title;
+/** The airports a run of flights touches, in order: "SZX → SIN → FRA → GRU". */
+const routeLine = (flights: Segment[]) =>
+  flights
+    .flatMap((f, i) => (i > 0 && flights[i - 1]!.toCode === f.fromCode ? [f.toCode] : [f.fromCode, f.toCode]))
+    .filter(Boolean)
+    .join(' → ');
 const nightsOf = (s: Segment) => Math.max(0, daysFrom(dayOf(s.startLocal), dayOf(s.endLocal)));
 const city = (name: string, code: string) => name.replace(/ (International|Airport)$/, '') || code;
 
@@ -656,6 +662,50 @@ function StayRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
   );
 }
 
+/** A remembered preference on this device (folded cards, folded days), falling back to the visit when storage is blocked. */
+function useStored<T>(key: string, initial: () => T): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw !== null) return JSON.parse(raw) as T;
+    } catch {
+      /* storage blocked or unreadable */
+    }
+    return initial();
+  });
+  const set = (v: T) => {
+    setValue(v);
+    try {
+      localStorage.setItem(key, JSON.stringify(v));
+    } catch {
+      /* remembered for this visit only */
+    }
+  };
+  return [value, set];
+}
+
+/** A trip-page card that folds to its header: the title with a short summary, any actions, and a chevron. */
+function FoldCard({ id, icon, title, peek, extra, className, children }: { id: string; icon: ReactNode; title: string; peek?: ReactNode; extra?: ReactNode; className?: string; children: ReactNode }) {
+  const [open, setOpen] = useStored(`terminus.card.${id}`, () => true);
+  return (
+    <section className={cx('card trip-section fold-card', !open && 'is-folded', className)}>
+      <div className="card-head fold-head">
+        <button type="button" className="fold-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span className="card-title">
+            {icon} {title}
+          </span>
+          {peek && <span className="fold-peek">{peek}</span>}
+        </button>
+        {open && extra}
+        <button type="button" className="icon-btn icon-btn-sm fold-chev-btn" aria-label={open ? `Fold ${title}` : `Open ${title}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+          <ChevronDown size={15} className="fold-chev" aria-hidden />
+        </button>
+      </div>
+      {open && <div className="trip-section-body">{children}</div>}
+    </section>
+  );
+}
+
 /**
  * Everything about a trip, as separate cards: flights (the globe beside them), flight options, the stay,
  * to-dos and the day-by-day plan. The page's head, with the trip's actions, comes first.
@@ -678,6 +728,12 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
   const others = trip.segments.filter((s) => s.kind !== 'flight');
   const legs = globeLegs(flights);
   const openTodos = trip.todos.filter((x) => !x.done).length;
+  // Each day folds on its own; days already past start folded. Choices are remembered per trip on this device.
+  const [dayFolds, setDayFolds] = useStored<Record<string, boolean>>(`terminus.plan.${trip.id}`, () => ({}));
+  const dayOpen = (d: string) => dayFolds[d] ?? !(d < today && !past);
+  const setDay = (d: string, open: boolean) => setDayFolds({ ...dayFolds, [d]: open });
+  const allOpen = days.every(dayOpen);
+  const setAllDays = (open: boolean) => setDayFolds(Object.fromEntries(days.map((d) => [d, open])));
   const row = (s: Segment) => {
     if (s.kind !== 'flight') return <StayRow key={s.id} s={s} onEdit={() => setBooking(s)} />;
     const next = flights[flights.indexOf(s) + 1];
@@ -715,14 +771,7 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
         </div>
       </header>
 
-      <section className="card trip-section">
-        <div className="card-head">
-          <h2 className="card-title">
-            <Plane size={15} /> Flights
-          </h2>
-          {flights.length > 0 && <span className="trip-section-count">{plural(flights.length, 'flight')}</span>}
-        </div>
-        <div className="trip-section-body">
+      <FoldCard id={`${trip.id}.flights`} icon={<Plane size={15} />} title="Flights" peek={flights.length > 0 && `${plural(flights.length, 'flight')} · ${routeLine(flights)}`}>
           {flights.length === 0 ? (
             <p className="empty">{trip.options.length ? 'Nothing booked yet. Compare the options below.' : 'No flights yet. Add them, paste a confirmation, or let Gmail bring them in.'}</p>
           ) : legs.length ? (
@@ -735,23 +784,14 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
           ) : (
             <div className="seg-list">{flights.map(row)}</div>
           )}
-        </div>
-      </section>
+      </FoldCard>
 
       {trip.options.length > 0 && (
-        <section className="card trip-section">
           <FlightOptions trip={trip} />
-        </section>
       )}
 
       <div className="trip-section-pair">
-        <section className="card trip-section">
-          <div className="card-head">
-            <h2 className="card-title">
-              <BedDouble size={15} /> Stay
-            </h2>
-          </div>
-          <div className="trip-section-body">
+        <FoldCard id={`${trip.id}.stay`} icon={<BedDouble size={15} />} title="Stay" peek={others.length ? others.map((o) => shortStay(o.title || 'Hotel')).join(', ') : 'No hotel yet'}>
             {others.length ? (
               <div className="seg-list">{others.map(row)}</div>
             ) : (
@@ -762,67 +802,77 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
                 </button>
               </p>
             )}
-          </div>
-        </section>
+        </FoldCard>
 
-        <section className="card trip-section">
-          <div className="card-head">
-            <h2 className="card-title">
-              <ListChecks size={15} /> To-dos
-            </h2>
-            {openTodos > 0 && <span className="trip-section-count">{plural(openTodos, 'open', 'open')}</span>}
-          </div>
-          <div className="trip-section-body">
+        <FoldCard id={`${trip.id}.todos`} icon={<ListChecks size={15} />} title="To-dos" peek={openTodos > 0 ? plural(openTodos, 'open', 'open') : trip.todos.length ? 'All done' : 'None yet'}>
             <TripTodos trip={trip} past={past} />
-          </div>
-        </section>
+        </FoldCard>
       </div>
 
-      <section className="card trip-section">
-        <div className="card-head">
-          <h2 className="card-title">
-            <CalendarDays size={15} /> Plan
-          </h2>
-          {!past && (
-            <button type="button" className="btn btn-ghost btn-sm" disabled={draft.isPending} onClick={() => draft.mutate()}>
-              {draft.isPending ? <Spinner /> : <Wand2 size={13} />} {trip.itinerary.length ? 'Fill empty days' : `Draft with ${agentName}`}
-            </button>
-          )}
-        </div>
-        <div className="trip-section-body">
+      <FoldCard
+        id={`${trip.id}.plan`}
+        icon={<CalendarDays size={15} />}
+        title="Plan"
+        peek={`${plural(days.length, 'day')} · ${trip.itinerary.length ? plural(trip.itinerary.length, 'plan') : 'nothing planned yet'}`}
+        extra={
+          <span className="fold-actions">
+            {days.length > 1 && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAllDays(!allOpen)}>
+                {allOpen ? 'Fold all days' : 'Open all days'}
+              </button>
+            )}
+            {!past && (
+              <button type="button" className="btn btn-ghost btn-sm" disabled={draft.isPending} onClick={() => draft.mutate()}>
+                {draft.isPending ? <Spinner /> : <Wand2 size={13} />} {trip.itinerary.length ? 'Fill empty days' : `Draft with ${agentName}`}
+              </button>
+            )}
+          </span>
+        }
+      >
           {draft.error && <p className="error-text">{draft.error.message}</p>}
           <div className="plan-days">
             {days.map((d) => {
               const items = trip.itinerary.filter((i) => i.date === d);
+              const open = dayOpen(d);
+              const left = items.filter((i) => !i.done).length;
               return (
-                <div key={d} className={cx('plan-day', d === today && 'is-today')}>
+                <div key={d} className={cx('plan-day', d === today && 'is-today', !open && 'is-folded')}>
                   <div className="plan-date">
-                    <b>{weekday(d)}</b>
+                    <button type="button" className="plan-date-toggle" aria-expanded={open} onClick={() => setDay(d, !open)}>
+                      <ChevronRight size={14} className="plan-date-chev" aria-hidden />
+                      <b>{weekday(d)}</b>
+                      {!open && (
+                        <span className="plan-date-peek">
+                          {items.length === 0 ? 'Free' : `${plural(items.length, 'plan')}${left < items.length ? ` · ${left ? `${left} to go` : 'all done'}` : ''} · ${items.map((i) => i.title).join(', ')}`}
+                        </span>
+                      )}
+                    </button>
                     <button type="button" className="icon-btn icon-btn-sm" aria-label={`Add to ${weekday(d)}`} onClick={() => setItem({ item: null, date: d })}>
                       <Plus size={14} />
                     </button>
                   </div>
-                  {items.length === 0 && <p className="plan-empty">Free</p>}
-                  <ul>
-                    {items.map((i) => (
-                      <li key={i.id} className={cx('plan-item', `pk-${i.kind}`, i.done && 'is-done')}>
-                        <Check checked={i.done} onChange={() => toggle.mutate(i)} label={`Done: ${i.title}`} />
-                        <button type="button" className="plan-item-body" onClick={() => setItem({ item: i, date: d })}>
-                          <span className="plan-time num">{i.time ?? '·'}</span>
-                          <span className="grow">
-                            <span className="plan-title">{i.title}</span>
-                            {(i.place || i.notes) && <span className="plan-place">{[i.place, i.notes].filter(Boolean).join(' — ')}</span>}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  {open && items.length === 0 && <p className="plan-empty">Free</p>}
+                  {open && items.length > 0 && (
+                    <ul>
+                      {items.map((i) => (
+                        <li key={i.id} className={cx('plan-item', `pk-${i.kind}`, i.done && 'is-done')}>
+                          <Check checked={i.done} onChange={() => toggle.mutate(i)} label={`Done: ${i.title}`} />
+                          <button type="button" className="plan-item-body" onClick={() => setItem({ item: i, date: d })}>
+                            <span className="plan-time num">{i.time ?? '·'}</span>
+                            <span className="grow">
+                              <span className="plan-title">{i.title}</span>
+                              {(i.place || i.notes) && <span className="plan-place">{[i.place, i.notes].filter(Boolean).join(' — ')}</span>}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               );
             })}
           </div>
-        </div>
-      </section>
+      </FoldCard>
 
       {editing && <TripSheet trip={trip} onClose={() => setEditing(false)} />}
       {booking && <BookingSheet trip={trip} segment={booking === 'new' ? null : booking} onClose={() => setBooking(null)} />}
@@ -963,23 +1013,21 @@ function FlightOptions({ trip }: { trip: Trip }) {
   // The recommended option first, then the ones that earn the most elite miles.
   const ordered = [...trip.options].sort((a, b) => Number(b.recommended) - Number(a.recommended) || eliteMiles(b).mid - eliteMiles(a).mid);
   return (
-    <div className="trip-options">
-      <button type="button" className={cx('opt-bar', open && 'is-open')} aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="opt-bar-icon" aria-hidden>
-          <Route size={16} />
-        </span>
-        <span className="opt-bar-text">
-          <span className="opt-bar-title">Flight options</span>
-          <span className="opt-bar-sub">
+    <section className={cx('card trip-section fold-card trip-options', !open && 'is-folded')}>
+      <div className="card-head fold-head">
+        <button type="button" className="fold-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span className="card-title">
+            <Route size={15} /> Flight options
+          </span>
+          <span className="fold-peek opt-fold-peek">
             {plural(trip.options.length, 'option')} · {chosen ? `${chosen} added to the trip` : 'nothing booked yet'}
             {best && <span className="opt-bar-best"> · most elite miles: {CABIN_NAME[mainCabin(best)]}, ≈ {roughly(eliteMiles(best).mid)}</span>}
           </span>
-        </span>
-        <span className="opt-bar-action">
-          {open ? 'Hide' : 'Show'}
-          <ChevronDown size={15} className="opt-bar-chev" aria-hidden />
-        </span>
-      </button>
+        </button>
+        <button type="button" className="icon-btn icon-btn-sm fold-chev-btn" aria-label={open ? 'Fold flight options' : 'Open flight options'} aria-expanded={open} onClick={() => setOpen(!open)}>
+          <ChevronDown size={15} className="fold-chev" aria-hidden />
+        </button>
+      </div>
       {!open && (
         <div className="opt-peek">
           {ordered.map((o) => {
@@ -1015,7 +1063,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
         </div>
       )}
       {(choose.error || unchoose.error) && <p className="error-text">{(choose.error ?? unchoose.error)!.message}</p>}
-    </div>
+    </section>
   );
 }
 
