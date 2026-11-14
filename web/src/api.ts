@@ -8,6 +8,7 @@ import type {
   Goal,
   HealthState,
   TravelState,
+  JobsState,
   IntegrationStatus,
   Memory,
   Metric,
@@ -243,4 +244,14 @@ export const travelWrite = {
   patch: (path: string, body: object) => api<TravelState>('PATCH', withDate(`/travel${path}`), body),
   put: (path: string, body: object) => api<TravelState>('PUT', withDate(`/travel${path}`), body),
   del: (path: string) => api<TravelState>('DELETE', withDate(`/travel${path}`)),
+};
+
+export const useJobs = () => useQuery({ queryKey: ['jobs'], queryFn: () => api<JobsState>('GET', '/jobs'), refetchInterval: 10 * 60_000 });
+
+export const jobsWrite = {
+  watch: (body: { company: string; url: string }) => api<JobsState>('POST', '/jobs/watches', body),
+  unwatch: (id: string) => api<JobsState>('DELETE', `/jobs/watches/${id}`),
+  preferences: (body: object) => api<JobsState>('PUT', '/jobs/preferences', body),
+  mark: (id: string, status: 'seen' | 'saved' | 'dismissed') => api<JobsState>('PATCH', `/jobs/postings/${id}`, { status }),
+  check: () => api<unknown>('POST', '/integrations/jobs/run'),
 };

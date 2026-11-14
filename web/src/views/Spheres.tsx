@@ -9,6 +9,7 @@ import { SignalsCard } from '../components/Signals.tsx';
 import { PrayerCard } from '../components/Prayer.tsx';
 import { HealthPanels } from '../components/HealthPanels.tsx';
 import { TravelPanels, WorkTrips } from '../components/Travel.tsx';
+import { JobAlertsCard } from '../components/Jobs.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
 import { cx, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -162,6 +163,7 @@ export function SphereDetail({ id }: { id: string }) {
       <div className="detail-grid">
         <div className="col">
           <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
+          {s.key === 'work' && <JobAlertsCard />}
           <section className="card">
             <div className="card-head">
               <h2 className="card-title">Goals</h2>

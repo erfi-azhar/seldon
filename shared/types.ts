@@ -683,3 +683,54 @@ export interface TravelState {
   loyalty: LoyaltyAccount[];
   context: TravelContext;
 }
+
+// ── Job alerts ──────────────────────────────────────────────────────────────
+
+export type JobBoardKind = 'greenhouse' | 'lever' | 'ashby' | 'workable' | 'smartrecruiters';
+
+export interface JobWatch {
+  id: string;
+  company: string;
+  careersUrl: string;
+  ats: JobBoardKind;
+  board: string;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  openings: number;
+  matching: number;
+}
+
+export interface JobPosting {
+  id: string;
+  watchId: string;
+  company: string;
+  title: string;
+  location: string;
+  department: string;
+  remote: boolean;
+  url: string;
+  postedAt: string | null;
+  firstSeenAt: string;
+  /** new: appeared since you started watching; saved / dismissed: your call; seen: there when you started. */
+  status: 'new' | 'seen' | 'saved' | 'dismissed';
+}
+
+export interface JobPreferences {
+  /** A title must contain one of these (empty: any). */
+  keywords: string[];
+  /** …and none of these. */
+  exclude: string[];
+  /** The location must contain one of these (empty: anywhere). */
+  locations: string[];
+  /** Remote roles count wherever they are. */
+  remote: boolean;
+}
+
+export interface JobsState {
+  preferences: JobPreferences;
+  watches: JobWatch[];
+  /** Open roles that match, newest first. */
+  postings: JobPosting[];
+  running: boolean;
+  lastRunAt: string | null;
+}

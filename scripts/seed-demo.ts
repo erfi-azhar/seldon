@@ -17,6 +17,8 @@ import { addSignal } from '../server/src/features/signals.ts';
 import { saveFile } from '../server/src/features/capture.ts';
 import { logBody, logFood, logWorkout } from '../server/src/features/health.ts';
 import { addItems, addSegment, createTrip, upsertLoyalty } from '../server/src/features/travel.ts';
+import { setPreferences } from '../server/src/features/job-alerts.ts';
+import { updateIntegration } from '../server/src/features/integrations.ts';
 import { deflateSync } from 'node:zlib';
 
 const path = resolve(process.argv[2] ?? 'data/demo.db');
@@ -391,6 +393,36 @@ addSignal(store, {
   title: 'SQ 636 to Tokyo leaves 08:05 tomorrow',
   body: 'Lounge: KrisFlyer Gold Lounge, Terminal 3. Seldon put together a plan for the morning.',
 });
+
+// Job alerts: a few companies, what counts as a fit, and some roles (two new).
+{
+  const companies: [string, string, string][] = [['Canva', 'lever', 'canva'], ['Airwallex', 'greenhouse', 'airwallex'], ['Linear', 'ashby', 'linear'], ['Grab', 'greenhouse', 'grab']];
+  const ids: Record<string, string> = {};
+  for (const [company, ats, board] of companies) {
+    ids[company] = `jw-${board}`;
+    db.prepare('INSERT INTO job_watches (id, company, careers_url, ats, board, last_checked_at, created_at) VALUES (?,?,?,?,?,?,?)').run(ids[company], company, '', ats, board, new Date(Date.now() - 2 * 3600_000).toISOString(), new Date(Date.now() - 20 * 86400_000).toISOString());
+  }
+  const roles: [string, string, string, string, boolean, string, number][] = [
+    ['Canva', 'Senior Product Designer, Growth', 'Singapore', 'Design', false, 'new', 0],
+    ['Airwallex', 'Lead Product Designer', 'Singapore', 'Design', false, 'new', 1],
+    ['Linear', 'Product Designer', 'Remote (APAC)', 'Design', true, 'saved', 9],
+    ['Grab', 'Design Lead, Financial Services', 'Singapore', 'Design', false, 'seen', 16],
+    ['Canva', 'Principal Product Designer', 'Sydney', 'Design', false, 'seen', 12],
+    ['Grab', 'Senior Backend Engineer', 'Singapore', 'Engineering', false, 'seen', 18],
+    ['Airwallex', 'Product Design Intern', 'Singapore', 'Design', false, 'seen', 6],
+  ];
+  roles.forEach(([company, title, location, dept, remote, status, ago], i) => {
+    const seen = new Date(Date.now() - ago * 86400_000).toISOString();
+    db.prepare('INSERT INTO job_postings (id, watch_id, external_id, title, location, department, remote, url, posted_at, first_seen_at, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(`jp-${i}`, ids[company]!, `r${i}`, title, location, dept, Number(remote), `https://example.com/jobs/${i}`, seen, seen, status);
+  });
+  updateIntegration(store, 'jobs', (r) => void ((r.enabled = true), (r.lastRunAt = new Date(Date.now() - 2 * 3600_000).toISOString())));
+  setPreferences(store, { keywords: ['product designer', 'design lead', 'head of design'], exclude: ['intern'], locations: ['Singapore'], remote: true });
+  addSignal(store, {
+    source: 'jobs', kind: 'opening', externalId: 'jw-airwallex:jp-1', priority: 2, sphereId: sphere.work!, occurredAt: new Date(Date.now() - 86400_000).toISOString(),
+    title: 'Airwallex is hiring: Lead Product Designer', body: 'Singapore · Design',
+    actions: [{ type: 'link', label: 'Open the posting', url: 'https://example.com/jobs/1' }, { type: 'task', label: 'Add as a task', title: 'Apply: Lead Product Designer at Airwallex', sphereId: sphere.work! }],
+  });
+}
 
 at(0, () => store.putJournal(today, 'Ran before anyone else was up. 5.2 km and it felt easy for the first time.'), 7);
 

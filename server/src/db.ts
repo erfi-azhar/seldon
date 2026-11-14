@@ -338,6 +338,38 @@ const MIGRATIONS: string[] = [
     updated_at TEXT NOT NULL
   );
   `,
+  // job alerts — companies you watch and the openings on their job boards.
+  `
+  CREATE TABLE job_watches (
+    id TEXT PRIMARY KEY,
+    company TEXT NOT NULL,
+    careers_url TEXT NOT NULL DEFAULT '',
+    ats TEXT NOT NULL,
+    board TEXT NOT NULL,
+    last_checked_at TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (ats, board)
+  );
+
+  CREATE TABLE job_postings (
+    id TEXT PRIMARY KEY,
+    watch_id TEXT NOT NULL REFERENCES job_watches(id) ON DELETE CASCADE,
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    location TEXT NOT NULL DEFAULT '',
+    department TEXT NOT NULL DEFAULT '',
+    remote INTEGER NOT NULL DEFAULT 0,
+    url TEXT NOT NULL DEFAULT '',
+    posted_at TEXT,
+    first_seen_at TEXT NOT NULL,
+    closed_at TEXT,
+    matched INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'seen',
+    UNIQUE (watch_id, external_id)
+  );
+  CREATE INDEX job_postings_open ON job_postings(closed_at, matched);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
