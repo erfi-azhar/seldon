@@ -3,8 +3,9 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { BedDouble, Briefcase, CalendarDays, Camera, ChevronDown, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Sofa, Sparkles, Trash2, Wand2 } from 'lucide-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { BedDouble, Briefcase, CalendarDays, Camera, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Sofa, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
 import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
@@ -619,7 +620,7 @@ function TripCard({ trip, state, open, onToggle }: { trip: Trip; state: TravelSt
   const flights = trip.segments.filter((s) => s.kind === 'flight');
 
   return (
-    <article className={cx('trip-card', open && 'is-open', past && 'is-past')}>
+    <article id={`trip-${trip.id}`} className={cx('trip-card', open && 'is-open', past && 'is-past')}>
       <button type="button" className="trip-head" onClick={onToggle} aria-expanded={open}>
         <div className="grow">
           <div className="trip-title">{trip.title}</div>
@@ -733,6 +734,17 @@ export function TravelTrips() {
   const [importing, setImporting] = useState(false);
   const [open, setOpen] = useState<string | null | undefined>(undefined);
   const [showPast, setShowPast] = useState(false);
+  // Arriving from Today's notch (?trip=…): open that trip and bring it into view.
+  const wanted = new URLSearchParams(useUrlSearch()).get('trip');
+  const loaded = !!t;
+  useEffect(() => {
+    if (!wanted || !loaded) return;
+    setOpen(wanted);
+    if (t!.trips.some((x) => x.id === wanted && x.endDate < todayStr())) setShowPast(true);
+    const timer = setTimeout(() => document.getElementById(`trip-${wanted}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted, loaded]);
   if (!t) return null;
   const today = todayStr();
   const upcoming = t.trips.filter((x) => x.endDate >= today);
@@ -867,17 +879,6 @@ function TripTodos({ trip, past = false }: { trip: Trip; past?: boolean }) {
   );
 }
 
-/** Every trip still ahead, each as its own countdown card with its flights and to-dos. */
-function TripsAhead({ trips }: { trips: Trip[] }) {
-  return (
-    <>
-      {trips.map((trip) => (
-        <TripCountdown key={trip.id} trip={trip} />
-      ))}
-    </>
-  );
-}
-
 const weekdayShort = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
 /** One trip ahead, in the manner of the Ramadan countdown: days to go, the way out and back, then what is left to do. */
@@ -941,9 +942,22 @@ function TripCountdown({ trip }: { trip: Trip }) {
   );
 }
 
+/** Trips that follow on within a week: each starts no more than seven days after the one before it ends. */
+export function followingTrips(featured: Trip, rest: Trip[]): Trip[] {
+  const out: Trip[] = [];
+  let end = featured.endDate;
+  for (const x of [...rest].sort((a, b) => a.startDate.localeCompare(b.startDate))) {
+    if (daysFrom(end, x.startDate) > 7) break;
+    out.push(x);
+    if (x.endDate > end) end = x.endDate;
+  }
+  return out;
+}
+
 /**
- * Travel on Today: the moment you are in (a flight today, a trip under way) as its own card,
- * then every trip still ahead with its to-dos.
+ * Travel on Today features one trip: the one under way (a flight today, or away now), else the
+ * next one ahead. Trips that follow on within a week tuck beneath it as notches that open them
+ * in the Travels sphere. Trips further out wait there until their turn.
  */
 export function TravelModeCard() {
   const { data: t } = useTravel();
@@ -952,11 +966,44 @@ export function TravelModeCard() {
   const c = t.context;
   const current = (c.mode === 'departing' || c.mode === 'away') && c.trip ? c.trip : null;
   const ahead = t.trips.filter((x) => x.endDate >= today && x.id !== current?.id).sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const featured = current ?? ahead[0];
+  if (!featured) return null;
+  const next = followingTrips(featured, ahead.filter((x) => x.id !== featured.id));
   return (
-    <>
-      {current && <TravelNowCard />}
-      {ahead.length > 0 && <TripsAhead trips={ahead} />}
-    </>
+    <div className="trip-feature">
+      {current ? <TravelNowCard /> : <TripCountdown trip={featured} />}
+      {next.map((x) => (
+        <TripNotch key={x.id} trip={x} />
+      ))}
+    </div>
+  );
+}
+
+/** A trip that follows the featured one, as a tab beneath its card. Opens the trip in the Travels sphere. */
+function TripNotch({ trip }: { trip: Trip }) {
+  const { spheres } = useApp();
+  const [, navigate] = useLocation();
+  const home = spheres.find((s) => s.key === 'travels') ?? (trip.purpose === 'work' ? spheres.find((s) => s.key === 'work') : undefined);
+  const open = trip.todos.filter((x) => !x.done).length;
+  const flights = trip.segments.filter((s) => s.kind === 'flight').length;
+  const detail = open ? plural(open, 'to-do') : flights ? plural(flights, 'flight') : 'nothing booked yet';
+  return (
+    <button
+      type="button"
+      className={cx('trip-notch', trip.purpose === 'work' ? 'is-work' : 'is-leisure')}
+      disabled={!home}
+      onClick={() => home && navigate(`/spheres/${home.id}?trip=${trip.id}`)}
+      aria-label={`Then ${trip.title}, ${dates(trip.startDate, trip.endDate)}. Open in Travels`}
+    >
+      <span className="trip-notch-label">Then</span>
+      <span className="trip-notch-body">
+        <b>{trip.title}</b>
+        <span className="trip-notch-meta">
+          {dates(trip.startDate, trip.endDate)} · {detail}
+        </span>
+      </span>
+      <ChevronRight size={16} className="trip-notch-chev" />
+    </button>
   );
 }
 
