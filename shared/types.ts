@@ -645,6 +645,27 @@ export interface Segment {
   lounges: LoungeAccess[];
   /** Stays: what your hotel status gets you there. */
   perks: string[];
+  /** Stays at a Marriott-family hotel: the Bonvoy elite nights it earns and where they leave you. */
+  eliteNights?: EliteNights | null;
+}
+
+/** Bonvoy elite nights a stay earns, counted on from the nights last recorded on the Bonvoy card. */
+export interface EliteNights {
+  /** Nights this stay earns: one per night. */
+  nights: number;
+  /** The calendar year they count towards (the year of check-out). */
+  year: number;
+  /** Already in the recorded count: it checked out before the count was recorded. */
+  counted: boolean;
+  /** Nights in that year before this stay, and after it. Null when there is no count to start from. */
+  before: number | null;
+  after: number | null;
+  /** Where `before` comes from: the recorded count (only for the year it was recorded in) and the stays since. */
+  recorded: { nights: number; asOf: string } | null;
+  earlier: { title: string; nights: number }[];
+  /** The highest tier this stay takes you to, if it crosses one; and the next tier after it. */
+  reaches: string | null;
+  next: { tier: string; at: number } | null;
 }
 
 export interface ItineraryItem {

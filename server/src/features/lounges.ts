@@ -51,6 +51,17 @@ export function loungeAccess(seg: Segment, accounts: LoyaltyAccount[]): LoungeAc
   return out.filter((x) => (seen.has(x.access) ? false : (seen.add(x.access), true)));
 }
 
+export const isMarriott = (title: string, brand = '') => MARRIOTT_BRANDS.test(`${title} ${brand}`);
+
+/** Bonvoy tiers by elite nights in a calendar year (Ambassador also needs qualifying spend). */
+export const BONVOY_TIERS: { tier: string; at: number }[] = [
+  { tier: 'Silver Elite', at: 10 },
+  { tier: 'Gold Elite', at: 25 },
+  { tier: 'Platinum Elite', at: 50 },
+  { tier: 'Titanium Elite', at: 75 },
+  { tier: 'Ambassador Elite', at: 100 },
+];
+
 const MARRIOTT_BRANDS = /marriott|ritz[- ]carlton|st\.? regis|\bw (hotel|singapore|[a-z]+)|westin|sheraton|le m[eé]ridien|\bjw\b|edition|luxury collection|renaissance|courtyard|four points|aloft|moxy|autograph collection|tribute portfolio|delta hotels|fairfield|element|\bac hotel|gaylord|design hotels|protea|bulgari/i;
 
 /** What your Bonvoy tier gets you at a Marriott-family hotel. */
