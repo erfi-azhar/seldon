@@ -3,12 +3,12 @@
 // board is doing, lives in a sheet — so a long watch list never buries the roles.
 
 import { Bookmark, BookmarkCheck, CircleAlert, ExternalLink, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Star, X } from 'lucide-react';
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import type { JobBoardKind, JobPosting, JobPreferences, JobsState, JobWatch } from '../../../shared/types.ts';
 import { jobsWrite, useJobs, useWrite } from '../api.ts';
 import { cx, plural, timeAgo } from '../lib.ts';
 import { useApp } from '../state.tsx';
-import { AutoTextarea, Check, Field, Modal, Spinner } from './ui.tsx';
+import { AutoTextarea, Check, Field, Modal, ScrollBlur, Spinner, useScrollEdges } from './ui.tsx';
 
 const join = (xs: string[]) => xs.join(', ');
 const split = (s: string) =>
@@ -57,36 +57,6 @@ function useArmed(): [boolean, () => void, () => void] {
     return () => clearTimeout(t);
   }, [armed]);
   return [armed, () => setArmed(true), () => setArmed(false)];
-}
-
-/**
- * A box that scrolls on one axis, and which of its ends still hide something — so the
- * fade can sit only where there is more to see.
- */
-function useScrollEdges<T extends HTMLElement>(axis: 'x' | 'y', deps: unknown[]) {
-  const ref = useRef<T>(null);
-  const [edges, setEdges] = useState({ start: false, end: false });
-  const update = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    const [pos, size, total] = axis === 'y' ? [el.scrollTop, el.clientHeight, el.scrollHeight] : [el.scrollLeft, el.clientWidth, el.scrollWidth];
-    const start = pos > 2;
-    const end = pos + size < total - 2;
-    setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
-  }, [axis]);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    update();
-    // Rows wrap and grow with the width, so watch the content as well as the box.
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    for (const child of Array.from(el.children)) ro.observe(child);
-    return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [update, ...deps]);
-  const fade = cx(edges.start && 'fade-start', edges.end && 'fade-end');
-  return { ref, onScroll: update, fade, scrolls: edges.start || edges.end };
 }
 
 function PreferencesSheet({ prefs, onClose }: { prefs: JobPreferences; onClose: () => void }) {
@@ -503,11 +473,14 @@ export function JobAlertsCard() {
             <p className="empty">{EMPTY_FILTER[active]}</p>
           ) : (
             // Scrolls inside the card once the list outgrows it; focusable so the keys scroll it too.
-            <ul ref={list.ref} onScroll={list.onScroll} className={cx('jobs-list', 'jobs-scroll', list.fade)} tabIndex={list.scrolls ? 0 : undefined} aria-label={plural(roles.length, 'open role')}>
-              {roles.map((p) => (
-                <Posting key={p.id} p={p} />
-              ))}
-            </ul>
+            <div className="blur-wrap">
+              <ul ref={list.ref} onScroll={list.onScroll} className="jobs-list jobs-scroll" tabIndex={list.scrolls ? 0 : undefined} aria-label={plural(roles.length, 'open role')}>
+                {roles.map((p) => (
+                  <Posting key={p.id} p={p} />
+                ))}
+              </ul>
+              <ScrollBlur axis="y" edges={list.edges} />
+            </div>
           )}
           <footer className="jobs-foot">
             <span className="jobs-foot-text">

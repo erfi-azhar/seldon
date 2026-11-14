@@ -14,7 +14,7 @@ import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
-import { Check, Field, Modal, Seg, Spinner } from './ui.tsx';
+import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
 
 // ── Small helpers ───────────────────────────────────────────────────────────
 
@@ -1013,6 +1013,8 @@ function FlightOptions({ trip }: { trip: Trip }) {
       /* remembered for this visit only */
     }
   };
+  const peek = useScrollEdges<HTMLDivElement>('x', [open, trip.options.length]);
+  const grid = useScrollEdges<HTMLDivElement>('x', [open, trip.options.length]);
   const chosen = trip.options.filter((o) => o.chosenAt).length;
   const best = [...trip.options].sort((a, b) => eliteMiles(b).mid - eliteMiles(a).mid)[0];
   // How far there is still to go for the next KrisFlyer tier, to show what each option does for it.
@@ -1038,7 +1040,8 @@ function FlightOptions({ trip }: { trip: Trip }) {
         </button>
       </div>
       {!open && (
-        <div className="opt-peek">
+        <div className="blur-wrap">
+        <div ref={peek.ref} onScroll={peek.onScroll} className="opt-peek">
           {ordered.map((o) => {
             const last = o.legs[o.legs.length - 1]!;
             return (
@@ -1053,10 +1056,13 @@ function FlightOptions({ trip }: { trip: Trip }) {
             );
           })}
         </div>
+        <ScrollBlur axis="x" edges={peek.edges} />
+        </div>
       )}
       {open && (
         <div className="trip-section-body">
-          <div className="opt-grid">
+          <div className="blur-wrap opt-grid-wrap">
+          <div ref={grid.ref} onScroll={grid.onScroll} className="opt-grid">
             {ordered.map((o) => (
               <OptionCard
                 key={o.id}
@@ -1068,6 +1074,8 @@ function FlightOptions({ trip }: { trip: Trip }) {
                 busy={(choose.isPending && choose.variables === o.id) || (unchoose.isPending && unchoose.variables === o.id)}
               />
             ))}
+          </div>
+          <ScrollBlur axis="x" edges={grid.edges} />
           </div>
         </div>
       )}
