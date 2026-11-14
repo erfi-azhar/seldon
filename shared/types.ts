@@ -559,3 +559,19 @@ export interface HealthState {
   week: { sessions: number; minutes: number; strength: number; cardio: number };
   body: BodyReading[];
 }
+
+// ── MCP connections ─────────────────────────────────────────────────────────
+
+export interface McpServerView {
+  id: string;
+  name: string;
+  url: string;
+  /** What Seldon may do with this server's tools. */
+  mode: 'off' | 'read' | 'write';
+  status: 'connected' | 'needs_auth' | 'error' | 'unknown';
+  error: string | null;
+  toolCount: number;
+  /** Tools never offered to Seldon: anything marked destructive, and deletes. */
+  withheld: string[];
+  connectedAt: string | null;
+}

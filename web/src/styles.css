@@ -4564,3 +4564,19 @@ textarea.title-input {
     width: 100%;
   }
 }
+.mcp-server {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.mcp-server b {
+  font-weight: 600;
+}
+.sync-row {
+  display: grid;
+  gap: 6px;
+  font-size: 13.5px;
+}

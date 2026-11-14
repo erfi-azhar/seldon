@@ -1,9 +1,11 @@
 // Connections to outside services, managed in Settings.
 
-import { KeyRound, Mail, RefreshCw, Share2 } from 'lucide-react';
-import { useState } from 'react';
-import type { IntegrationStatus } from '../../../shared/types.ts';
-import { useIntegration, useWrite, write } from '../api.ts';
+import { useQuery } from '@tanstack/react-query';
+import { KeyRound, Mail, Plug, Plus, RefreshCw, Share2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import type { IntegrationStatus, McpServerView } from '../../../shared/types.ts';
+import { api, useIntegration, useWrite, write } from '../api.ts';
+import { useApp } from '../state.tsx';
 import { timeAgo } from '../lib.ts';
 import { Field, Spinner } from './ui.tsx';
 
@@ -150,6 +152,156 @@ export function CaptureSetup() {
         {token && <code className="token">{token}</code>}
       </div>
       {token && <p className="hint">Copy it now — it is shown once. Making a new one turns the old one off. It can only save things, nothing else.</p>}
+    </div>
+  );
+}
+
+interface McpList {
+  servers: McpServerView[];
+  known: { name: string; url: string; blurb: string }[];
+}
+
+function GravlSync() {
+  const { data: status } = useIntegration('gravl');
+  const toggle = useWrite((enabled: boolean) => write.put('/integrations/gravl', { enabled }));
+  const run = useWrite(() => write.post('/integrations/gravl/run'));
+  const last = status?.settings.last as { food: number; workouts: number; body: number } | null | undefined;
+  return (
+    <div className="sync-row">
+      <label className="row" style={{ gap: 8 }}>
+        <input type="checkbox" checked={!!status?.enabled} onChange={(e) => toggle.mutate(e.target.checked)} />
+        <span>Sync workouts, food and measurements into Health every few hours</span>
+      </label>
+      {status?.enabled && (
+        <div className="row-wrap" style={{ gap: 8 }}>
+          <StatusLine status={status} />
+          {last && !status.running && !status.lastError && (
+            <span className="hint">
+              Last brought in {last.workouts} workouts, {last.food} food entries, {last.body} measurements
+            </span>
+          )}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => run.mutate()} disabled={status.running}>
+            <RefreshCw size={13} /> Sync now
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function McpConnections() {
+  const { data } = useQuery({ queryKey: ['mcp'], queryFn: () => api<McpList>('GET', '/mcp/servers') });
+  const { toast, agentName } = useApp();
+  const [custom, setCustom] = useState({ name: '', url: '' });
+  const [adding, setAdding] = useState(false);
+  const add = useWrite((body: { name: string; url: string }) => write.post<{ authorizeUrl: string | null }>('/mcp/servers', body));
+  const signIn = useWrite((id: string) => write.post<{ authorizeUrl: string | null }>(`/mcp/servers/${id}/auth`));
+  const setMode = useWrite((v: { id: string; mode: string }) => write.patch(`/mcp/servers/${v.id}`, { mode: v.mode }));
+  const check = useWrite((id: string) => write.post(`/mcp/servers/${id}/check`));
+  const remove = useWrite((id: string) => write.del(`/mcp/servers/${id}`));
+
+  // Coming back from a server's sign-in page.
+  useEffect(() => {
+    const result = new URLSearchParams(location.search).get('mcp');
+    if (!result) return;
+    toast({ message: result === 'connected' ? 'Connected.' : result === 'cancelled' ? 'Sign-in was cancelled.' : 'Sign-in did not complete. Try again.' });
+    history.replaceState(null, '', location.pathname + location.hash);
+  }, [toast]);
+
+  const go = (r: { authorizeUrl: string | null }) => {
+    // The server's own sign-in page; it sends you back here when done.
+    if (r.authorizeUrl) location.href = r.authorizeUrl;
+  };
+  const connected = new Set((data?.servers ?? []).map((s) => s.url));
+
+  return (
+    <div className="conn-card">
+      <div className="conn-head">
+        <span className="brain-icon">
+          <Plug size={18} />
+        </span>
+        <div className="grow">
+          <b>Apps over MCP</b>
+          <span className="hint" style={{ display: 'block' }}>
+            Let {agentName} use apps that offer an MCP server — log a workout or a meal in Gravl from a conversation.
+          </span>
+        </div>
+      </div>
+
+      {(data?.servers ?? []).map((s) => (
+        <div key={s.id} className="mcp-server">
+          <div className="row" style={{ alignItems: 'flex-start' }}>
+            <div className="grow">
+              <b>{s.name}</b>
+              <span className="hint" style={{ display: 'block' }}>
+                {s.status === 'connected' ? `${s.toolCount} tools available to ${agentName}` : s.status === 'needs_auth' ? 'Needs you to sign in' : s.error ? s.error : 'Not checked yet'}
+              </span>
+            </div>
+            {s.status === 'needs_auth' ? (
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => signIn.mutate(s.id, { onSuccess: go, onError: (e) => toast({ message: e.message }) })}>
+                Sign in
+              </button>
+            ) : (
+              <select className="select agent-brain" style={{ maxWidth: 190 }} value={s.mode} onChange={(e) => setMode.mutate({ id: s.id, mode: e.target.value })} aria-label={`What ${agentName} may do in ${s.name}`}>
+                <option value="write">Read and log</option>
+                <option value="read">Read only</option>
+                <option value="off">Off</option>
+              </select>
+            )}
+          </div>
+          {s.withheld.length > 0 && (
+            <p className="hint">
+              Never offered to {agentName}: {s.withheld.join(', ')} — {agentName} doesn't delete things.
+            </p>
+          )}
+          {s.id === 'gravl' && s.status === 'connected' && <GravlSync />}
+          <div className="row" style={{ gap: 4 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => check.mutate(s.id)}>
+              <RefreshCw size={13} /> Check
+            </button>
+            <button type="button" className="btn btn-danger btn-sm" onClick={() => window.confirm(`Disconnect ${s.name}?`) && remove.mutate(s.id)}>
+              Disconnect
+            </button>
+          </div>
+        </div>
+      ))}
+
+      <div className="row-wrap">
+        {(data?.known ?? [])
+          .filter((k) => !connected.has(k.url))
+          .map((k) => (
+            <button key={k.url} type="button" className="btn btn-primary" disabled={add.isPending} onClick={() => add.mutate({ name: k.name, url: k.url }, { onSuccess: go, onError: (e) => toast({ message: e.message }) })} title={k.blurb}>
+              <Plus size={14} /> Connect {k.name}
+            </button>
+          ))}
+        <button type="button" className="btn" onClick={() => setAdding((v) => !v)}>
+          Another MCP server
+        </button>
+      </div>
+      {adding && (
+        <form
+          className="field-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add.mutate(custom, { onSuccess: (r) => (setAdding(false), go(r)), onError: (err) => toast({ message: err.message }) });
+          }}
+        >
+          <Field label="Name">
+            <input className="input" value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} placeholder="My app" />
+          </Field>
+          <Field label="Server URL">
+            <div className="row">
+              <input className="input" value={custom.url} onChange={(e) => setCustom({ ...custom, url: e.target.value })} placeholder="https://…/mcp" />
+              <button type="submit" className="btn btn-sm" disabled={!custom.name.trim() || !custom.url.trim()}>
+                Add
+              </button>
+            </div>
+          </Field>
+        </form>
+      )}
+      <p className="hint">
+        <b>Gravl</b> has an official MCP server (it covers Gravl Macros too). <b>Bevel</b> has no official MCP server or API yet — a request for one is on their roadmap — and <b>MacroFactor</b> has no official API; both write to Apple Health, which Terminus can't read directly. Sign-in opens the app's own page and returns here; do it on the device you use Terminus from.
+      </p>
     </div>
   );
 }

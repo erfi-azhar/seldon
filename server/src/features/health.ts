@@ -48,7 +48,7 @@ export interface FoodInput {
   meal?: Meal;
 }
 
-export function logFood(store: Store, date: string, time: string, items: FoodInput[], source = 'manual', externalId: string | null = null): FoodEntry[] {
+export function logFood(store: Store, date: string, time: string, items: FoodInput[], source = 'manual', externalId: string | null = null, quiet = false): FoodEntry[] {
   if (items.length === 0) throw new Invalid('Nothing to log');
   const sphere = healthSphere(store);
   const out: FoodEntry[] = [];
@@ -58,7 +58,7 @@ export function logFood(store: Store, date: string, time: string, items: FoodInp
     store.db
       .prepare('INSERT INTO food_log (id, date, time, meal, name, amount, kcal, protein, carbs, fat, source, external_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
       .run(id, date, time, item.meal ?? mealFor(time), item.name.trim().slice(0, 120), (item.amount ?? '').slice(0, 60), r1(item.kcal), r1(item.protein ?? 0), r1(item.carbs ?? 0), r1(item.fat ?? 0), source, externalId, nowIso());
-    store.record('created', 'food', id, sphere?.id ?? null, `Logged ${item.name} — ${Math.round(item.kcal)} kcal`);
+    if (!quiet) store.record('created', 'food', id, sphere?.id ?? null, `Logged ${item.name} — ${Math.round(item.kcal)} kcal`);
     out.push(foodFromRow(store.db.prepare('SELECT * FROM food_log WHERE id = ?').get(id) as Row));
   }
   return out;
@@ -118,7 +118,7 @@ const workoutFromRow = (r: Row): Workout => ({
   source: r.source,
 });
 
-export function logWorkout(store: Store, w: Omit<Workout, 'id' | 'source'>, source = 'manual', externalId: string | null = null): Workout | null {
+export function logWorkout(store: Store, w: Omit<Workout, 'id' | 'source'>, source = 'manual', externalId: string | null = null, quiet = false): Workout | null {
   if (externalId) {
     const existing = store.db.prepare('SELECT * FROM workouts WHERE source = ? AND external_id = ?').get(source, externalId) as Row | undefined;
     if (existing) return null;
@@ -129,7 +129,7 @@ export function logWorkout(store: Store, w: Omit<Workout, 'id' | 'source'>, sour
     .run(id, w.date, w.name.slice(0, 120), w.type, w.durationMin, w.distanceKm, w.kcal, w.notes.slice(0, 2000), JSON.stringify(w.exercises.slice(0, 40)), source, externalId, nowIso());
   const sphere = healthSphere(store);
   const detail = [w.durationMin ? `${w.durationMin} min` : '', w.distanceKm ? `${w.distanceKm} km` : '', w.exercises.length ? `${w.exercises.length} exercises` : ''].filter(Boolean).join(', ');
-  store.record('created', 'workout', id, sphere?.id ?? null, `Workout: ${w.name}${detail ? ` (${detail})` : ''}`);
+  if (!quiet) store.record('created', 'workout', id, sphere?.id ?? null, `Workout: ${w.name}${detail ? ` (${detail})` : ''}`);
   return workoutFromRow(store.db.prepare('SELECT * FROM workouts WHERE id = ?').get(id) as Row);
 }
 
@@ -148,7 +148,7 @@ const bodyFromRow = (r: Row): BodyReading => ({
   notes: r.notes,
 });
 
-export function logBody(store: Store, b: Omit<BodyReading, 'id' | 'source' | 'notes'> & { notes?: string }, source = 'manual', externalId: string | null = null): BodyReading | null {
+export function logBody(store: Store, b: Omit<BodyReading, 'id' | 'source' | 'notes'> & { notes?: string }, source = 'manual', externalId: string | null = null, quiet = false): BodyReading | null {
   if ([b.weightKg, b.bodyFatPct, b.muscleKg, b.visceralFat, b.waterPct, b.bmr].every((v) => v === null || v === undefined)) throw new Invalid('Add at least one reading');
   if (externalId && store.db.prepare('SELECT 1 AS x FROM body_readings WHERE source = ? AND external_id = ?').get(source, externalId)) return null;
   const id = newId();
@@ -157,7 +157,7 @@ export function logBody(store: Store, b: Omit<BodyReading, 'id' | 'source' | 'no
     .run(id, b.date, b.weightKg ?? null, b.bodyFatPct ?? null, b.muscleKg ?? null, b.visceralFat ?? null, b.waterPct ?? null, b.bmr ?? null, source, externalId, (b.notes ?? '').slice(0, 500), nowIso());
   const sphere = healthSphere(store);
   const parts = [b.weightKg != null ? `${b.weightKg} kg` : '', b.bodyFatPct != null ? `${b.bodyFatPct}% fat` : '', b.muscleKg != null ? `${b.muscleKg} kg muscle` : ''].filter(Boolean);
-  store.record('created', 'body_reading', id, sphere?.id ?? null, `Body composition: ${parts.join(', ') || 'new reading'}`);
+  if (!quiet) store.record('created', 'body_reading', id, sphere?.id ?? null, `Body composition: ${parts.join(', ') || 'new reading'}`);
   // Keep the Weight metric (and any goal it drives) in step.
   if (b.weightKg != null && sphere) {
     const weight = store.listMetrics(sphere.id).find((m) => /^(body )?weight$/i.test(m.name));
