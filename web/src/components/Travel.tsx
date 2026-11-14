@@ -3,10 +3,10 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Sofa, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
-import type { ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { FlightOption, ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
 import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -26,6 +26,10 @@ const duration = (s: Segment) => {
   const mins = Math.round((Date.parse(s.endUtc) - Date.parse(s.startUtc)) / 60_000);
   return mins > 0 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : '';
 };
+const hm = (mins: number) => (mins > 0 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : '');
+const minutesBetween = (fromUtc: string, toUtc: string) => Math.round((Date.parse(toUtc) - Date.parse(fromUtc)) / 60_000);
+/** A hotel's everyday name: "The Mercury Garden Shenzhen Nanshan, A Tribute Portfolio Hotel" → before the comma. */
+const shortStay = (title: string) => title.split(',')[0]!.trim() || title;
 const nightsOf = (s: Segment) => Math.max(0, daysFrom(dayOf(s.startLocal), dayOf(s.endLocal)));
 const city = (name: string, code: string) => name.replace(/ (International|Airport)$/, '') || code;
 
@@ -722,6 +726,8 @@ function TripDetail({ trip, state }: { trip: Trip; state: TravelState }) {
             </div>
           )}
 
+          {trip.options.length > 0 && <FlightOptions trip={trip} />}
+
           <div className="plan-head">
             <h3>
               <ListChecks size={14} /> To-dos
@@ -779,50 +785,176 @@ function TripDetail({ trip, state }: { trip: Trip; state: TravelState }) {
   );
 }
 
-/** A trip at a glance, for the list in the Travels sphere: tap for its page. */
+/** A trip at a glance, for the list in the Travels sphere: tap for its page. Three labelled columns — flights,
+ * stay, to-dos — so each fact sits where the eye expects it. */
 function TripSummary({ trip }: { trip: Trip }) {
   const today = todayStr();
   const flights = trip.segments.filter((s) => s.kind === 'flight');
-  const out = flights[0];
-  const back = flights.length > 1 ? flights[flights.length - 1] : undefined;
-  const stay = trip.segments.find((s) => s.kind === 'stay');
+  const shown = flights.length > 2 ? [flights[0]!, flights[flights.length - 1]!] : flights;
+  const stays = trip.segments.filter((s) => s.kind === 'stay');
   const open = trip.todos.filter((x) => !x.done);
-  const next = open.find((x) => x.dueDate);
-  const leg = (label: string, s: Segment) => (
-    <span className="ts-leg">
-      <AirlineTail code={s.carrier} size={20} />
-      <span>
-        <span className="ts-leg-label">{label}</span> {`${s.carrier} ${s.number}`.trim()} · {weekday(dayOf(s.startLocal))} {time(s.startLocal)} · {s.fromCode} → {s.toCode}
-      </span>
-    </span>
-  );
+  const next = open.find((x) => x.dueDate) ?? open[0];
+  const days = daysFrom(today, trip.startDate);
+  const countdown = trip.endDate < today ? 'Past' : days <= 0 ? 'Now' : days === 1 ? 'Tomorrow' : `${days} days`;
   return (
     <Link href={`/trips/${trip.id}`} className={cx('trip-summary', trip.endDate < today && 'is-past')}>
-      <span className="grow">
-        <span className="trip-title">{trip.title}</span>
-        <span className="trip-sub">
-          <PurposeChip purpose={trip.purpose} />
-          <span>{dates(trip.startDate, trip.endDate)}</span>
-          <span className="faint">· {whenLabel(trip, today)}</span>
+      <span className="ts-head">
+        <span className="ts-title-block">
+          <span className="trip-title">{trip.title}</span>
+          <span className="ts-dates">{dates(trip.startDate, trip.endDate)}</span>
         </span>
-        <span className="ts-facts">
-          {out ? leg('Out', out) : <span className="ts-fact faint">No flights booked yet</span>}
-          {back && leg('Home', back)}
-          {stay && (
-            <span className="ts-fact">
-              <BedDouble size={14} /> {stay.title} · {plural(nightsOf(stay), 'night')}
-            </span>
+        <span className="ts-head-end">
+          <PurposeChip purpose={trip.purpose} />
+          <span className="ts-countdown">{countdown}</span>
+          <ChevronRight size={18} className="trip-chev" />
+        </span>
+      </span>
+      <span className="ts-grid">
+        <span className="ts-cell">
+          <span className="ts-label">Flights{flights.length > 2 ? ` · ${flights.length}` : ''}</span>
+          {shown.length ? (
+            shown.map((f) => (
+              <span key={f.id} className="ts-flight">
+                <AirlineTail code={f.carrier} size={22} />
+                <span className="ts-flight-text">
+                  <b>
+                    {f.fromCode} → {f.toCode}
+                  </b>
+                  <span>
+                    {`${f.carrier} ${f.number}`.trim()} · {weekday(dayOf(f.startLocal))}, {time(f.startLocal)}
+                  </span>
+                </span>
+              </span>
+            ))
+          ) : (
+            <span className="ts-empty">{trip.options.length ? `${plural(trip.options.length, 'option')} to compare` : 'Not booked yet'}</span>
           )}
-          {open.length > 0 && (
-            <span className="ts-fact">
-              <ListChecks size={14} /> {plural(open.length, 'to-do')}
-              {next && <span className="faint ts-next"> · next: {next.title}</span>}
+        </span>
+        <span className="ts-cell">
+          <span className="ts-label">Stay</span>
+          {stays.length ? (
+            stays.slice(0, 2).map((st) => (
+              <span key={st.id} className="ts-value">
+                <b>{shortStay(st.title || 'Hotel')}</b>
+                <span>
+                  {plural(nightsOf(st), 'night')} · from {weekday(dayOf(st.startLocal))}
+                </span>
+              </span>
+            ))
+          ) : (
+            <span className="ts-empty">Not booked yet</span>
+          )}
+        </span>
+        <span className="ts-cell">
+          <span className="ts-label">To do</span>
+          {open.length ? (
+            <span className="ts-value">
+              <b>{plural(open.length, 'open', 'open')}</b>
+              {next && <span>Next: {next.title}</span>}
             </span>
+          ) : (
+            <span className="ts-empty">All done</span>
           )}
         </span>
       </span>
-      <ChevronRight size={18} className="trip-chev" />
     </Link>
+  );
+}
+
+/** Ways to make the journey, to weigh before booking: each option's flights, connections and trade-offs. */
+function FlightOptions({ trip }: { trip: Trip }) {
+  const choose = useWrite((id: string) => travelWrite.post(`/options/${id}/choose`));
+  const remove = useWrite((id: string) => travelWrite.del(`/options/${id}`));
+  return (
+    <section className="trip-options">
+      <div className="plan-head">
+        <h3>
+          <Route size={14} /> Flight options
+        </h3>
+      </div>
+      <div className="opt-grid">
+        {trip.options.map((o) => (
+          <OptionCard key={o.id} o={o} onChoose={() => choose.mutate(o.id)} onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)} busy={choose.isPending && choose.variables === o.id} />
+        ))}
+      </div>
+      {choose.error && <p className="error-text">{choose.error.message}</p>}
+    </section>
+  );
+}
+
+function OptionCard({ o, onChoose, onRemove, busy }: { o: FlightOption; onChoose: () => void; onRemove: () => void; busy: boolean }) {
+  const first = o.legs[0]!;
+  const last = o.legs[o.legs.length - 1]!;
+  const total = minutesBetween(first.startUtc, last.endUtc);
+  return (
+    <article className={cx('opt-card', o.recommended && 'is-recommended', o.chosenAt && 'is-chosen')}>
+      <header className="opt-head">
+        <span className="opt-title">{o.title}</span>
+        {o.chosenAt ? (
+          <span className="opt-badge is-chosen">
+            <CheckIcon size={12} /> Added to trip
+          </span>
+        ) : (
+          o.recommended && (
+            <span className="opt-badge">
+              <Star size={12} /> Recommended
+            </span>
+          )
+        )}
+      </header>
+      <div className="opt-arrive">
+        <span className="opt-arrive-label">Lands</span>
+        <b>
+          {weekday(dayOf(last.endLocal))} · {time(last.endLocal)}
+        </b>
+        <span>
+          in {last.toCity || last.toCode} · {hm(total)} door to door · {plural(o.legs.length, 'flight')}
+        </span>
+      </div>
+      {o.summary && <p className="opt-summary">{o.summary}</p>}
+      <ol className="opt-legs">
+        {o.legs.map((l, i) => {
+          const prev = o.legs[i - 1];
+          const wait = prev ? minutesBetween(prev.endUtc, l.startUtc) : 0;
+          return (
+            <li key={i}>
+              {prev && (
+                <div className="opt-layover">
+                  <Clock size={12} /> {hm(wait)} in {prev.toCity || prev.toCode}
+                </div>
+              )}
+              <div className="opt-leg">
+                <AirlineTail code={l.carrier} size={26} />
+                <span className="opt-leg-main">
+                  <span className="opt-leg-route">
+                    <b>{time(l.startLocal)}</b> {l.fromCode} <span className="faint">→</span> <b>{time(l.endLocal)}</b> {l.toCode}
+                    {dayOf(l.endLocal) !== dayOf(l.startLocal) && <sup>+{daysFrom(dayOf(l.startLocal), dayOf(l.endLocal))}</sup>}
+                  </span>
+                  <span className="opt-leg-meta">
+                    {`${l.carrier} ${l.number}`.trim()} · {weekday(dayOf(l.startLocal))} · {hm(minutesBetween(l.startUtc, l.endUtc))}
+                  </span>
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {o.notes.length > 0 && (
+        <ul className="opt-notes">
+          {o.notes.map((n, i) => (
+            <li key={i}>{n}</li>
+          ))}
+        </ul>
+      )}
+      <footer className="opt-foot">
+        <button type="button" className="btn btn-sm opt-choose" disabled={!!o.chosenAt || busy} onClick={onChoose} title="Adds these flights to the trip as planned flights; book them separately">
+          {busy ? <Spinner /> : <Plus size={13} />} {o.chosenAt ? 'Flights added' : 'Add these flights to the trip'}
+        </button>
+        <button type="button" className="icon-btn icon-btn-sm opt-remove" onClick={onRemove} aria-label={`Remove the option ${o.title}`} title="Remove this option">
+          <Trash2 size={14} />
+        </button>
+      </footer>
+    </article>
   );
 }
 

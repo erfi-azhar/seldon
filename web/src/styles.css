@@ -6834,19 +6834,18 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   }
 }
 
-/* Trips in the Travels sphere: one line of what matters each, opening the trip's own page. */
+/* Trips in the Travels sphere: a head line, then three labelled columns (flights, stay, to do). */
 .trip-summary {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
   border-radius: 18px;
   background: var(--tile);
   box-shadow: var(--tile-shadow);
   border: 1px solid var(--line);
   color: inherit;
   text-decoration: none;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color 0.15s;
 }
 .trip-summary:hover {
   border-color: var(--line-2);
@@ -6857,38 +6856,110 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 .trip-summary.is-past {
   opacity: 0.75;
 }
-.trip-summary .grow {
+.ts-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ts-title-block {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.ts-dates {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.ts-head-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.ts-countdown {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.ts-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.ts-cell {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 16px;
+}
+.ts-cell:first-child {
+  padding-left: 0;
+}
+.ts-cell:last-child {
+  padding-right: 0;
+}
+.ts-cell + .ts-cell {
+  border-left: 1px solid var(--line);
+}
+.ts-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ts-flight {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.ts-flight-text,
+.ts-value {
   display: grid;
   min-width: 0;
 }
-.trip-summary .trip-title {
-  display: block;
-}
-.ts-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  margin-top: 10px;
-  font-size: 13px;
-  color: var(--ink-2);
-}
-.ts-leg,
-.ts-fact {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.ts-fact svg {
-  color: var(--ink-3);
-  flex: none;
-}
-.ts-leg-label {
-  font-size: 11px;
+.ts-flight-text b,
+.ts-value b {
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ts-flight-text span,
+.ts-value span {
+  font-size: 12.5px;
   color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ts-empty {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+@media (max-width: 640px) {
+  .ts-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .ts-cell {
+    padding: 0;
+  }
+  .ts-cell + .ts-cell {
+    border-left: 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .ts-head-end .chip {
+    display: none;
+  }
 }
 .horizon-link {
   color: inherit;
@@ -6908,22 +6979,160 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 .trip-page-card .trip-actions {
   margin: -6px -8px 12px;
 }
-.ts-leg,
-.ts-fact {
-  max-width: 100%;
+
+/* Flight options on a trip's page: routings to weigh before booking. */
+.trip-options {
+  margin-top: 6px;
 }
-.ts-leg > span:last-child,
-.ts-fact {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.opt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.opt-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px 16px 12px;
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(16 18 30 / 0.04), 0 10px 24px -18px rgb(16 18 30 / 0.25);
+}
+.opt-card.is-recommended {
+  box-shadow: 0 0 0 1.5px oklch(0.6 0.13 155 / 0.7), 0 10px 24px -18px rgb(16 18 30 / 0.25);
+}
+.opt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.opt-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.opt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: oklch(0.45 0.12 155);
+  background: oklch(0.95 0.04 155);
   white-space: nowrap;
 }
-@media (max-width: 520px) {
-  .ts-next {
-    display: none;
+.opt-badge.is-chosen {
+  color: oklch(0.45 0.12 250);
+  background: oklch(0.95 0.03 250);
+}
+.opt-arrive {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.opt-arrive-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.opt-arrive b {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.opt-arrive span:last-child {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.opt-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.opt-legs {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.opt-leg {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+.opt-leg-main {
+  display: grid;
+  min-width: 0;
+}
+.opt-leg-route {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.opt-leg-route b {
+  font-weight: 650;
+}
+.opt-leg-route sup {
+  margin-left: 2px;
+  font-size: 10px;
+  color: var(--ink-3);
+}
+.opt-leg-meta {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.opt-layover {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 2px 12px;
+  padding: 3px 0 3px 24px;
+  border-left: 1.5px dashed var(--line-2);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.opt-notes {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 0 0 16px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.opt-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.opt-remove {
+  color: var(--ink-3);
+}
+:root[data-theme='dark'] .opt-badge {
+  color: oklch(0.85 0.1 155);
+  background: oklch(0.3 0.06 155);
+}
+:root[data-theme='dark'] .opt-badge.is-chosen {
+  color: oklch(0.85 0.08 250);
+  background: oklch(0.3 0.06 250);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .opt-badge {
+    color: oklch(0.85 0.1 155);
+    background: oklch(0.3 0.06 155);
   }
-  .ts-facts {
-    flex-direction: column;
-    gap: 6px;
+  :root:not([data-theme='light']) .opt-badge.is-chosen {
+    color: oklch(0.85 0.08 250);
+    background: oklch(0.3 0.06 250);
   }
 }

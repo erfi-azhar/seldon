@@ -671,8 +671,40 @@ export interface Trip {
   itinerary: ItineraryItem[];
   /** To-dos for the trip: open ones by due date, then done ones. */
   todos: Task[];
+  /** Flight routings to weigh before booking. */
+  options: FlightOption[];
   /** Seldon's airport and layover notes, keyed by flight segment id. */
   companion: Record<string, { lounges: string[]; plan: string[]; generatedAt: string }>;
+}
+
+/** One flight within a flight option, with local times at each end and the instants they make. */
+export interface OptionLeg {
+  carrier: string;
+  number: string;
+  fromCode: string;
+  toCode: string;
+  fromCity: string;
+  toCity: string;
+  startLocal: string;
+  endLocal: string;
+  startTz: string;
+  endTz: string;
+  startUtc: string;
+  endUtc: string;
+}
+
+/** A way to make a journey, before it is booked: its flights, and what speaks for and against it. */
+export interface FlightOption {
+  id: string;
+  tripId: string;
+  title: string;
+  summary: string;
+  legs: OptionLeg[];
+  notes: string[];
+  recommended: boolean;
+  /** When its flights were added to the trip as planned flights. */
+  chosenAt: string | null;
+  createdAt: string;
 }
 
 export interface LoyaltyAccount {

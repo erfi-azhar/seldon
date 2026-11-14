@@ -15,7 +15,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
 import { addDays, daysBetween, Invalid, localDate, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { ItineraryItem, LoyaltyAccount, Segment, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { FlightOption, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { airport, validZone, zonedToUtc } from './airports.ts';
 import { getIntegration, updateIntegration } from './integrations.ts';
 import { loungeAccess, stayPerks } from './lounges.ts';
@@ -120,6 +120,7 @@ function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store)): Trip 
     segments: (store.db.prepare('SELECT * FROM trip_segments WHERE trip_id = ? ORDER BY start_utc').all(r.id) as Row[]).map((x) => segmentFromRow(x, accounts)),
     itinerary: (store.db.prepare("SELECT * FROM itinerary_items WHERE trip_id = ? ORDER BY date, COALESCE(time, '99:99'), created_at").all(r.id) as Row[]).map(itemFromRow),
     todos: store.listTasks({ tripId: r.id, status: 'all', limit: 100 }),
+    options: (store.db.prepare('SELECT * FROM trip_options WHERE trip_id = ? ORDER BY position, created_at').all(r.id) as Row[]).map(optionFromRow),
   };
 }
 
@@ -360,6 +361,99 @@ export function updateSegment(store: Store, id: string, p: Partial<SegmentInput>
     .run(n.kind, n.title, n.carrier, n.number, n.fromCode, n.fromName, n.toCode, n.toName, n.startLocal, n.startTz, n.endLocal, n.endTz, n.startUtc, n.endUtc, n.cabin, n.seat, n.confirmation, n.address, n.notes, id);
   if (r.trip_id) cover(store, r.trip_id, n.startLocal.slice(0, 10), n.endLocal.slice(0, 10));
   return segmentFromRow(store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row, listLoyalty(store));
+}
+
+// ── Flight options ──────────────────────────────────────────────────────────
+
+const optionFromRow = (r: Row): FlightOption => ({
+  id: r.id,
+  tripId: r.trip_id,
+  title: r.title,
+  summary: r.summary,
+  legs: JSON.parse(r.legs),
+  notes: JSON.parse(r.notes),
+  recommended: !!r.recommended,
+  chosenAt: r.chosen_at,
+  createdAt: r.created_at,
+});
+
+export interface OptionLegInput {
+  carrier: string;
+  number: string;
+  fromCode: string;
+  toCode: string;
+  startLocal: string;
+  endLocal: string;
+  startTz?: string | null;
+  endTz?: string | null;
+}
+
+export interface OptionInput {
+  title: string;
+  summary?: string;
+  notes?: string[];
+  recommended?: boolean;
+  legs: OptionLegInput[];
+}
+
+/** A leg with codes, cities and zones resolved, and its instants worked out, the way bookings are. */
+function optionLeg(l: OptionLegInput, settings: TravelSettings): OptionLeg {
+  const n = normalise({ kind: 'flight', carrier: l.carrier, number: l.number, fromCode: l.fromCode, toCode: l.toCode, startLocal: l.startLocal, endLocal: l.endLocal, startTz: l.startTz, endTz: l.endTz }, settings);
+  return {
+    carrier: n.carrier,
+    number: n.number,
+    fromCode: n.fromCode,
+    toCode: n.toCode,
+    fromCity: airport(n.fromCode)?.city ?? n.fromName,
+    toCity: airport(n.toCode)?.city ?? n.toName,
+    startLocal: n.startLocal,
+    endLocal: n.endLocal,
+    startTz: n.startTz,
+    endTz: n.endTz,
+    startUtc: n.startUtc,
+    endUtc: n.endUtc,
+  };
+}
+
+export function addOption(store: Store, tripId: string, input: OptionInput, quiet = false): FlightOption {
+  const trip = getTrip(store, tripId);
+  if (!input.legs.length) throw new Invalid('An option needs at least one flight');
+  const settings = travelSettings(store);
+  const legs = input.legs.map((l) => optionLeg(l, settings));
+  const id = newId();
+  const position = (store.db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM trip_options WHERE trip_id = ?').get(tripId) as Row).p;
+  store.db
+    .prepare('INSERT INTO trip_options (id, trip_id, title, summary, legs, notes, recommended, position, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(id, tripId, clean(input.title, 80) || 'Option', clean(input.summary, 300), JSON.stringify(legs), JSON.stringify((input.notes ?? []).map((x) => clean(x, 300)).filter(Boolean).slice(0, 8)), Number(!!input.recommended), position, nowIso());
+  if (!quiet) store.record('created', 'trip_option', id, sphereFor(store, trip.purpose), `Flight option for ${trip.title}: ${clean(input.title, 60)}`);
+  return optionFromRow(store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row);
+}
+
+export function updateOption(store: Store, id: string, p: Partial<Omit<OptionInput, 'legs'>>): FlightOption {
+  const r = store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Option');
+  store.db
+    .prepare('UPDATE trip_options SET title = ?, summary = ?, notes = ?, recommended = ? WHERE id = ?')
+    .run(
+      p.title !== undefined ? clean(p.title, 80) || r.title : r.title,
+      p.summary !== undefined ? clean(p.summary, 300) : r.summary,
+      p.notes !== undefined ? JSON.stringify(p.notes.map((x) => clean(x, 300)).filter(Boolean).slice(0, 8)) : r.notes,
+      p.recommended !== undefined ? Number(p.recommended) : r.recommended,
+      id,
+    );
+  return optionFromRow(store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row);
+}
+
+/** Put an option's flights on its trip as planned flights (not booked yet), and mark it chosen. */
+export function chooseOption(store: Store, id: string): Trip {
+  const r = store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Option');
+  const o = optionFromRow(r);
+  for (const l of o.legs) {
+    addSegment(store, o.tripId, { kind: 'flight', carrier: l.carrier, number: l.number, fromCode: l.fromCode, toCode: l.toCode, startLocal: l.startLocal, endLocal: l.endLocal, startTz: l.startTz, endTz: l.endTz, notes: `Planned from the option “${o.title}”, not booked yet.` }, 'option');
+  }
+  store.db.prepare('UPDATE trip_options SET chosen_at = ? WHERE id = ?').run(nowIso(), id);
+  return getTrip(store, o.tripId);
 }
 
 export interface ItemInput {
@@ -811,6 +905,7 @@ async function onMail(store: Store, m: MailMessage): Promise<void> {
 registerUndo('created:trip', (db, id) => void db.prepare('DELETE FROM trips WHERE id = ?').run(id));
 registerUndo('created:trip_segment', (db, id) => void db.prepare('DELETE FROM trip_segments WHERE id = ?').run(id));
 registerUndo('created:itinerary', (db, id) => void db.prepare('DELETE FROM itinerary_items WHERE id = ?').run(id));
+registerUndo('created:trip_option', (db, id) => void db.prepare('DELETE FROM trip_options WHERE id = ?').run(id));
 // Takes back the draft's own items that are not ticked off. The trip stays marked as drafted,
 // so the half-hourly job does not draft it again; "Draft with Seldon" still can.
 registerUndo('created:itinerary_draft', (db, id) => {
@@ -841,7 +936,8 @@ registerSnapshotSection<Store>('Travel', (store, today) => {
   if (ctx.mode === 'away' && ctx.trip) lines.push(`Away now: day ${ctx.dayOfTrip} of ${ctx.tripDays} in ${ctx.trip.title}${ctx.stay ? `, staying at ${ctx.stay.title}` : ''}.`);
   for (const t of trips) {
     const open = t.todos.filter((x) => !x.done);
-    lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items, ${open.length} open to-dos.`);
+    lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items, ${open.length} open to-dos${t.options.length ? `, ${t.options.length} flight options` : ''}.`);
+    for (const o of t.options.slice(0, 4)) lines.push(`  Option [${o.id}] ${o.title}${o.recommended ? ' (recommended)' : ''}${o.chosenAt ? ' (added to the trip)' : ''}: ${o.legs.map((l) => `${l.carrier}${l.number} ${l.fromCode}-${l.toCode} ${l.startLocal.replace('T', ' ')}`).join(', ')}`);
     for (const x of open.slice(0, 8)) lines.push(`  To-do [${x.id}] ${x.title}${x.dueDate ? ` (due ${x.dueDate})` : ''}`);
   }
   for (const a of loyalty) lines.push(`${a.program}: ${[a.tier, a.points !== null ? `${a.points.toLocaleString('en')} ${a.kind === 'airline' ? 'miles' : 'points'}` : '', a.progress !== null && a.progressTarget ? `${a.progress}/${a.progressTarget} ${a.progressLabel}` : ''].filter(Boolean).join(', ')} (as of ${a.updatedAt.slice(0, 10)}).`);
@@ -872,6 +968,23 @@ const segmentInput = z.object({
   address: z.string().max(300).optional(),
   notes: z.string().max(1000).optional(),
 });
+const optionLegInput = z.object({
+  carrier: z.string().min(1).max(4),
+  number: z.string().min(1).max(8),
+  fromCode: z.string().length(3),
+  toCode: z.string().length(3),
+  startLocal: z.string().regex(stamp),
+  endLocal: z.string().regex(stamp),
+  startTz: z.string().max(40).nullable().optional(),
+  endTz: z.string().max(40).nullable().optional(),
+});
+const optionInput = z.object({
+  title: z.string().min(1).max(80),
+  summary: z.string().max(300).optional(),
+  notes: z.array(z.string().max(300)).max(8).optional(),
+  recommended: z.boolean().optional(),
+  legs: z.array(optionLegInput).min(1).max(6),
+});
 const itemInput = z.object({ date: dateStr, time: time.nullable().optional(), title: z.string().min(1).max(160), place: z.string().max(160).optional(), notes: z.string().max(600).optional(), kind: z.enum(['activity', 'food', 'transit', 'work', 'rest']).optional() });
 const loyaltyInput = z.object({
   program: z.string().min(1).max(60),
@@ -901,7 +1014,7 @@ const compactTrip = (t: Trip) => ({
 
 registerFeature({
   id: ID,
-  tables: ['trips', 'trip_segments', 'itinerary_items', 'loyalty_accounts'],
+  tables: ['trips', 'trip_segments', 'itinerary_items', 'loyalty_accounts', 'trip_options'],
   integration: { configured: () => true },
   jobs: [{ id: ID, everyMs: 30 * 60_000, run: async (store) => prepareTravel(store) }],
   mail: async (store, m) => onMail(store, m),
@@ -931,6 +1044,15 @@ registerFeature({
       ({ trip_id, ...s }, { store }) => {
         const { segment, created } = addSegment(store, trip_id, s, 'seldon');
         return { data: { ok: true, id: segment.id, merged: !created, lounges: segment.lounges, perks: segment.perks }, summary: `${created ? 'Added' : 'Updated'} ${segment.title || segment.kind}` };
+      },
+    ),
+    tool(
+      'add_flight_option',
+      'Save a flight routing for the user to weigh on the trip\'s page, before anything is booked: a short title ("Via Johannesburg"), one line on when it lands, the legs (airline code, flight number, IATA codes, local times "YYYY-MM-DDTHH:MM" at each end), and short notes on what speaks for and against it. Mark at most one recommended. Use real schedules you have checked; say in the notes what to confirm.',
+      optionInput.extend({ trip_id: z.string().min(1) }),
+      ({ trip_id, ...o }, { store }) => {
+        const opt = addOption(store, trip_id, o);
+        return { data: { ok: true, id: opt.id }, summary: `Saved the option “${opt.title}”` };
       },
     ),
     tool(
@@ -1003,6 +1125,22 @@ registerFeature({
     });
     app.delete('/api/travel/segments/:id', (c) => {
       if (!store.db.prepare('DELETE FROM trip_segments WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Booking');
+      return c.json(state(c));
+    });
+    app.post('/api/travel/trips/:id/options', async (c) => {
+      addOption(store, c.req.param('id'), await read(c, optionInput));
+      return c.json(state(c), 201);
+    });
+    app.patch('/api/travel/options/:id', async (c) => {
+      updateOption(store, c.req.param('id'), await read(c, optionInput.omit({ legs: true }).partial()));
+      return c.json(state(c));
+    });
+    app.post('/api/travel/options/:id/choose', (c) => {
+      chooseOption(store, c.req.param('id'));
+      return c.json(state(c));
+    });
+    app.delete('/api/travel/options/:id', (c) => {
+      if (!store.db.prepare('DELETE FROM trip_options WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Option');
       return c.json(state(c));
     });
     app.post('/api/travel/trips/:id/itinerary', async (c) => {
