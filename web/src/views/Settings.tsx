@@ -7,29 +7,10 @@ import { CalendarConnection, CaptureSetup, GmailConnection, GoogleCalendarConnec
 import { Orb } from '../components/Orb.tsx';
 import { Field, Loading, Seg } from '../components/ui.tsx';
 import { useApp } from '../state.tsx';
+import { setThemePref, useSun, type Phase, type ThemePref } from '../sun.ts';
 
-type Theme = 'system' | 'light' | 'dark';
-
-function readTheme(): Theme {
-  try {
-    const t = localStorage.getItem('terminus.theme') ?? localStorage.getItem('lifeos.theme');
-    return t === 'light' || t === 'dark' ? t : 'system';
-  } catch {
-    return 'system';
-  }
-}
-
-function applyTheme(theme: Theme): void {
-  if (theme === 'system') delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = theme;
-  try {
-    localStorage.removeItem('lifeos.theme');
-    if (theme === 'system') localStorage.removeItem('terminus.theme');
-    else localStorage.setItem('terminus.theme', theme);
-  } catch {
-    // Storage can be unavailable (private mode); the theme still applies for this visit.
-  }
-}
+const PHASE_NAME: Record<Phase, string> = { dawn: 'Dawn', day: 'Day', dusk: 'Dusk', evening: 'Evening' };
+const clock = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 export function Settings() {
   const { data: settings } = useSettings();
@@ -37,7 +18,7 @@ export function Settings() {
   const { data: memories = [] } = useMemories();
   const { data: auth } = useAuth();
   const { openSheet, toast } = useApp();
-  const [theme, setTheme] = useState<Theme>(readTheme);
+  const sun = useSun();
   const [memory, setMemory] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -189,19 +170,22 @@ export function Settings() {
           <h2>Appearance</h2>
         </header>
         <div className="settings-body">
-          <Seg
+          <Seg<ThemePref>
             label="Theme"
-            value={theme}
-            onChange={(t) => {
-              setTheme(t);
-              applyTheme(t);
-            }}
+            value={sun.pref}
+            onChange={setThemePref}
             options={[
+              { value: 'sun', label: 'Follow the sun' },
               { value: 'system', label: 'Match device' },
               { value: 'light', label: 'Light' },
               { value: 'dark', label: 'Dark' },
             ]}
           />
+          <p className="hint">
+            {sun.pref === 'sun' ? 'Dawn, day, dusk and evening colours from the sun where you are. ' : 'The sky on Today still follows the sun. '}
+            It’s {PHASE_NAME[sun.phase].toLowerCase()} now. Today: dawn {clock(sun.marks.dawn)}, day {clock(sun.marks.day)}, dusk {clock(sun.marks.dusk)}, evening {clock(sun.marks.evening)}
+            {sun.source === 'device' ? ', from this device’s location.' : sun.source === 'saved' ? ', from your prayer-times location.' : ', estimated from your time zone. Allow location, or set one for prayer times, to make it exact.'}
+          </p>
         </div>
       </section>
 
