@@ -1,7 +1,7 @@
 // Connections to outside services, managed in Settings.
 
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, KeyRound, Mail, Plug, Plus, RefreshCw, Share2 } from 'lucide-react';
+import { CalendarCheck, CalendarDays, Copy, KeyRound, Mail, Plug, Plus, RefreshCw, Share2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { IntegrationStatus, McpServerView } from '../../../shared/types.ts';
 import { api, useIntegration, useWrite, write } from '../api.ts';
@@ -186,6 +186,123 @@ export function CalendarConnection() {
           {save.error && <p className="error-text">{save.error.message}</p>}
           <p className="hint">
             Anyone with this address can read the calendar, so Terminus keeps it with your other secrets and never shows it again. Only flights are read from it. A flight you delete here stays deleted, and one that disappears from the calendar is flagged for you, not removed.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function GoogleCalendarConnection() {
+  const { data: status } = useIntegration('gcal');
+  const { toast, agentName } = useApp();
+  const [clientId, setClientId] = useState('');
+  const [secret, setSecret] = useState('');
+  const [editing, setEditing] = useState(false);
+  const connect = useWrite(() =>
+    write.put<{ authorizeUrl: string }>('/integrations/gcal', { clientId: clientId.trim() || String(status?.settings.clientId ?? ''), ...(secret.trim() ? { clientSecret: secret.trim() } : {}) }),
+  );
+  const disconnect = useWrite(() => write.del('/integrations/gcal'));
+  const connected = !!status?.configured;
+  const showForm = !connected || editing;
+  // Google must be told this exact address when the client is made.
+  const redirect = `${location.origin}/api/integrations/gcal/callback`;
+
+  // Coming back from Google's sign-in page.
+  useEffect(() => {
+    const result = new URLSearchParams(location.search).get('gcal');
+    if (!result) return;
+    toast({ message: result === 'connected' ? 'Google Calendar connected.' : result === 'cancelled' ? 'Google sign-in was cancelled.' : 'Google sign-in did not complete. Check the steps and try again.' });
+    history.replaceState(null, '', location.pathname + location.hash);
+  }, [toast]);
+
+  const copy = () => void navigator.clipboard?.writeText(redirect).then(() => toast({ message: 'Copied.' }), () => undefined);
+
+  return (
+    <div className="conn-card">
+      <div className="conn-head">
+        <span className="brain-icon">
+          <CalendarCheck size={18} />
+        </span>
+        <div className="grow">
+          <b>Google Calendar</b>
+          <span className="hint" style={{ display: 'block' }}>
+            {connected
+              ? `${String(status!.settings.account || 'Connected')}${status!.settings.timeZone ? ` · ${String(status!.settings.timeZone)}` : ''}`
+              : `Let ${agentName} see when you're free and add appointments to your calendar`}
+          </span>
+        </div>
+        {connected && !editing && (
+          <div className="row" style={{ gap: 4 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
+              Reconnect
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={() => window.confirm(`Disconnect Google Calendar? ${agentName} stops seeing and adding events; events already added stay on your calendar.`) && disconnect.mutate()}
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
+      {connected && status?.lastError && <StatusLine status={status} />}
+      {connected && !status?.lastError && !editing && (
+        <span className="status-line">
+          <i className="status-dot ok" /> {agentName} can read your events and add new ones once you agree the time.
+        </span>
+      )}
+
+      {showForm && (
+        <>
+          <ol className="steps-list">
+            <li>
+              At <code>console.cloud.google.com</code>, create a project (call it "Terminus"), then under APIs &amp; Services → Library, enable the <b>Google Calendar API</b>.
+            </li>
+            <li>
+              Under OAuth consent screen (Google Auth Platform): choose <i>External</i>, fill in the app name and your email, and add the scope <code>…/auth/calendar.events</code>. Then set the publishing status to <b>In production</b>. Left in <i>Testing</i>, Google signs Terminus out every 7 days.
+            </li>
+            <li>
+              Under Credentials → Create credentials → <i>OAuth client ID</i>, pick <b>Web application</b> and add this as an authorised redirect URI:
+              <span className="row" style={{ gap: 6, marginTop: 6 }}>
+                <code className="grow" style={{ overflowWrap: 'anywhere' }}>{redirect}</code>
+                <button type="button" className="icon-btn icon-btn-sm" aria-label="Copy the redirect address" onClick={copy}>
+                  <Copy size={13} />
+                </button>
+              </span>
+            </li>
+            <li>
+              Paste the client ID and secret below and sign in. Google will warn that the app isn't verified: it's your own app, so choose Advanced → continue.
+            </li>
+          </ol>
+          <div className="field-row">
+            <Field label="Client ID">
+              <input className="input" autoComplete="off" value={clientId} placeholder={String(status?.settings.clientId || '…apps.googleusercontent.com')} onChange={(e) => setClientId(e.target.value)} />
+            </Field>
+            <Field label="Client secret">
+              <input className="input" type="password" autoComplete="off" value={secret} placeholder={status?.settings.clientId ? 'Saved' : 'GOCSPX-…'} onChange={(e) => setSecret(e.target.value)} />
+            </Field>
+          </div>
+          <div className="row-wrap">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={connect.isPending || (!clientId.trim() && !status?.settings.clientId) || (!secret.trim() && !status?.settings.clientId)}
+              onClick={() => connect.mutate(undefined, { onSuccess: (r) => (location.href = r.authorizeUrl) })}
+            >
+              {connect.isPending ? 'Opening Google…' : 'Sign in with Google'}
+            </button>
+            {editing && (
+              <button type="button" className="btn btn-ghost" onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+            )}
+          </div>
+          {connect.error && <p className="error-text">{connect.error.message}</p>}
+          {!connected && status?.lastError && <p className="error-text">{status.lastError}</p>}
+          <p className="hint">
+            Terminus asks only for your calendar events, not your settings or who you share with. Connect it from the address you'll keep using: Google only returns you to the redirect address you registered. The secret and Google's sign-in stay in your Terminus database and are never shown again.
           </p>
         </>
       )}
