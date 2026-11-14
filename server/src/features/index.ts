@@ -12,6 +12,7 @@ import './capture.ts';
 import './health.ts';
 import './mcp.ts';
 import './gravl.ts';
+import './travel.ts';
 
 /** Mount every feature's routes and register its jobs. */
 export function installFeatures(app: Hono, ctx: FeatureContext): void {

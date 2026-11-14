@@ -266,6 +266,78 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  // travel — trips (work or leisure), their flights and stays, a day plan, loyalty accounts.
+  `
+  CREATE TABLE trips (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    purpose TEXT NOT NULL DEFAULT 'leisure',
+    destination TEXT NOT NULL DEFAULT '',
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    companion TEXT NOT NULL DEFAULT '{}',
+    drafted INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE trip_segments (
+    id TEXT PRIMARY KEY,
+    trip_id TEXT REFERENCES trips(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    carrier TEXT NOT NULL DEFAULT '',
+    number TEXT NOT NULL DEFAULT '',
+    from_code TEXT NOT NULL DEFAULT '',
+    from_name TEXT NOT NULL DEFAULT '',
+    to_code TEXT NOT NULL DEFAULT '',
+    to_name TEXT NOT NULL DEFAULT '',
+    start_local TEXT NOT NULL,
+    start_tz TEXT NOT NULL DEFAULT 'UTC',
+    end_local TEXT NOT NULL,
+    end_tz TEXT NOT NULL DEFAULT 'UTC',
+    start_utc TEXT NOT NULL,
+    end_utc TEXT NOT NULL,
+    cabin TEXT NOT NULL DEFAULT '',
+    seat TEXT NOT NULL DEFAULT '',
+    confirmation TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual',
+    external_id TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX trip_segments_by_start ON trip_segments(start_utc);
+
+  CREATE TABLE itinerary_items (
+    id TEXT PRIMARY KEY,
+    trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    time TEXT,
+    title TEXT NOT NULL,
+    place TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'activity',
+    done INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX itinerary_by_trip ON itinerary_items(trip_id, date, time);
+
+  CREATE TABLE loyalty_accounts (
+    id TEXT PRIMARY KEY,
+    program TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL,
+    tier TEXT NOT NULL DEFAULT '',
+    points INTEGER,
+    progress REAL,
+    progress_target REAL,
+    progress_label TEXT NOT NULL DEFAULT '',
+    expires TEXT,
+    member_suffix TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual',
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

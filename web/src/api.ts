@@ -7,6 +7,7 @@ import type {
   FaithState,
   Goal,
   HealthState,
+  TravelState,
   IntegrationStatus,
   Memory,
   Metric,
@@ -232,4 +233,14 @@ export const healthWrite = {
   post: (path: string, body: object) => api<HealthState>('POST', withDate(`/health${path}`), body),
   targets: (body: object) => api<HealthState>('PUT', withDate('/health/targets'), body),
   del: (path: string) => api<{ ok: true }>('DELETE', `/health${path}`),
+};
+
+export const useTravel = () =>
+  useQuery({ queryKey: ['travel', todayStr()], queryFn: () => api<TravelState>('GET', withDate('/travel')), refetchInterval: 5 * 60_000 });
+
+export const travelWrite = {
+  post: (path: string, body: object = {}) => api<TravelState & { created?: string }>('POST', withDate(`/travel${path}`), body),
+  patch: (path: string, body: object) => api<TravelState>('PATCH', withDate(`/travel${path}`), body),
+  put: (path: string, body: object) => api<TravelState>('PUT', withDate(`/travel${path}`), body),
+  del: (path: string) => api<TravelState>('DELETE', withDate(`/travel${path}`)),
 };

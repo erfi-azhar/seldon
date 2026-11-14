@@ -1,0 +1,66 @@
+// Which lounge a flight gets you into, from the cabin and your status. These are the
+// published KrisFlyer, Star Alliance and Marriott Bonvoy rules in broad strokes; the
+// desk has the final word, and Seldon's notes add the specific lounge at each airport.
+
+import type { LoungeAccess, LoyaltyAccount, Segment } from '../../../shared/types.ts';
+
+export const STAR_ALLIANCE = new Set(['SQ', 'A3', 'AC', 'AI', 'NH', 'OZ', 'OS', 'AV', 'SN', 'CA', 'CM', 'OU', 'MS', 'ET', 'BR', 'LO', 'LH', 'LX', 'NZ', 'ZH', 'SA', 'TP', 'TG', 'TK', 'UA']);
+
+const krisflyer = (accounts: LoyaltyAccount[]) => accounts.find((a) => /kris ?flyer|pps|singapore airlines/i.test(a.program));
+const bonvoy = (accounts: LoyaltyAccount[]) => accounts.find((a) => /bonvoy|marriott/i.test(a.program));
+
+export function loungeAccess(seg: Segment, accounts: LoyaltyAccount[]): LoungeAccess[] {
+  if (seg.kind !== 'flight') return [];
+  const out: LoungeAccess[] = [];
+  const airline = seg.carrier.trim().toUpperCase().slice(0, 2);
+  const cabin = seg.cabin.toLowerCase();
+  const home = seg.fromCode.toUpperCase() === 'SIN';
+  const sq = airline === 'SQ';
+  const star = STAR_ALLIANCE.has(airline);
+  const cabinName = /suite/.test(cabin) ? 'Suites' : /first/.test(cabin) ? 'First' : /business/.test(cabin) ? 'Business' : /premium/.test(cabin) ? 'Premium Economy' : 'Economy';
+  const onFare = `${cabinName} on ${airline}`;
+
+  if (cabinName === 'Suites' || cabinName === 'First') {
+    if (sq && home) out.push({ access: 'The Private Room, SilverKris Lounge (Changi T3)', basis: onFare });
+    else if (sq) out.push({ access: 'SilverKris Lounge, First Class section (or SQ’s designated First lounge here)', basis: onFare });
+    else out.push({ access: star ? `${airline} First lounge or a Star Alliance First lounge` : `${airline}’s First Class lounge`, basis: onFare });
+  } else if (cabinName === 'Business') {
+    if (sq) out.push({ access: home ? 'SilverKris Lounge, Business Class (Changi)' : 'SilverKris Lounge, or SQ’s designated Business lounge here', basis: onFare });
+    else out.push({ access: star ? `${airline}’s Business lounge or a Star Alliance Business lounge` : `${airline}’s Business lounge`, basis: onFare });
+  }
+
+  const kf = krisflyer(accounts);
+  const tier = kf?.tier.toLowerCase() ?? '';
+  if (kf && star) {
+    if (/solitaire/.test(tier)) {
+      if (sq) out.push({ access: home ? 'SilverKris Lounge, First Class section (Changi)' : 'SilverKris Lounge, any cabin', basis: 'Solitaire PPS Club, flying SQ' });
+      out.push({ access: 'Star Alliance Gold lounges, plus one guest', basis: 'Solitaire PPS Club (Star Alliance Gold)' });
+    } else if (/pps/.test(tier)) {
+      if (sq) out.push({ access: home ? 'SilverKris Lounge, Business Class (Changi)' : 'SilverKris Lounge, any cabin', basis: 'PPS Club, flying SQ' });
+      out.push({ access: 'Star Alliance Gold lounges, plus one guest', basis: 'PPS Club (Star Alliance Gold)' });
+    } else if (/gold/.test(tier)) {
+      out.push({ access: sq && home ? 'KrisFlyer Gold Lounge (Changi T2/T3), plus one guest' : 'Star Alliance Gold lounges, plus one guest', basis: 'KrisFlyer Elite Gold (Star Alliance Gold)' });
+    }
+  }
+
+  for (const a of accounts.filter((x) => x.kind === 'lounge')) {
+    out.push({ access: `${a.program} lounges in your terminal`, basis: a.program });
+  }
+
+  const seen = new Set<string>();
+  return out.filter((x) => (seen.has(x.access) ? false : (seen.add(x.access), true)));
+}
+
+const MARRIOTT_BRANDS = /marriott|ritz[- ]carlton|st\.? regis|\bw (hotel|singapore|[a-z]+)|westin|sheraton|le m[eé]ridien|\bjw\b|edition|luxury collection|renaissance|courtyard|four points|aloft|moxy|autograph collection|tribute portfolio|delta hotels|fairfield|element|\bac hotel|gaylord|design hotels|protea|bulgari/i;
+
+/** What your Bonvoy tier gets you at a Marriott-family hotel. */
+export function stayPerks(seg: Segment, accounts: LoyaltyAccount[]): string[] {
+  if (seg.kind !== 'stay' || !MARRIOTT_BRANDS.test(`${seg.title} ${seg.carrier}`)) return [];
+  const tier = bonvoy(accounts)?.tier.toLowerCase() ?? '';
+  if (/ambassador/.test(tier)) return ['Executive lounge and breakfast', 'Ambassador service and 24-hour check-in', '4pm late checkout', 'Best-available upgrade'];
+  if (/titanium/.test(tier)) return ['Executive lounge and breakfast', '4pm late checkout', 'Upgrade, suites included when available'];
+  if (/platinum/.test(tier)) return ['Executive lounge and breakfast', '4pm late checkout', 'Upgrade, suites included when available'];
+  if (/gold/.test(tier)) return ['2pm late checkout', 'Enhanced room upgrade', 'Welcome points'];
+  if (/silver/.test(tier)) return ['Priority late checkout'];
+  return [];
+}

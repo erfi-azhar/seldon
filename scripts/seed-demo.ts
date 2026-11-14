@@ -16,6 +16,7 @@ import { addDays, localDate, Store } from '../server/src/store.ts';
 import { addSignal } from '../server/src/features/signals.ts';
 import { saveFile } from '../server/src/features/capture.ts';
 import { logBody, logFood, logWorkout } from '../server/src/features/health.ts';
+import { addItems, addSegment, createTrip, upsertLoyalty } from '../server/src/features/travel.ts';
 import { deflateSync } from 'node:zlib';
 
 const path = resolve(process.argv[2] ?? 'data/demo.db');
@@ -346,6 +347,49 @@ addSignal(store, {
   title: "Mum: Lunch on Sunday?",
   body: 'Mum asks whether you can all come for lunch this Sunday at 12:30.',
   actions: [{ type: 'reply', label: 'Save reply as a Gmail draft', to: 'mum@example.com', subject: 'Re: Lunch on Sunday?', body: 'Hi Mum, we would love to — see you at 12:30!', inReplyTo: '<demo-3@example.com>' }],
+});
+
+// Travel: KrisFlyer and Bonvoy standing, a Tokyo trip leaving tomorrow morning (so Today
+// is in travel mode), and a work trip to London next month.
+upsertLoyalty(store, { program: 'KrisFlyer', tier: 'Elite Gold', points: 86420, progress: 41250, progressTarget: 50000, progressLabel: 'elite miles to keep Gold', expires: '2027-06-30', memberSuffix: '4417' }, 'screenshot', true);
+upsertLoyalty(store, { program: 'Marriott Bonvoy', tier: 'Platinum Elite', points: 212800, progress: 47, progressTarget: 75, progressLabel: 'nights to Titanium', memberSuffix: '0932' }, 'gmail', true);
+upsertLoyalty(store, { program: 'Priority Pass', kind: 'lounge', tier: 'Prestige' }, 'manual', true);
+const tokyo = createTrip(store, { title: 'Autumn in Tokyo', destination: 'Tokyo', purpose: 'leisure', startDate: addDays(today, 1), endDate: addDays(today, 6), notes: 'Momiji season. Want: good ramen (halal), a day trip to Nikko or Kamakura, coffee shops in Kiyosumi.' }, true);
+const out = addSegment(store, tokyo.id, { kind: 'flight', carrier: 'SQ', number: '636', fromCode: 'SIN', toCode: 'HND', startLocal: `${addDays(today, 1)}T08:05`, endLocal: `${addDays(today, 1)}T15:55`, cabin: 'Premium Economy', seat: '31A', confirmation: 'K7XQ2M' }, 'gmail', 'demo-sq-1', true).segment;
+addSegment(store, tokyo.id, { kind: 'stay', title: 'The Westin Tokyo', carrier: 'Marriott', toCode: 'HND', address: 'Yebisu Garden Place, Meguro', startLocal: `${addDays(today, 1)}T15:00`, endLocal: `${addDays(today, 6)}T12:00`, confirmation: '88213907' }, 'gmail', 'demo-mar-1', true);
+addSegment(store, tokyo.id, { kind: 'flight', carrier: 'SQ', number: '633', fromCode: 'HND', toCode: 'SIN', startLocal: `${addDays(today, 6)}T11:05`, endLocal: `${addDays(today, 6)}T17:35`, cabin: 'Premium Economy', seat: '31A', confirmation: 'K7XQ2M' }, 'gmail', 'demo-sq-2', true);
+db.prepare('UPDATE trips SET companion = ?, drafted = 1 WHERE id = ?').run(
+  JSON.stringify({
+    [out.id]: {
+      lounges: ['KrisFlyer Gold Lounge, Terminal 3 (level 3, above the transfer area) — showers, and a quieter side towards the back', 'With Priority Pass: Plaza Premium Lounge in T3 if Gold is busy'],
+      plan: ['Be at T3 by 06:30; check-in and immigration are quick that early', 'The musolla is in the transit area near gate A1 — pray Fajr there before boarding', 'Grab breakfast in the lounge; it is a 7-hour flight with one meal', 'Boarding starts around 07:25 — the A gates are a 10-minute walk from the lounge', 'Tokyo is an hour ahead: set your watch, and plan an early night'],
+      generatedAt: new Date().toISOString(),
+    },
+  }),
+  tokyo.id,
+);
+const d = (n: number) => addDays(today, n);
+addItems(store, tokyo.id, [
+  { date: d(1), time: '17:30', title: 'Check in at the Westin, walk Yebisu Garden Place', place: 'Ebisu', kind: 'rest' },
+  { date: d(1), time: '19:30', title: 'Dinner: Halal Ramen Ouka', place: 'Shinjuku Gyoen', notes: 'Muslim-owned; go early, it queues', kind: 'food' },
+  { date: d(2), time: '09:00', title: 'Meiji Jingu and Yoyogi Park for the autumn leaves', place: 'Harajuku', kind: 'activity' },
+  { date: d(2), time: '12:30', title: 'Lunch at Gyumon (halal wagyu)', place: 'Shibuya', kind: 'food' },
+  { date: d(2), time: '15:00', title: 'Coffee crawl: Blue Bottle, Allpress', place: 'Kiyosumi-Shirakawa', kind: 'activity' },
+  { date: d(3), time: '08:00', title: 'Day trip to Nikko — Tobu Limited Express from Asakusa', place: 'Nikko', notes: 'Toshogu shrine, Kegon Falls; pack prayer mat', kind: 'transit' },
+  { date: d(4), time: '11:00', title: 'Tokyo Camii for Jumu’ah', place: 'Yoyogi-Uehara', notes: 'Turkish mosque; arrive by 11:30', kind: 'activity' },
+  { date: d(4), time: null, title: 'Free afternoon — Daikanyama bookshops', place: 'Daikanyama', kind: 'rest' },
+  { date: d(5), time: '10:00', title: 'Kamakura: Great Buddha and the Hase-dera maples', place: 'Kamakura', kind: 'activity' },
+  { date: d(6), time: '08:00', title: 'Check out, Limousine Bus to Haneda', place: 'Ebisu → HND', kind: 'transit' },
+], true);
+
+const london = createTrip(store, { title: 'London — design leadership summit', destination: 'London', purpose: 'work', startDate: addDays(today, 24), endDate: addDays(today, 29) }, true);
+addSegment(store, london.id, { kind: 'flight', carrier: 'SQ', number: '322', fromCode: 'SIN', toCode: 'LHR', startLocal: `${addDays(today, 24)}T23:35`, endLocal: `${addDays(today, 25)}T06:25`, cabin: 'Business', seat: '14A', confirmation: 'R2PL9V' }, 'gmail', 'demo-sq-3', true);
+addSegment(store, london.id, { kind: 'stay', title: 'London Marriott Hotel County Hall', carrier: 'Marriott', toCode: 'LHR', address: 'Westminster Bridge Rd', startLocal: `${addDays(today, 25)}T15:00`, endLocal: `${addDays(today, 29)}T12:00` }, 'gmail', 'demo-mar-2', true);
+addSegment(store, london.id, { kind: 'flight', carrier: 'SQ', number: '317', fromCode: 'LHR', toCode: 'SIN', startLocal: `${addDays(today, 29)}T11:30`, endLocal: `${addDays(today, 30)}T07:50`, cabin: 'Business', confirmation: 'R2PL9V' }, 'gmail', 'demo-sq-4', true);
+addSignal(store, {
+  source: 'travel', kind: 'flight', externalId: `flight:${out.id}`, priority: 2, sphereId: sphere.travels!,
+  title: 'SQ 636 to Tokyo leaves 08:05 tomorrow',
+  body: 'Lounge: KrisFlyer Gold Lounge, Terminal 3. Seldon put together a plan for the morning.',
 });
 
 at(0, () => store.putJournal(today, 'Ran before anyone else was up. 5.2 km and it felt easy for the first time.'), 7);

@@ -575,3 +575,111 @@ export interface McpServerView {
   withheld: string[];
   connectedAt: string | null;
 }
+
+// ── Travel ──────────────────────────────────────────────────────────────────
+
+export type TripPurpose = 'work' | 'leisure';
+
+export interface Segment {
+  id: string;
+  tripId: string | null;
+  kind: 'flight' | 'stay' | 'train' | 'car' | 'event';
+  title: string;
+  /** Flights: carrier code and number ("SQ 638"). Stays: the hotel. */
+  carrier: string;
+  number: string;
+  fromCode: string;
+  fromName: string;
+  toCode: string;
+  toName: string;
+  /** Local wall-clock times at each end, "YYYY-MM-DDTHH:MM", with their IANA zones. */
+  startLocal: string;
+  startTz: string;
+  endLocal: string;
+  endTz: string;
+  /** The same two moments as instants (ISO), for ordering and countdowns. */
+  startUtc: string;
+  endUtc: string;
+  cabin: string;
+  seat: string;
+  confirmation: string;
+  address: string;
+  notes: string;
+  source: string;
+  /** Flights: lounges your fare and status get you into. */
+  lounges: LoungeAccess[];
+  /** Stays: what your hotel status gets you there. */
+  perks: string[];
+}
+
+export interface ItineraryItem {
+  id: string;
+  tripId: string;
+  date: string;
+  time: string | null;
+  title: string;
+  place: string;
+  notes: string;
+  kind: 'activity' | 'food' | 'transit' | 'work' | 'rest';
+  done: boolean;
+}
+
+export interface Trip {
+  id: string;
+  title: string;
+  purpose: TripPurpose;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  notes: string;
+  segments: Segment[];
+  itinerary: ItineraryItem[];
+  /** Seldon's airport and layover notes, keyed by flight segment id. */
+  companion: Record<string, { lounges: string[]; plan: string[]; generatedAt: string }>;
+}
+
+export interface LoyaltyAccount {
+  id: string;
+  program: string;
+  /** krisflyer · bonvoy · other airline or hotel programme · lounge (Priority Pass, a card) */
+  kind: 'airline' | 'hotel' | 'lounge';
+  tier: string;
+  points: number | null;
+  /** Progress towards the next tier: elite miles, PPS value, nights. */
+  progress: number | null;
+  progressTarget: number | null;
+  progressLabel: string;
+  expires: string | null;
+  memberSuffix: string;
+  updatedAt: string;
+  source: string;
+}
+
+export interface LoungeAccess {
+  access: string;
+  basis: string;
+}
+
+export interface TravelContext {
+  /** What is happening now, if anything. */
+  mode: 'none' | 'upcoming' | 'departing' | 'away';
+  trip: Trip | null;
+  /** The next flight in the next 36 hours, with minutes until it leaves. */
+  flight: (Segment & { departsInMin: number }) | null;
+  /** Where you are staying tonight, on an active trip. */
+  stay: Segment | null;
+  layovers: { airport: string; city: string; hours: number; afterSegmentId: string; nextSegmentId: string }[];
+  dayOfTrip: number | null;
+  tripDays: number | null;
+}
+
+export interface TravelSettings {
+  homeAirport: string;
+}
+
+export interface TravelState {
+  settings: TravelSettings;
+  trips: Trip[];
+  loyalty: LoyaltyAccount[];
+  context: TravelContext;
+}

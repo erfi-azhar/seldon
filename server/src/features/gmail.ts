@@ -209,7 +209,10 @@ export async function checkMail(store: Store): Promise<{ checked: number; surfac
   for (const m of fresh) {
     const v = verdicts.get(m.uid) ?? gmailOnly(m);
     const verdict: MailVerdict = { important: v.important, priority: v.priority, category: v.category, summary: v.summary };
-    for (const f of features()) await f.mail?.(store, m, verdict);
+    for (const f of features()) {
+      // One feature failing on one message (a garbled booking) must not hold up the inbox.
+      await f.mail?.(store, m, verdict).catch((err: unknown) => console.warn(`[${f.id}] could not read mail ${m.messageId}:`, err instanceof Error ? err.message : err));
+    }
     if (!v.important) continue;
 
     const sphereId = spheres.find((s) => s.name.toLowerCase() === (v.sphere ?? '').toLowerCase())?.id ?? null;

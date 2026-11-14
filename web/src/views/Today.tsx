@@ -6,6 +6,7 @@ import { useOverview, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, HabitRow, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
+import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
 import { Loading } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
@@ -135,6 +136,7 @@ export function Today() {
         </div>
         <div className="hero-side">
           <NextPrayerPill />
+          <TravelPill />
           <button type="button" className="btn" onClick={() => ask('Help me plan today. Look at what is due, my habits and how each sphere has been going, then suggest a realistic plan.')}>
           Plan today with {agentName} <ArrowUpRight size={15} />
           </button>
@@ -145,6 +147,7 @@ export function Today() {
 
       <div className="today-grid">
         <div className="col">
+          <TravelModeCard />
           <SignalsCard />
           <section className="card">
             <div className="card-head">

@@ -1,0 +1,961 @@
+// Travel: trips for work or leisure, their flights and stays, a day-by-day plan you can
+// edit, and your Singapore Airlines (KrisFlyer) and Marriott Bonvoy standing.
+//
+// Neither airline nor hotel offers an API for members, so bookings and balances come
+// from what already reaches you: confirmation and statement emails (through the Gmail
+// hook), screenshots of the apps, and anything you or Seldon add by hand.
+//
+// When a trip is close, Seldon gets ahead of it: it drafts a plan for the destination,
+// and before each flight works out the lounge you are eligible for, the layover you
+// have, and what is worth doing with it — a small app for that moment, on Today.
+
+import { z } from 'zod';
+import { NoBrain, think, wrapUntrusted } from '../agent/think.ts';
+import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
+import { tool } from '../agent/tools.ts';
+import { read, today as todayOf } from '../http.ts';
+import { addDays, daysBetween, Invalid, localDate, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
+import type { ItineraryItem, LoyaltyAccount, Segment, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import { airport, validZone, zonedToUtc } from './airports.ts';
+import { getIntegration, updateIntegration } from './integrations.ts';
+import { loungeAccess, stayPerks } from './lounges.ts';
+import type { MailMessage } from './mail-types.ts';
+import { registerFeature } from './registry.ts';
+import { addSignal } from './signals.ts';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = Record<string, any>;
+const ID = 'travel';
+const HOUR = 3_600_000;
+
+const sphereId = (store: Store, key: string) => store.listSpheres().find((s) => s.key === key)?.id ?? null;
+const travelSphere = (store: Store) => sphereId(store, 'travels');
+
+// ── Settings ────────────────────────────────────────────────────────────────
+
+export function travelSettings(store: Store): TravelSettings {
+  const s = getIntegration(store, ID).settings;
+  return { homeAirport: typeof s.homeAirport === 'string' ? s.homeAirport : 'SIN' };
+}
+
+/** Travel's background work (plans, airport notes) runs once there is something to plan. */
+function enableTravel(store: Store): void {
+  if (!getIntegration(store, ID).enabled) updateIntegration(store, ID, (r) => void (r.enabled = true));
+}
+
+// ── Rows ────────────────────────────────────────────────────────────────────
+
+function loyaltyFromRow(r: Row): LoyaltyAccount {
+  return {
+    id: r.id,
+    program: r.program,
+    kind: r.kind,
+    tier: r.tier,
+    points: r.points,
+    progress: r.progress,
+    progressTarget: r.progress_target,
+    progressLabel: r.progress_label,
+    expires: r.expires,
+    memberSuffix: r.member_suffix,
+    updatedAt: r.updated_at,
+    source: r.source,
+  };
+}
+
+export const listLoyalty = (store: Store): LoyaltyAccount[] => (store.db.prepare('SELECT * FROM loyalty_accounts ORDER BY kind, program').all() as Row[]).map(loyaltyFromRow);
+
+function segmentFromRow(r: Row, accounts: LoyaltyAccount[]): Segment {
+  const s: Segment = {
+    id: r.id,
+    tripId: r.trip_id,
+    kind: r.kind,
+    title: r.title,
+    carrier: r.carrier,
+    number: r.number,
+    fromCode: r.from_code,
+    fromName: r.from_name,
+    toCode: r.to_code,
+    toName: r.to_name,
+    startLocal: r.start_local,
+    startTz: r.start_tz,
+    endLocal: r.end_local,
+    endTz: r.end_tz,
+    startUtc: r.start_utc,
+    endUtc: r.end_utc,
+    cabin: r.cabin,
+    seat: r.seat,
+    confirmation: r.confirmation,
+    address: r.address,
+    notes: r.notes,
+    source: r.source,
+    lounges: [],
+    perks: [],
+  };
+  s.lounges = loungeAccess(s, accounts);
+  s.perks = stayPerks(s, accounts);
+  return s;
+}
+
+const itemFromRow = (r: Row): ItineraryItem => ({ id: r.id, tripId: r.trip_id, date: r.date, time: r.time, title: r.title, place: r.place, notes: r.notes, kind: r.kind, done: !!r.done });
+
+function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store)): Trip {
+  return {
+    id: r.id,
+    title: r.title,
+    purpose: r.purpose,
+    destination: r.destination,
+    startDate: r.start_date,
+    endDate: r.end_date,
+    notes: r.notes,
+    companion: JSON.parse(r.companion),
+    segments: (store.db.prepare('SELECT * FROM trip_segments WHERE trip_id = ? ORDER BY start_utc').all(r.id) as Row[]).map((x) => segmentFromRow(x, accounts)),
+    itinerary: (store.db.prepare("SELECT * FROM itinerary_items WHERE trip_id = ? ORDER BY date, COALESCE(time, '99:99'), created_at").all(r.id) as Row[]).map(itemFromRow),
+  };
+}
+
+export function getTrip(store: Store, id: string): Trip {
+  const r = store.db.prepare('SELECT * FROM trips WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Trip');
+  return tripFromRow(store, r);
+}
+
+/** Trips still to come or under way, then the most recent past ones. */
+export function listTrips(store: Store, today: string): Trip[] {
+  const accounts = listLoyalty(store);
+  const current = store.db.prepare('SELECT * FROM trips WHERE end_date >= ? ORDER BY start_date').all(today) as Row[];
+  const past = store.db.prepare('SELECT * FROM trips WHERE end_date < ? ORDER BY end_date DESC LIMIT 5').all(today) as Row[];
+  return [...current, ...past].map((r) => tripFromRow(store, r, accounts));
+}
+
+// ── Writes ──────────────────────────────────────────────────────────────────
+
+export interface TripInput {
+  title?: string;
+  purpose?: TripPurpose;
+  destination?: string;
+  startDate: string;
+  endDate: string;
+  notes?: string;
+}
+
+export function createTrip(store: Store, t: TripInput, quiet = false): Trip {
+  if (t.endDate < t.startDate) throw new Invalid('A trip cannot end before it starts');
+  const id = newId();
+  const destination = (t.destination ?? '').trim().slice(0, 120);
+  const title = (t.title?.trim() || (destination ? `${destination}` : 'Trip')).slice(0, 120);
+  store.db
+    .prepare('INSERT INTO trips (id, title, purpose, destination, start_date, end_date, notes, created_at) VALUES (?,?,?,?,?,?,?,?)')
+    .run(id, title, t.purpose ?? 'leisure', destination, t.startDate, t.endDate, (t.notes ?? '').slice(0, 2000), nowIso());
+  enableTravel(store);
+  if (!quiet) store.record('created', 'trip', id, sphereFor(store, t.purpose ?? 'leisure'), `New ${t.purpose === 'work' ? 'work ' : ''}trip: ${title}`);
+  return getTrip(store, id);
+}
+
+const sphereFor = (store: Store, purpose: TripPurpose) => (purpose === 'work' ? (sphereId(store, 'work') ?? travelSphere(store)) : travelSphere(store));
+
+export function updateTrip(store: Store, id: string, p: Partial<TripInput>): Trip {
+  const cur = getTrip(store, id);
+  const next = { title: p.title ?? cur.title, purpose: p.purpose ?? cur.purpose, destination: p.destination ?? cur.destination, startDate: p.startDate ?? cur.startDate, endDate: p.endDate ?? cur.endDate, notes: p.notes ?? cur.notes };
+  if (next.endDate < next.startDate) throw new Invalid('A trip cannot end before it starts');
+  store.db.prepare('UPDATE trips SET title = ?, purpose = ?, destination = ?, start_date = ?, end_date = ?, notes = ? WHERE id = ?').run(next.title.slice(0, 120), next.purpose, next.destination.slice(0, 120), next.startDate, next.endDate, next.notes.slice(0, 2000), id);
+  return getTrip(store, id);
+}
+
+export interface SegmentInput {
+  kind: Segment['kind'];
+  title?: string;
+  carrier?: string;
+  number?: string;
+  fromCode?: string;
+  fromName?: string;
+  toCode?: string;
+  toName?: string;
+  startLocal: string;
+  startTz?: string | null;
+  endLocal?: string | null;
+  endTz?: string | null;
+  cabin?: string;
+  seat?: string;
+  confirmation?: string;
+  address?: string;
+  notes?: string;
+}
+
+const clean = (s: string | undefined | null, n = 120) => (s ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, n);
+const stamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
+/** Resolve codes, names and zones, and work out the instants for ordering. */
+function normalise(s: SegmentInput, settings: TravelSettings) {
+  const fromCode = clean(s.fromCode, 4).toUpperCase();
+  const toCode = clean(s.toCode, 4).toUpperCase();
+  const from = airport(fromCode);
+  const to = airport(toCode);
+  const home = airport(settings.homeAirport);
+  const zone = (given: string | null | undefined, known: string | undefined) => known ?? (given && validZone(given) ? given : (home?.tz ?? 'UTC'));
+  const startLocal = s.startLocal.slice(0, 16);
+  if (!stamp.test(startLocal)) throw new Invalid('Times look like 2026-12-01T09:40');
+  const endLocal = (s.endLocal ?? '').slice(0, 16) || startLocal;
+  if (!stamp.test(endLocal)) throw new Invalid('Times look like 2026-12-01T09:40');
+  const startTz = s.kind === 'flight' ? zone(s.startTz, from?.tz) : zone(s.startTz, to?.tz ?? from?.tz);
+  const endTz = s.kind === 'flight' ? zone(s.endTz ?? s.startTz, to?.tz) : zone(s.endTz ?? s.startTz, to?.tz ?? from?.tz);
+  const startUtc = zonedToUtc(startLocal, startTz);
+  let endUtc = zonedToUtc(endLocal, endTz);
+  if (endUtc < startUtc) endUtc = startUtc;
+  const carrier = clean(s.carrier, 60);
+  const number = clean(s.number, 12).toUpperCase().replace(/\s+/g, '');
+  return {
+    kind: s.kind,
+    title: clean(s.title) || (s.kind === 'flight' ? `${carrier} ${number}`.trim() : ''),
+    carrier,
+    number,
+    fromCode,
+    fromName: clean(s.fromName) || (from ? `${from.city} ${from.name}` : ''),
+    toCode,
+    toName: clean(s.toName) || (to ? `${to.city} ${to.name}` : ''),
+    startLocal,
+    startTz,
+    endLocal,
+    endTz,
+    startUtc: startUtc.toISOString(),
+    endUtc: endUtc.toISOString(),
+    cabin: clean(s.cabin, 40),
+    seat: clean(s.seat, 8),
+    confirmation: clean(s.confirmation, 20),
+    address: clean(s.address, 300),
+    notes: clean(s.notes, 1000),
+  };
+}
+
+/** The same flight or stay already on file (a booking, then its check-in reminder). */
+function findSame(store: Store, n: ReturnType<typeof normalise>): Row | undefined {
+  if (n.kind === 'flight' && n.number) {
+    return store.db.prepare("SELECT * FROM trip_segments WHERE kind = 'flight' AND number = ? AND substr(start_local, 1, 10) = ?").get(n.number, n.startLocal.slice(0, 10)) as Row | undefined;
+  }
+  if (n.kind === 'stay' && n.title) {
+    return store.db.prepare("SELECT * FROM trip_segments WHERE kind = 'stay' AND lower(title) = lower(?) AND substr(start_local, 1, 10) = ?").get(n.title, n.startLocal.slice(0, 10)) as Row | undefined;
+  }
+  return undefined;
+}
+
+/** The trip a segment belongs to: one whose dates it falls in or near. */
+function tripFor(store: Store, date: string, endDate: string): Row | undefined {
+  return store.db.prepare('SELECT * FROM trips WHERE start_date <= ? AND end_date >= ? ORDER BY start_date LIMIT 1').get(addDays(endDate, 1), addDays(date, -1)) as Row | undefined;
+}
+
+/** Stretch a trip's dates to cover a segment. */
+function cover(store: Store, tripId: string, from: string, to: string): void {
+  store.db.prepare('UPDATE trips SET start_date = min(start_date, ?), end_date = max(end_date, ?) WHERE id = ?').run(from, to, tripId);
+}
+
+export function addSegment(store: Store, tripId: string | null, input: SegmentInput, source = 'manual', externalId: string | null = null, quiet = false): { segment: Segment; created: boolean } {
+  const n = normalise(input, travelSettings(store));
+  const accounts = listLoyalty(store);
+  const same = findSame(store, n);
+  if (same) {
+    // Fill gaps (a seat assigned at check-in, a terminal) without overwriting what is there.
+    const fill = (k: string, v: string) => (v && !same[k] ? v : same[k]);
+    store.db
+      .prepare('UPDATE trip_segments SET cabin = ?, seat = ?, confirmation = ?, address = ?, from_name = ?, to_name = ? WHERE id = ?')
+      .run(fill('cabin', n.cabin), fill('seat', n.seat), fill('confirmation', n.confirmation), fill('address', n.address), fill('from_name', n.fromName), fill('to_name', n.toName), same.id);
+    return { segment: segmentFromRow(store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(same.id) as Row, accounts), created: false };
+  }
+  if (tripId && !store.db.prepare('SELECT 1 AS x FROM trips WHERE id = ?').get(tripId)) throw new NotFound('Trip');
+  const id = newId();
+  store.db
+    .prepare(
+      `INSERT INTO trip_segments (id, trip_id, kind, title, carrier, number, from_code, from_name, to_code, to_name, start_local, start_tz, end_local, end_tz,
+        start_utc, end_utc, cabin, seat, confirmation, address, notes, source, external_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run(id, tripId, n.kind, n.title, n.carrier, n.number, n.fromCode, n.fromName, n.toCode, n.toName, n.startLocal, n.startTz, n.endLocal, n.endTz, n.startUtc, n.endUtc, n.cabin, n.seat, n.confirmation, n.address, n.notes, source, externalId, nowIso());
+  if (tripId) cover(store, tripId, n.startLocal.slice(0, 10), n.endLocal.slice(0, 10));
+  const label = n.kind === 'flight' ? `${n.title}${n.fromCode && n.toCode ? `, ${n.fromCode} → ${n.toCode}` : ''}` : n.title || n.kind;
+  const trip = tripId ? (store.db.prepare('SELECT purpose FROM trips WHERE id = ?').get(tripId) as Row) : null;
+  if (!quiet) store.record('created', 'trip_segment', id, trip ? sphereFor(store, trip.purpose) : travelSphere(store), `Added ${label} on ${n.startLocal.slice(0, 10)}`);
+  return { segment: segmentFromRow(store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row, accounts), created: true };
+}
+
+export function updateSegment(store: Store, id: string, p: Partial<SegmentInput>): Segment {
+  const r = store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Booking');
+  const { lounges: _l, perks: _p, startUtc: _s, endUtc: _e, ...cur } = segmentFromRow(r, []);
+  const n = normalise({ ...cur, ...p }, travelSettings(store));
+  store.db
+    .prepare(
+      `UPDATE trip_segments SET kind = ?, title = ?, carrier = ?, number = ?, from_code = ?, from_name = ?, to_code = ?, to_name = ?, start_local = ?, start_tz = ?,
+        end_local = ?, end_tz = ?, start_utc = ?, end_utc = ?, cabin = ?, seat = ?, confirmation = ?, address = ?, notes = ? WHERE id = ?`,
+    )
+    .run(n.kind, n.title, n.carrier, n.number, n.fromCode, n.fromName, n.toCode, n.toName, n.startLocal, n.startTz, n.endLocal, n.endTz, n.startUtc, n.endUtc, n.cabin, n.seat, n.confirmation, n.address, n.notes, id);
+  if (r.trip_id) cover(store, r.trip_id, n.startLocal.slice(0, 10), n.endLocal.slice(0, 10));
+  return segmentFromRow(store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row, listLoyalty(store));
+}
+
+export interface ItemInput {
+  date: string;
+  time?: string | null;
+  title: string;
+  place?: string;
+  notes?: string;
+  kind?: ItineraryItem['kind'];
+}
+
+export function addItems(store: Store, tripId: string, items: ItemInput[], quiet = false): ItineraryItem[] {
+  const trip = getTrip(store, tripId);
+  const out: ItineraryItem[] = [];
+  for (const it of items) {
+    const id = newId();
+    store.db
+      .prepare('INSERT INTO itinerary_items (id, trip_id, date, time, title, place, notes, kind, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(id, tripId, it.date, it.time ?? null, clean(it.title, 160), clean(it.place, 160), clean(it.notes, 600), it.kind ?? 'activity', nowIso());
+    if (!quiet) store.record('created', 'itinerary', id, sphereFor(store, trip.purpose), `Planned “${clean(it.title, 80)}” for ${it.date} in ${trip.title}`);
+    out.push(itemFromRow(store.db.prepare('SELECT * FROM itinerary_items WHERE id = ?').get(id) as Row));
+  }
+  return out;
+}
+
+export function updateItem(store: Store, id: string, p: Partial<ItemInput> & { done?: boolean }): ItineraryItem {
+  const r = store.db.prepare('SELECT * FROM itinerary_items WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Plan item');
+  const cur = itemFromRow(r);
+  const n = { ...cur, ...p };
+  store.db
+    .prepare('UPDATE itinerary_items SET date = ?, time = ?, title = ?, place = ?, notes = ?, kind = ?, done = ? WHERE id = ?')
+    .run(n.date, n.time ?? null, clean(n.title, 160), clean(n.place, 160), clean(n.notes, 600), n.kind, Number(n.done), id);
+  return itemFromRow(store.db.prepare('SELECT * FROM itinerary_items WHERE id = ?').get(id) as Row);
+}
+
+export interface LoyaltyInput {
+  program: string;
+  kind?: LoyaltyAccount['kind'];
+  tier?: string;
+  points?: number | null;
+  progress?: number | null;
+  progressTarget?: number | null;
+  progressLabel?: string;
+  expires?: string | null;
+  memberSuffix?: string;
+}
+
+/** Programme names as people write them, folded to one account each. */
+export function canonicalProgram(name: string): { program: string; kind: LoyaltyAccount['kind'] } | null {
+  if (/kris ?flyer|pps club|singapore airlines/i.test(name)) return { program: 'KrisFlyer', kind: 'airline' };
+  if (/bonvoy|marriott/i.test(name)) return { program: 'Marriott Bonvoy', kind: 'hotel' };
+  if (/priority pass/i.test(name)) return { program: 'Priority Pass', kind: 'lounge' };
+  return null;
+}
+
+export function upsertLoyalty(store: Store, input: LoyaltyInput, source = 'manual', quiet = false): LoyaltyAccount {
+  const known = canonicalProgram(input.program);
+  const program = known?.program ?? clean(input.program, 60);
+  if (!program) throw new Invalid('Name the programme');
+  const kind = input.kind ?? known?.kind ?? 'airline';
+  const cur = store.db.prepare('SELECT * FROM loyalty_accounts WHERE program = ?').get(program) as Row | undefined;
+  const pick = <T>(v: T | undefined, k: string): T => (v === undefined ? (cur?.[k] ?? null) : v) as T;
+  // Only ever keep the last four digits of a membership number.
+  const suffix = input.memberSuffix !== undefined ? input.memberSuffix.replace(/\D/g, '').slice(-4) : (cur?.member_suffix ?? '');
+  const row = {
+    tier: clean(pick(input.tier, 'tier') ?? '', 40),
+    points: pick(input.points, 'points'),
+    progress: pick(input.progress, 'progress'),
+    progressTarget: pick(input.progressTarget, 'progress_target'),
+    progressLabel: clean(pick(input.progressLabel, 'progress_label') ?? '', 60),
+    expires: pick(input.expires, 'expires'),
+  };
+  const now = nowIso();
+  if (cur) {
+    store.db
+      .prepare('UPDATE loyalty_accounts SET kind = ?, tier = ?, points = ?, progress = ?, progress_target = ?, progress_label = ?, expires = ?, member_suffix = ?, source = ?, updated_at = ? WHERE id = ?')
+      .run(kind, row.tier, row.points === null ? null : Math.round(row.points), row.progress, row.progressTarget, row.progressLabel, row.expires, suffix, source, now, cur.id);
+  } else {
+    store.db
+      .prepare('INSERT INTO loyalty_accounts (id, program, kind, tier, points, progress, progress_target, progress_label, expires, member_suffix, source, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(newId(), program, kind, row.tier, row.points === null ? null : Math.round(row.points), row.progress, row.progressTarget, row.progressLabel, row.expires, suffix, source, now);
+  }
+  const saved = loyaltyFromRow(store.db.prepare('SELECT * FROM loyalty_accounts WHERE program = ?').get(program) as Row);
+  if (!quiet) store.record('updated', 'loyalty', saved.id, travelSphere(store), `${program}: ${[saved.tier, saved.points !== null ? `${saved.points.toLocaleString('en')} ${kind === 'airline' ? 'miles' : 'points'}` : ''].filter(Boolean).join(', ')}`);
+  return saved;
+}
+
+// ── Where you are now ───────────────────────────────────────────────────────
+
+export function travelContext(store: Store, today: string, now: Date = new Date()): TravelContext {
+  const trips = listTrips(store, today).filter((t) => t.endDate >= today);
+  const t = now.getTime();
+  const flights = trips
+    .flatMap((trip) => trip.segments.filter((s) => s.kind === 'flight').map((s) => ({ s, trip, at: zonedToUtc(s.startLocal, s.startTz).getTime() })))
+    .sort((a, b) => a.at - b.at);
+  const next = flights.find((f) => f.at > t - 0.25 * HOUR && f.at - t <= 36 * HOUR) ?? null;
+  const active = trips.find((x) => x.startDate <= today && x.endDate >= today) ?? null;
+  const soon = trips.find((x) => x.startDate > today && daysBetween(today, x.startDate) <= 14) ?? null;
+  const trip = next?.trip ?? active ?? soon;
+  const mode: TravelContext['mode'] = next ? 'departing' : active ? 'away' : soon ? 'upcoming' : 'none';
+
+  const layovers: TravelContext['layovers'] = [];
+  if (trip) {
+    const legs = trip.segments.filter((s) => s.kind === 'flight');
+    for (let i = 1; i < legs.length; i++) {
+      const a = legs[i - 1]!;
+      const b = legs[i]!;
+      if (!a.toCode || a.toCode !== b.fromCode) continue;
+      const gap = (zonedToUtc(b.startLocal, b.startTz).getTime() - zonedToUtc(a.endLocal, a.endTz).getTime()) / HOUR;
+      if (gap > 0 && gap < 24 && zonedToUtc(b.startLocal, b.startTz).getTime() > t) {
+        layovers.push({ airport: a.toCode, city: airport(a.toCode)?.city ?? a.toName, hours: Math.round(gap * 10) / 10, afterSegmentId: a.id, nextSegmentId: b.id });
+      }
+    }
+  }
+
+  const stay = active
+    ? (active.segments.find((s) => s.kind === 'stay' && s.startLocal.slice(0, 10) <= today && s.endLocal.slice(0, 10) > today) ??
+      active.segments.find((s) => s.kind === 'stay' && s.startLocal.slice(0, 10) === today) ??
+      null)
+    : null;
+
+  return {
+    mode,
+    trip,
+    flight: next ? { ...next.s, departsInMin: Math.round((next.at - t) / 60_000) } : null,
+    stay,
+    layovers,
+    dayOfTrip: active ? daysBetween(active.startDate, today) + 1 : null,
+    tripDays: trip ? daysBetween(trip.startDate, trip.endDate) + 1 : null,
+  };
+}
+
+export function travelState(store: Store, today: string, now?: Date): TravelState {
+  return { settings: travelSettings(store), trips: listTrips(store, today), loyalty: listLoyalty(store), context: travelContext(store, today, now) };
+}
+
+// ── Seldon's preparation ────────────────────────────────────────────────────
+
+const describeSegment = (s: Segment) =>
+  s.kind === 'flight'
+    ? `Flight ${s.carrier} ${s.number} ${s.fromCode || s.fromName} → ${s.toCode || s.toName}, departs ${s.startLocal.replace('T', ' ')} (${s.startTz}), arrives ${s.endLocal.replace('T', ' ')} (${s.endTz})${s.cabin ? `, ${s.cabin}` : ''}`
+    : `${s.kind === 'stay' ? 'Stay' : s.kind} ${s.title}${s.address ? `, ${s.address}` : ''}, ${s.startLocal.replace('T', ' ')} to ${s.endLocal.replace('T', ' ')}`;
+
+const Companion = z.object({
+  lounges: z.array(z.string().max(200)).max(5),
+  plan: z.array(z.string().max(300)).max(8),
+});
+
+/** The airport app for one flight: the lounges to use there and what to do with the time. */
+export async function buildCompanion(store: Store, segmentId: string, now: Date = new Date()): Promise<Trip> {
+  const r = store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(segmentId) as Row | undefined;
+  if (!r || r.kind !== 'flight' || !r.trip_id) throw new NotFound('Flight');
+  const trip = getTrip(store, r.trip_id);
+  const seg = trip.segments.find((s) => s.id === segmentId)!;
+  const layover = travelContext(store, localDate(now), now).layovers.find((l) => l.nextSegmentId === segmentId);
+  const where = airport(seg.fromCode);
+  const res = await think({
+    store,
+    task: `You are preparing a short airport companion for someone about to fly. Using what you know of ${where ? `${where.name} airport in ${where.city}` : `the departure airport (${seg.fromCode || seg.fromName})`}:
+- "lounges": the specific lounge(s) they can use, matching the eligibility given (name, terminal or area, and anything worth knowing such as showers or the best one if several qualify). If they are eligible for none, say so once and name the best pay-in option.
+- "plan": 3 to 6 concrete suggestions that fit the time they have${layover ? ` (a ${layover.hours}-hour layover)` : ' before boarding'}, e.g. what to see or eat (halal options), where the prayer room (musolla) is, whether there is time to leave the airport, and when to head to the gate. They are Muslim; on a long journey mention that a traveller may shorten and combine prayers.
+Be specific and brief. Say if you are unsure of a detail. Reply {"lounges": [...], "plan": [...]}.`,
+    input: [
+      `Trip: ${trip.title} (${trip.purpose}).`,
+      wrapUntrusted('booking', describeSegment(seg), 2000),
+      `Eligibility from their fare and status: ${seg.lounges.length ? seg.lounges.map((l) => `${l.access} (${l.basis})`).join('; ') : 'none known'}.`,
+      layover ? `This is a connection: ${layover.hours} hours at ${layover.airport}.` : `Departing from ${seg.fromCode}.`,
+    ].join('\n'),
+    schema: Companion,
+  });
+  const companion = { ...trip.companion, [segmentId]: { lounges: res.lounges, plan: res.plan, generatedAt: nowIso() } };
+  store.db.prepare('UPDATE trips SET companion = ? WHERE id = ?').run(JSON.stringify(companion), trip.id);
+  return getTrip(store, trip.id);
+}
+
+const Plan = z.object({
+  items: z
+    .array(
+      z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        time: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+        title: z.string().max(160),
+        place: z.string().max(160),
+        notes: z.string().max(600),
+        kind: z.enum(['activity', 'food', 'transit', 'work', 'rest']),
+      }),
+    )
+    .max(60),
+});
+
+/** A first plan for the trip, day by day, for the person to edit. Days that already have plans are left alone. */
+export async function draftItinerary(store: Store, tripId: string): Promise<Trip> {
+  const trip = getTrip(store, tripId);
+  const planned = new Set(trip.itinerary.map((i) => i.date));
+  const days = Array.from({ length: daysBetween(trip.startDate, trip.endDate) + 1 }, (_, i) => addDays(trip.startDate, i)).filter((d) => !planned.has(d));
+  if (days.length === 0) return trip;
+  const res = await think({
+    store,
+    task: `Draft a realistic day-by-day plan for this ${trip.purpose} trip${trip.destination ? ` to ${trip.destination}` : ''}, for these dates only: ${days.join(', ')}.
+- Fit around the flights and hotel: nothing before landing or after the last departure; leave time to get to and from the airport (a "transit" item).
+- ${trip.purpose === 'work' ? 'It is a work trip: keep working hours as "work" blocks (title "Work" unless the notes say what), and suggest a few things for evenings and any free day.' : 'It is a leisure trip: two or three anchors a day with room to breathe, mixing sights, local experiences and rest.'}
+- They are Muslim: suggest halal or Muslim-friendly places to eat, and on a Friday, Jumu'ah at a nearby mosque around midday.
+- Use real, specific places. Times are local, "HH:MM", or null for flexible items.
+Reply {"items": [{"date", "time", "title", "place", "notes", "kind": "activity"|"food"|"transit"|"work"|"rest"}]}.`,
+    input: [
+      `Trip: ${trip.title}, ${trip.startDate} to ${trip.endDate}, purpose ${trip.purpose}.`,
+      trip.segments.length ? wrapUntrusted('bookings', trip.segments.map(describeSegment).join('\n'), 6000) : 'No bookings on file yet.',
+      trip.notes ? wrapUntrusted('their notes for the trip', trip.notes, 2000) : '',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    schema: Plan,
+  });
+  const wanted = new Set(days);
+  addItems(store, tripId, res.items.filter((i) => wanted.has(i.date)), true);
+  store.db.prepare('UPDATE trips SET drafted = 1 WHERE id = ?').run(tripId);
+  store.record('created', 'itinerary_draft', tripId, sphereFor(store, trip.purpose), `Drafted a plan for ${trip.title}`);
+  return getTrip(store, tripId);
+}
+
+/** Every half hour: get ahead of flights in the next day and trips in the next week. */
+export async function prepareTravel(store: Store, now: Date = new Date()): Promise<void> {
+  const today = localDate(now);
+  const ctx = travelContext(store, today, now);
+  for (const trip of listTrips(store, today).filter((t) => t.endDate >= today)) {
+    for (const seg of trip.segments.filter((s) => s.kind === 'flight')) {
+      const at = zonedToUtc(seg.startLocal, seg.startTz).getTime();
+      const until = at - now.getTime();
+      if (until <= 0 || until > 24 * HOUR) continue;
+      let lounges = seg.lounges.map((l) => l.access);
+      if (!trip.companion[seg.id]) {
+        try {
+          const t = await buildCompanion(store, seg.id, now);
+          lounges = t.companion[seg.id]?.lounges ?? lounges;
+        } catch (err) {
+          if (!(err instanceof NoBrain)) throw err;
+        }
+      }
+      const layover = ctx.layovers.find((l) => l.nextSegmentId === seg.id);
+      addSignal(store, {
+        source: ID,
+        kind: 'flight',
+        externalId: `flight:${seg.id}`,
+        title: `${seg.carrier} ${seg.number} to ${airport(seg.toCode)?.city ?? seg.toName} leaves ${seg.startLocal.slice(11)}${layover ? ` — ${layover.hours} h at ${layover.airport}` : ''}`,
+        body: lounges.length ? `Lounge: ${lounges[0]}` : 'No lounge from your fare or status on this one.',
+        sphereId: sphereFor(store, trip.purpose),
+        priority: 2,
+        data: { tripId: trip.id, segmentId: seg.id },
+      });
+    }
+    const startsIn = daysBetween(today, trip.startDate);
+    const r = store.db.prepare('SELECT drafted FROM trips WHERE id = ?').get(trip.id) as Row;
+    if (startsIn >= 0 && startsIn <= 7 && !r.drafted && trip.itinerary.length === 0) {
+      try {
+        await draftItinerary(store, trip.id);
+        addSignal(store, {
+          source: ID,
+          kind: 'itinerary',
+          externalId: `itinerary:${trip.id}`,
+          title: `A first plan for ${trip.title} is ready`,
+          body: `Seldon drafted ${daysBetween(trip.startDate, trip.endDate) + 1} days. Edit anything — it is yours.`,
+          sphereId: sphereFor(store, trip.purpose),
+          priority: 1,
+          data: { tripId: trip.id },
+        });
+      } catch (err) {
+        if (!(err instanceof NoBrain)) throw err;
+      }
+    }
+  }
+}
+
+// ── Reading bookings and statements ─────────────────────────────────────────
+
+const ExtractedSegment = z.object({
+  kind: z.enum(['flight', 'stay', 'train', 'car', 'event']),
+  title: z.string().max(160).describe('Hotel name for stays; empty for flights'),
+  carrier: z.string().max(60).describe('Airline IATA code for flights ("SQ"), hotel brand for stays'),
+  number: z.string().max(12).describe('Flight number without the carrier, e.g. "638"'),
+  from_code: z.string().max(4),
+  from_name: z.string().max(120),
+  to_code: z.string().max(4),
+  to_name: z.string().max(120),
+  start_local: z.string().regex(stamp),
+  start_tz: z.string().max(40).nullable(),
+  end_local: z.string().regex(stamp).nullable(),
+  end_tz: z.string().max(40).nullable(),
+  cabin: z.string().max(40),
+  seat: z.string().max(8),
+  confirmation: z.string().max(20),
+  address: z.string().max(300),
+});
+
+const Extraction = z.object({
+  kind: z.enum(['booking', 'cancellation', 'loyalty', 'booking_and_loyalty', 'none']),
+  trip: z.object({ destination: z.string().max(120), purpose: z.enum(['work', 'leisure']).nullable() }).nullable(),
+  segments: z.array(ExtractedSegment).max(12),
+  loyalty: z
+    .array(
+      z.object({
+        program: z.string().max(60),
+        tier: z.string().max(40),
+        points: z.number().nullable(),
+        progress: z.number().nullable(),
+        progress_target: z.number().nullable(),
+        progress_label: z.string().max(60),
+        expires: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+        member_suffix: z.string().max(4),
+      }),
+    )
+    .max(4),
+});
+
+const EXTRACT_TASK = `Read this travel document (an email or a screenshot) and pull out bookings and loyalty-programme standing.
+- "kind": "booking" for a confirmation, itinerary, e-ticket, boarding pass or check-in notice; "cancellation" when it cancels something; "loyalty" for a statement or app screen showing tier, miles or points; "booking_and_loyalty" for both; "none" otherwise (newsletters, offers, surveys).
+- "segments": each flight (one per leg; airline code in "carrier", digits in "number"; airport IATA codes) and each hotel stay (check-in as start, check-out as end; hotel name in "title"). Times are local wall-clock "YYYY-MM-DDTHH:MM"; for a stay without times use 15:00 and 12:00. Zones are IANA names when you can tell, else null.
+- "trip": the destination city and whether it reads as work (a company booking, a conference) or leisure; null purpose when unclear.
+- "loyalty": for KrisFlyer give tier (KrisFlyer, Elite Silver, Elite Gold, PPS Club, Solitaire PPS Club), miles in "points", elite miles or PPS value towards the next tier in "progress" with its target and a label like "elite miles to Gold"; for Marriott Bonvoy give tier (Member, Silver, Gold, Platinum, Titanium, Ambassador), points, and nights this year in "progress" with the next tier's nights as target. Only the last four digits of a membership number.
+Only report what the document says. Reply as JSON with keys kind, trip, segments, loyalty.`;
+
+export type Extracted = z.infer<typeof Extraction>;
+
+const toSegmentInput = (s: Extracted['segments'][number]): SegmentInput => ({
+  kind: s.kind,
+  title: s.title,
+  carrier: s.carrier,
+  number: s.number,
+  fromCode: s.from_code,
+  fromName: s.from_name,
+  toCode: s.to_code,
+  toName: s.to_name,
+  startLocal: s.start_local,
+  startTz: s.start_tz,
+  endLocal: s.end_local,
+  endTz: s.end_tz,
+  cabin: s.cabin,
+  seat: s.seat,
+  confirmation: s.confirmation,
+  address: s.address,
+});
+
+export interface Applied {
+  trips: string[];
+  segments: Segment[];
+  loyalty: LoyaltyAccount[];
+  cancellation: boolean;
+}
+
+/** File what was read: bookings onto the right trip (making one when needed), standing onto its account. */
+export function applyExtraction(store: Store, x: Extracted, source: string, externalId: string | null): Applied {
+  const out: Applied = { trips: [], segments: [], loyalty: [], cancellation: x.kind === 'cancellation' };
+  if (x.kind === 'none' || x.kind === 'cancellation') return out;
+  const settings = travelSettings(store);
+  const segs = [...x.segments].sort((a, b) => a.start_local.localeCompare(b.start_local));
+  if (segs.length) {
+    const first = segs[0]!.start_local.slice(0, 10);
+    const last = segs.reduce((m, s) => ((s.end_local ?? s.start_local).slice(0, 10) > m ? (s.end_local ?? s.start_local).slice(0, 10) : m), first);
+    let trip = tripFor(store, first, last);
+    if (!trip) {
+      const away = segs.find((s) => s.kind === 'flight' && s.to_code.toUpperCase() !== settings.homeAirport);
+      const destination = x.trip?.destination || (away ? (airport(away.to_code)?.city ?? away.to_name) : (segs.find((s) => s.kind === 'stay')?.address ?? ''));
+      const created = createTrip(store, { destination, title: destination || 'Trip', purpose: x.trip?.purpose ?? 'leisure', startDate: first, endDate: last }, true);
+      trip = store.db.prepare('SELECT * FROM trips WHERE id = ?').get(created.id) as Row;
+      store.record('created', 'trip', created.id, sphereFor(store, created.purpose), `Found a trip in your ${source === 'gmail' ? 'mail' : 'screenshot'}: ${created.title}`);
+    }
+    out.trips.push(trip!.id);
+    segs.forEach((s, i) => {
+      try {
+        const { segment, created } = addSegment(store, trip!.id, toSegmentInput(s), source, externalId ? `${externalId}#${i}` : null, true);
+        if (created) out.segments.push(segment);
+      } catch {
+        /* a leg the model garbled; the rest still count */
+      }
+    });
+  }
+  for (const l of x.loyalty) {
+    if (!l.program) continue;
+    out.loyalty.push(
+      upsertLoyalty(
+        store,
+        {
+          program: l.program,
+          tier: l.tier || undefined,
+          points: l.points ?? undefined,
+          progress: l.progress ?? undefined,
+          progressTarget: l.progress_target ?? undefined,
+          progressLabel: l.progress_label || undefined,
+          expires: l.expires ?? undefined,
+          memberSuffix: l.member_suffix || undefined,
+        },
+        source,
+      ),
+    );
+  }
+  return out;
+}
+
+export async function extractTravel(store: Store, text: string, image?: { data: Buffer; mime: string }): Promise<Extracted> {
+  return think({
+    store,
+    task: EXTRACT_TASK,
+    input: wrapUntrusted('travel document', text || 'See the image.', 20_000),
+    images: image ? [{ mediaType: image.mime, data: image.data.toString('base64') }] : undefined,
+    schema: Extraction,
+  });
+}
+
+const TRAVEL_SENDERS = /singaporeair|krisflyer|marriott|bonvoy|scoot|booking\.com|agoda|expedia|airbnb|trip\.com|hotels\.com|klook|emirates|qatarairways|cathaypacific|ana\.co\.jp|jal\.co|lufthansa|united\.com|britishairways|airasia|malaysiaairlines|garuda|thaiairways|turkishairlines|hilton|hyatt|ihg|accor|shangri-la|pan pacific|concur|navan|tripactions|egencia/i;
+const TRAVEL_SUBJECT = /\b(flight|itinerary|e-?ticket|boarding pass|check[- ]?in|booking (confirm|reference)|reservation|your (stay|trip)|elite|statement|miles|points summary)\b/i;
+
+export const looksLikeTravel = (m: MailMessage) => TRAVEL_SENDERS.test(m.from.address) || TRAVEL_SUBJECT.test(m.subject);
+
+async function onMail(store: Store, m: MailMessage): Promise<void> {
+  if (!looksLikeTravel(m)) return;
+  let x: Extracted;
+  try {
+    x = await extractTravel(store, `From: ${m.from.name} <${m.from.address}>\nSubject: ${m.subject}\nDate: ${m.date}\n\n${m.text}`);
+  } catch (err) {
+    if (err instanceof NoBrain) return;
+    throw err;
+  }
+  const applied = applyExtraction(store, x, 'gmail', m.messageId);
+  const trip = applied.trips[0] ? getTrip(store, applied.trips[0]) : null;
+  if (applied.cancellation) {
+    addSignal(store, { source: ID, kind: 'cancellation', externalId: `mail:${m.messageId}`, title: `Looks like a cancellation: ${m.subject}`, body: 'Check your trips — Terminus leaves bookings in place until you remove them.', sphereId: travelSphere(store), priority: 2, occurredAt: m.date });
+  } else if (applied.segments.length && trip) {
+    const what = applied.segments.map((s) => (s.kind === 'flight' ? `${s.carrier} ${s.number}` : s.title)).join(', ');
+    addSignal(store, { source: ID, kind: 'booking', externalId: `mail:${m.messageId}`, title: `Added ${what} to ${trip.title}`, body: `From “${m.subject}”.`, sphereId: sphereFor(store, trip.purpose), priority: 1, occurredAt: m.date, data: { tripId: trip.id } });
+  }
+}
+
+// ── Undo ────────────────────────────────────────────────────────────────────
+
+registerUndo('created:trip', (db, id) => void db.prepare('DELETE FROM trips WHERE id = ?').run(id));
+registerUndo('created:trip_segment', (db, id) => void db.prepare('DELETE FROM trip_segments WHERE id = ?').run(id));
+registerUndo('created:itinerary', (db, id) => void db.prepare('DELETE FROM itinerary_items WHERE id = ?').run(id));
+registerUndo('created:itinerary_draft', (db, id) => {
+  db.prepare('DELETE FROM itinerary_items WHERE trip_id = ? AND done = 0').run(id);
+  db.prepare('UPDATE trips SET drafted = 0 WHERE id = ?').run(id);
+});
+
+// ── Agent ───────────────────────────────────────────────────────────────────
+
+registerSnapshotSection<Store>('Travel', (store, today) => {
+  const ctx = travelContext(store, today);
+  const trips = listTrips(store, today).filter((t) => t.endDate >= today).slice(0, 3);
+  const loyalty = listLoyalty(store);
+  if (!trips.length && !loyalty.length) return null;
+  const lines: string[] = [];
+  if (ctx.flight) {
+    const f = ctx.flight;
+    lines.push(`Next flight: ${f.carrier} ${f.number} ${f.fromCode} → ${f.toCode}, ${f.startLocal.replace('T', ' ')} local, in ${Math.round(f.departsInMin / 6) / 10} h${f.cabin ? `, ${f.cabin}` : ''}. Lounge: ${f.lounges[0]?.access ?? 'none from fare or status'}.`);
+  }
+  for (const l of ctx.layovers) lines.push(`Layover: ${l.hours} h at ${l.airport}.`);
+  if (ctx.mode === 'away' && ctx.trip) lines.push(`Away now: day ${ctx.dayOfTrip} of ${ctx.tripDays} in ${ctx.trip.title}${ctx.stay ? `, staying at ${ctx.stay.title}` : ''}.`);
+  for (const t of trips) lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items.`);
+  for (const a of loyalty) lines.push(`${a.program}: ${[a.tier, a.points !== null ? `${a.points.toLocaleString('en')} ${a.kind === 'airline' ? 'miles' : 'points'}` : '', a.progress !== null && a.progressTarget ? `${a.progress}/${a.progressTarget} ${a.progressLabel}` : ''].filter(Boolean).join(', ')} (as of ${a.updatedAt.slice(0, 10)}).`);
+  return lines.join('\n');
+});
+
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const time = z.string().regex(/^\d{2}:\d{2}$/);
+const purpose = z.enum(['work', 'leisure']);
+const tripInput = z.object({ title: z.string().max(120).optional(), purpose: purpose.optional(), destination: z.string().max(120).optional(), startDate: dateStr, endDate: dateStr, notes: z.string().max(2000).optional() });
+const segmentInput = z.object({
+  kind: z.enum(['flight', 'stay', 'train', 'car', 'event']),
+  title: z.string().max(160).optional(),
+  carrier: z.string().max(60).optional(),
+  number: z.string().max(12).optional(),
+  fromCode: z.string().max(4).optional(),
+  fromName: z.string().max(120).optional(),
+  toCode: z.string().max(4).optional(),
+  toName: z.string().max(120).optional(),
+  startLocal: z.string().regex(stamp),
+  startTz: z.string().max(40).nullable().optional(),
+  endLocal: z.string().regex(stamp).nullable().optional(),
+  endTz: z.string().max(40).nullable().optional(),
+  cabin: z.string().max(40).optional(),
+  seat: z.string().max(8).optional(),
+  confirmation: z.string().max(20).optional(),
+  address: z.string().max(300).optional(),
+  notes: z.string().max(1000).optional(),
+});
+const itemInput = z.object({ date: dateStr, time: time.nullable().optional(), title: z.string().min(1).max(160), place: z.string().max(160).optional(), notes: z.string().max(600).optional(), kind: z.enum(['activity', 'food', 'transit', 'work', 'rest']).optional() });
+const loyaltyInput = z.object({
+  program: z.string().min(1).max(60),
+  kind: z.enum(['airline', 'hotel', 'lounge']).optional(),
+  tier: z.string().max(40).optional(),
+  points: z.number().min(0).max(1e9).nullable().optional(),
+  progress: z.number().min(0).max(1e9).nullable().optional(),
+  progressTarget: z.number().min(0).max(1e9).nullable().optional(),
+  progressLabel: z.string().max(60).optional(),
+  expires: dateStr.nullable().optional(),
+  memberSuffix: z.string().max(20).optional(),
+});
+
+async function imageFrom(form: FormData) {
+  const f = form.get('file');
+  if (!f || typeof f === 'string') return undefined;
+  if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type)) throw new Invalid('Screenshots must be PNG, JPEG, WebP or GIF');
+  if (f.size > 5_000_000) throw new Invalid('That image is too large (5 MB at most)');
+  return { data: Buffer.from(await f.arrayBuffer()), mime: f.type };
+}
+
+const compactTrip = (t: Trip) => ({
+  ...t,
+  segments: t.segments.map((s) => ({ id: s.id, kind: s.kind, what: describeSegment(s), seat: s.seat || undefined, confirmation: s.confirmation || undefined, lounges: s.lounges.length ? s.lounges : undefined, perks: s.perks.length ? s.perks : undefined })),
+});
+
+registerFeature({
+  id: ID,
+  tables: ['trips', 'trip_segments', 'itinerary_items', 'loyalty_accounts'],
+  integration: { configured: () => true },
+  jobs: [{ id: ID, everyMs: 30 * 60_000, run: async (store) => prepareTravel(store) }],
+  mail: async (store, m) => onMail(store, m),
+  tools: [
+    tool(
+      'get_travel',
+      'Read the user\'s trips (bookings, plan items, airport notes), their KrisFlyer / Marriott Bonvoy / lounge standing, and what is happening now: next flight with lounge eligibility, layovers, the current stay.',
+      z.object({}),
+      (_, { store, today }) => {
+        const s = travelState(store, today);
+        return { data: { context: { ...s.context, trip: s.context.trip?.id ?? null }, trips: s.trips.slice(0, 6).map(compactTrip), loyalty: s.loyalty, homeAirport: s.settings.homeAirport }, summary: 'Read travel' };
+      },
+    ),
+    tool(
+      'create_trip',
+      'Create a trip. Purpose is "work" (also shows in the Work sphere) or "leisure". Add flights and stays with add_trip_booking afterwards.',
+      tripInput,
+      (t, { store }) => {
+        const trip = createTrip(store, t);
+        return { data: { ok: true, id: trip.id }, summary: `Created trip ${trip.title}` };
+      },
+    ),
+    tool(
+      'add_trip_booking',
+      'Add a flight, hotel stay, train, car or event to a trip. Times are local wall-clock "YYYY-MM-DDTHH:MM" at each end; airports as IATA codes; airline code in carrier and digits in number. The same flight on the same day is merged, not duplicated.',
+      segmentInput.extend({ trip_id: z.string().min(1) }),
+      ({ trip_id, ...s }, { store }) => {
+        const { segment, created } = addSegment(store, trip_id, s, 'seldon');
+        return { data: { ok: true, id: segment.id, merged: !created, lounges: segment.lounges, perks: segment.perks }, summary: `${created ? 'Added' : 'Updated'} ${segment.title || segment.kind}` };
+      },
+    ),
+    tool(
+      'add_itinerary_items',
+      'Add items to a trip\'s day-by-day plan (the user can edit them). For a fresh plan, use real places, fit around flights, suggest halal food, and Jumu\'ah on Fridays. Kinds: activity, food, transit, work, rest.',
+      z.object({ trip_id: z.string().min(1), items: z.array(itemInput).min(1).max(40) }),
+      ({ trip_id, items }, { store }) => {
+        const added = addItems(store, trip_id, items);
+        return { data: { ok: true, ids: added.map((i) => i.id) }, summary: `Added ${added.length} plan item${added.length === 1 ? '' : 's'}` };
+      },
+    ),
+    tool(
+      'update_itinerary_item',
+      'Change or tick off an item in a trip plan.',
+      itemInput.partial().extend({ id: z.string().min(1), done: z.boolean().optional() }),
+      ({ id, ...p }, { store }) => {
+        const it = updateItem(store, id, p);
+        return { data: { ok: true }, summary: `Updated “${it.title}”` };
+      },
+    ),
+    tool(
+      'save_airport_companion',
+      'Save notes for a flight that show on Today as it approaches: the specific lounges to use at the departure airport (given their eligibility) and 3–6 suggestions for the time they have (layover ideas, halal food, prayer room, when to go to the gate).',
+      z.object({ segment_id: z.string().min(1), lounges: z.array(z.string().max(200)).max(5), plan: z.array(z.string().max(300)).max(8) }),
+      ({ segment_id, lounges, plan }, { store }) => {
+        const r = store.db.prepare('SELECT trip_id FROM trip_segments WHERE id = ?').get(segment_id) as Row | undefined;
+        if (!r?.trip_id) throw new NotFound('Flight');
+        const trip = getTrip(store, r.trip_id);
+        store.db.prepare('UPDATE trips SET companion = ? WHERE id = ?').run(JSON.stringify({ ...trip.companion, [segment_id]: { lounges, plan, generatedAt: nowIso() } }), trip.id);
+        return { data: { ok: true }, summary: 'Saved airport notes' };
+      },
+    ),
+    tool(
+      'update_loyalty_account',
+      'Record the user\'s standing in a loyalty programme (KrisFlyer, Marriott Bonvoy, Priority Pass or another): tier, miles or points, progress to the next tier, expiry. Only the last four digits of a membership number.',
+      loyaltyInput,
+      (l, { store }) => {
+        const a = upsertLoyalty(store, l, 'seldon');
+        return { data: { ok: true, account: a }, summary: `Updated ${a.program}` };
+      },
+    ),
+  ],
+  routes: (app, { store }) => {
+    const state = (c: Parameters<typeof todayOf>[0]) => travelState(store, todayOf(c));
+    app.get('/api/travel', (c) => c.json(state(c)));
+    app.put('/api/travel/settings', async (c) => {
+      const s = await read(c, z.object({ homeAirport: z.string().regex(/^[A-Za-z]{3}$/) }));
+      updateIntegration(store, ID, (r) => void (r.settings = { ...r.settings, homeAirport: s.homeAirport.toUpperCase() }));
+      return c.json(state(c));
+    });
+    app.post('/api/travel/trips', async (c) => {
+      const trip = createTrip(store, await read(c, tripInput));
+      return c.json({ ...state(c), created: trip.id }, 201);
+    });
+    app.patch('/api/travel/trips/:id', async (c) => {
+      updateTrip(store, c.req.param('id'), await read(c, tripInput.partial()));
+      return c.json(state(c));
+    });
+    app.delete('/api/travel/trips/:id', (c) => {
+      if (!store.db.prepare('DELETE FROM trips WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Trip');
+      return c.json(state(c));
+    });
+    app.post('/api/travel/trips/:id/segments', async (c) => {
+      addSegment(store, c.req.param('id'), await read(c, segmentInput));
+      return c.json(state(c), 201);
+    });
+    app.patch('/api/travel/segments/:id', async (c) => {
+      updateSegment(store, c.req.param('id'), await read(c, segmentInput.partial()));
+      return c.json(state(c));
+    });
+    app.delete('/api/travel/segments/:id', (c) => {
+      if (!store.db.prepare('DELETE FROM trip_segments WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Booking');
+      return c.json(state(c));
+    });
+    app.post('/api/travel/trips/:id/itinerary', async (c) => {
+      addItems(store, c.req.param('id'), [await read(c, itemInput)], true);
+      return c.json(state(c), 201);
+    });
+    app.patch('/api/travel/itinerary/:id', async (c) => {
+      updateItem(store, c.req.param('id'), await read(c, itemInput.partial().extend({ done: z.boolean().optional() })));
+      return c.json(state(c));
+    });
+    app.delete('/api/travel/itinerary/:id', (c) => {
+      if (!store.db.prepare('DELETE FROM itinerary_items WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Plan item');
+      return c.json(state(c));
+    });
+    const needsBrain = async <T>(fn: () => Promise<T>, what: string) => {
+      try {
+        return await fn();
+      } catch (err) {
+        if (err instanceof NoBrain) throw new Invalid(`Connect a brain in Settings so Seldon can ${what}.`);
+        throw err;
+      }
+    };
+    app.post('/api/travel/trips/:id/draft', async (c) => {
+      await needsBrain(() => draftItinerary(store.as('agent'), c.req.param('id')), 'draft a plan');
+      return c.json(state(c));
+    });
+    app.post('/api/travel/segments/:id/companion', async (c) => {
+      await needsBrain(() => buildCompanion(store, c.req.param('id')), 'prepare airport notes');
+      return c.json(state(c));
+    });
+    app.put('/api/travel/loyalty', async (c) => {
+      upsertLoyalty(store, await read(c, loyaltyInput));
+      return c.json(state(c));
+    });
+    app.delete('/api/travel/loyalty/:id', (c) => {
+      if (!store.db.prepare('DELETE FROM loyalty_accounts WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Account');
+      return c.json(state(c));
+    });
+    // A screenshot (boarding pass, booking, the KrisFlyer or Bonvoy app) or pasted text.
+    app.post('/api/travel/import', async (c) => {
+      const type = c.req.header('content-type') ?? '';
+      let text = '';
+      let image: { data: Buffer; mime: string } | undefined;
+      if (type.includes('multipart/form-data')) {
+        const form = await c.req.formData();
+        text = String(form.get('text') ?? '').slice(0, 20_000);
+        image = await imageFrom(form);
+      } else {
+        text = (await read(c, z.object({ text: z.string().min(1).max(20_000) }))).text;
+      }
+      if (!text && !image) throw new Invalid('Add a screenshot or paste the confirmation');
+      const x = await needsBrain(() => extractTravel(store, text, image), 'read bookings');
+      const applied = applyExtraction(store.as('agent'), x, image ? 'screenshot' : 'paste', null);
+      if (x.kind === 'none') throw new Invalid('Seldon could not find a booking or a loyalty balance in that.');
+      return c.json({ ...state(c), imported: { segments: applied.segments.length, loyalty: applied.loyalty.map((a) => a.program), trips: applied.trips, cancellation: applied.cancellation } });
+    });
+  },
+});
