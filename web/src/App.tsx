@@ -11,6 +11,7 @@ import { Sheets } from './components/sheets.tsx';
 import { AgentOrb, Orb } from './components/Orb.tsx';
 import { Loading } from './components/ui.tsx';
 import { cx } from './lib.ts';
+import { useSunClock } from './sun.ts';
 import { AppContext, type AppState, type Sheet, type Toast } from './state.tsx';
 import { Goals } from './views/Goals.tsx';
 import { Library } from './views/Library.tsx';
@@ -74,6 +75,7 @@ function Shell({ settings }: { settings: SettingsData }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const agentName = settings.profile.agentName;
+  useSunClock();
 
   // What the agent is told the person is looking at, read at send time.
   const where = useRef('Today');
@@ -143,10 +145,6 @@ function Shell({ settings }: { settings: SettingsData }) {
         <div className="app-main">
           <header className="topbar">
             <div className="topbar-left">
-              <button type="button" className="agent-button" aria-pressed={agentOpen} onClick={() => setAgentOpen((v) => !v)} title={`Talk to ${agentName} (⌘J)`}>
-                <AgentOrb size={28} thinking={chat.streaming} />
-                <span>{agentName}</span>
-              </button>
               <Link href="/" className="wordmark serif">
                 Terminus
               </Link>

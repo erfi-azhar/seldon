@@ -1,5 +1,5 @@
 import { Check as CheckIcon, X } from 'lucide-react';
-import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { cloneElement, isValidElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { cx, hueStyle } from '../lib.ts';
 import { useApp } from '../state.tsx';
 
@@ -294,5 +294,56 @@ export function ProgressBar({ value }: { value: number }) {
     <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}>
       <i style={{ width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%` }} />
     </div>
+  );
+}
+
+/**
+ * A box that scrolls on one axis, and which of its ends still hide something, so the edge blur
+ * sits only where there is more to see.
+ */
+export function useScrollEdges<T extends HTMLElement>(axis: 'x' | 'y', deps: unknown[] = []) {
+  const ref = useRef<T>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const [pos, size, total] = axis === 'y' ? [el.scrollTop, el.clientHeight, el.scrollHeight] : [el.scrollLeft, el.clientWidth, el.scrollWidth];
+    const start = pos > 2;
+    const end = pos + size < total - 2;
+    setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
+  }, [axis]);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    update();
+    // Content wraps and grows with the width, so watch the children as well as the box.
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    for (const child of Array.from(el.children)) ro.observe(child);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [update, ...deps]);
+  return { ref, onScroll: update, edges, scrolls: edges.start || edges.end };
+}
+
+/**
+ * Where a scrolling box cuts its content off, a progressive blur instead of a fade: layers of
+ * backdrop blur, each stronger and nearer the edge. Place it beside the scroller, inside a
+ * `.blur-wrap` that is exactly the scroller's box.
+ */
+export function ScrollBlur({ axis, edges }: { axis: 'x' | 'y'; edges: { start: boolean; end: boolean } }) {
+  return (
+    <>
+      {(['start', 'end'] as const).map((side) => (
+        <div key={side} className={cx('blur-edge', `is-${axis}`, `is-${side}`, edges[side] && 'is-on')} aria-hidden>
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+      ))}
+    </>
   );
 }

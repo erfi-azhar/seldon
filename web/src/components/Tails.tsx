@@ -107,6 +107,70 @@ const LIVERIES: Record<string, Livery> = {
   AD: { base: '#00205b', art: stroke('M15 29 C20 25 26 20 31 15', '#3ab4e6', 2.2) },
 };
 
+/**
+ * How an airline's aircraft look from above, for the plane flying the route globe: the fuselage roof,
+ * the fin (seen edge-on, with its accent), the engine nacelles. Again the livery's colours, not its art.
+ */
+export interface PlanePaint {
+  body: string;
+  fin: string;
+  accent: string;
+  engine: string;
+}
+const WHITE = '#f7f8fa';
+const GREY = '#dfe3e8';
+const paint = (fin: string, accent = fin, engine = GREY, body = WHITE): PlanePaint => ({ body, fin, accent, engine });
+const PLANES: Record<string, PlanePaint> = {
+  SQ: paint('#1b2a5e', '#f2b51b'),
+  TR: paint('#ffd200', '#1d1d1b', '#ffd200'),
+  QR: paint('#5c0a33', '#5c0a33', GREY, '#eeebee'),
+  EK: paint('#d71921', '#00843d'),
+  EY: paint('#b89a5b', '#8c6d34', '#b89a5b', '#efe9dc'),
+  TK: paint('#c70a1f', '#ffffff'),
+  LH: paint('#05164d', '#ffffff', '#05164d'),
+  LX: paint('#e30613', '#ffffff'),
+  OS: paint('#e3051b', '#ffffff'),
+  CX: paint('#005d63', '#ffffff'),
+  MH: paint('#cc0000', '#00337f'),
+  AK: paint('#ff0000', '#ffffff', '#ff0000'),
+  OD: paint('#c8102e', '#ffffff'),
+  GA: paint('#0b4f74', '#1f8aa8'),
+  TG: paint('#4b1e7f', '#d4006f'),
+  VN: paint('#0a6e86', '#d9a93d'),
+  PR: paint('#0038a8', '#ce1126'),
+  BR: paint('#00704a', '#f39800'),
+  CI: paint('#e4007f', '#ffffff'),
+  ZH: paint('#c41230', '#e5b84b'),
+  CZ: paint('#0b4ea2', '#e60012'),
+  MU: paint('#16378b', '#d40000'),
+  CA: paint('#c8102e', '#ffffff'),
+  NH: paint('#13448f', '#3fa9f5'),
+  JL: paint('#e60012', '#ffffff'),
+  KE: paint('#00256c', '#c60c30', GREY, '#a9d6f0'),
+  OZ: paint('#8a8d8f', '#e4002b'),
+  AI: paint('#da0e29', '#ae8c41'),
+  '6E': paint('#001b94', '#ffffff', '#001b94'),
+  UL: paint('#173a7a', '#2bb673'),
+  SV: paint('#004b87', '#d6c49a'),
+  BA: paint('#c8102e', '#012169'),
+  AF: paint('#002157', '#ed1c24'),
+  KL: paint('#00a1de', '#ffffff', GREY, '#2fb2e6'),
+  IB: paint('#d7192d', '#fcbc00'),
+  TP: paint('#0f9d58', '#e2001a'),
+  ET: paint('#078930', '#fcdd09'),
+  QF: paint('#e40000', '#ffffff'),
+  NZ: paint('#111111', '#ffffff'),
+  UA: paint('#002244', '#0e74c9', '#002244'),
+  AA: paint('#b61f23', '#0078d2', GREY, '#e6eaee'),
+  DL: paint('#003366', '#e01933'),
+  AC: paint('#111111', '#d22630', '#111111'),
+  LA: paint('#1b0088', '#ed1650'),
+  G3: paint('#ff7020', '#ffffff', '#ff7020'),
+  AD: paint('#00205b', '#3ab4e6'),
+};
+/** An airline's paint for the globe's plane; a plain grey-tailed airliner for airlines not listed. */
+export const planePaint = (code?: string): PlanePaint => PLANES[(code ?? '').toUpperCase()] ?? paint('#5b6b86', '#9aa8bd');
+
 /** An airline's tail on a small tile. */
 export function AirlineTail({ code, size = 38 }: { code: string; size?: number }) {
   const clip = `t${useId().replace(/[^a-zA-Z0-9]/g, '')}`;

@@ -15,10 +15,21 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <script>
-      // Apply the saved theme before first paint.
+      // Apply the saved theme before first paint. "Follow the sun" (the default) picks the
+      // phase of the day from today's changes, saved by web/src/sun.ts.
       try {
+        var root = document.documentElement;
         var t = localStorage.getItem('terminus.theme') || localStorage.getItem('lifeos.theme');
-        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+        if (t === 'light' || t === 'dark') root.dataset.theme = t;
+        else if (t !== 'system') {
+          var m = JSON.parse(localStorage.getItem('terminus.sky.marks') || 'null');
+          if (m && m.date === new Date().toDateString()) {
+            var now = Date.now();
+            var p = now >= m.evening ? 'evening' : now >= m.dusk ? 'dusk' : now >= m.day ? 'day' : now >= m.dawn ? 'dawn' : 'evening';
+            root.dataset.phase = p;
+            root.dataset.theme = p === 'dawn' || p === 'day' ? 'light' : 'dark';
+          }
+        }
       } catch (e) {}
     </script>
   </head>
