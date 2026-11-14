@@ -5368,9 +5368,17 @@ textarea.title-input {
 }
 .jobs-filters {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
   padding: 0 20px 10px;
+  /* One line; on a narrow screen it scrolls sideways instead of wrapping. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.jobs-filters::-webkit-scrollbar {
+  display: none;
+}
+.jobs-filters .chip {
+  flex: none;
 }
 .jobs-filters .chip {
   border: 1px solid transparent;
@@ -5403,6 +5411,60 @@ textarea.title-input {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+.jobs-fits {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.jobs-fits::-webkit-scrollbar {
+  display: none;
+}
+.jobs-fits .chip {
+  flex: none;
+}
+.jobs-fits .chip b {
+  font-weight: 650;
+  color: var(--ink);
+}
+.jobs-fits.fade-end {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+.jobs-fits.fade-start {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px);
+  mask-image: linear-gradient(to right, transparent, #000 32px);
+}
+.jobs-fits.fade-start.fade-end {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+}
+/* The roles: about five and a half rows, then the list scrolls inside the card. */
+.jobs-scroll {
+  max-height: min(460px, 62vh);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+.jobs-scroll:focus-visible {
+  outline: 2px solid var(--ink-3);
+  outline-offset: -2px;
+  border-radius: 10px;
+}
+.jobs-scroll.fade-end {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+.jobs-scroll.fade-start {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px);
+  mask-image: linear-gradient(to bottom, transparent, #000 32px);
+}
+.jobs-scroll.fade-start.fade-end {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 40px), transparent);
 }
 .jobs-companies-line .chip b {
   font-weight: 650;
