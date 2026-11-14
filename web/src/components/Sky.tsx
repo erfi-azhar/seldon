@@ -41,7 +41,7 @@ const PALETTES: Record<Phase, Palette> = {
   dusk: { top: [36, 28, 78], mid: [146, 64, 112], low: [252, 142, 82], glow: [255, 112, 62], core: [255, 206, 146], glowSize: 0.42, glowStrength: 0.8,
     cloud: [255, 150, 112], cloudShade: [92, 42, 84], clouds: 0.46, stars: 0.4, ink: [36, 20, 46], moon: 0.85 },
   evening: { top: [4, 6, 16], mid: [12, 20, 48], low: [30, 46, 90], glow: [140, 160, 224], core: [236, 232, 214], glowSize: 0.13, glowStrength: 0.3,
-    cloud: [72, 82, 124], cloudShade: [20, 26, 52], clouds: 0.28, stars: 1, ink: [226, 230, 242], moon: 1 },
+    cloud: [108, 120, 162], cloudShade: [30, 36, 68], clouds: 0.75, stars: 1, ink: [226, 230, 242], moon: 1 },
 };
 
 const STAR: RGB = [255, 250, 238];
@@ -291,9 +291,12 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       if (pal.stars > 0.01 && k < 0.95) {
         const hs = hash(i * 7 + 11, j * 13 + 5);
         if (hs > 1 - starChance * pal.stars) {
-          // A slow, gentle swell: each star on its own 12–30 second cycle.
+          // A soft swell and fade, each star on its own 3–6 second cycle and to its own
+          // depth: plainly twinkling, never blinking.
           const own = hash(i + 5, j + 211);
-          const twinkle = 0.82 + 0.18 * Math.sin(seconds * (0.21 + 0.31 * own) + own * 40);
+          const depth = 0.45 + 0.45 * hash(i + 9, j + 57);
+          const swell = 0.5 + 0.5 * Math.sin(seconds * (1 + 1.1 * own) + own * 40);
+          const twinkle = 1 - depth * (1 - swell);
           c = mix(c, STAR, (0.45 + 0.55 * hash(i, j + 99)) * (1 - k) * Math.min(1, pal.stars + 0.3) * twinkle);
         }
       }
@@ -301,7 +304,12 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       if (pal.clouds > 0.01 && band > 0) {
         const n = fbm(x * 2.1 + drift, v * 6.5 + drift * 0.15);
         const cover = smooth(0.52, 0.74, n * band + 0.16) * pal.clouds;
-        if (cover > 0.01) c = mix(c, mix(pal.cloudShade, pal.cloud, smooth(0.45, 0.85, n)), cover);
+        if (cover > 0.01) {
+          let cloud = mix(pal.cloudShade, pal.cloud, smooth(0.45, 0.85, n));
+          // At night, clouds near the moon catch its light.
+          if (moonShows) cloud = add(cloud, MOON_GLOW, Math.exp(-m2 / 0.12) * 0.45 * lit.fraction * pal.stars);
+          c = mix(c, cloud, cover);
+        }
       }
 
       if (sun.y < HZ + SUN_R) {
