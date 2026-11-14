@@ -3,10 +3,10 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
-import type { Cabin, FlightOption, ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { Cabin, FlightOption, ItineraryItem, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
 import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -792,16 +792,24 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
       )}
 
       <div className="trip-section-pair">
-        <FoldCard id={`${trip.id}.stay`} icon={<BedDouble size={15} />} title="Stay" peek={others.length ? others.map((o) => shortStay(o.title || 'Hotel')).join(', ') : 'No hotel yet'}>
-            {others.length ? (
-              <div className="seg-list">{others.map(row)}</div>
+        <FoldCard
+          id={`${trip.id}.stay`}
+          icon={<BedDouble size={15} />}
+          title="Stay"
+          peek={others.length ? others.map((o) => shortStay(o.title || 'Hotel')).join(', ') : trip.stayOptions.length ? plural(trip.stayOptions.length, 'hotel option') : 'No hotel yet'}
+        >
+            {others.length > 0 && <div className="seg-list">{others.map(row)}</div>}
+            {trip.stayOptions.length > 0 ? (
+              <StayOptions trip={trip} booked={others.some((s) => s.kind === 'stay')} />
             ) : (
-              <p className="empty">
-                No hotel yet.{' '}
-                <button type="button" className="link" onClick={() => setBooking('new')}>
-                  Add one
-                </button>
-              </p>
+              !others.length && (
+                <p className="empty">
+                  No hotel yet.{' '}
+                  <button type="button" className="link" onClick={() => setBooking('new')}>
+                    Add one
+                  </button>
+                </p>
+              )
             )}
         </FoldCard>
 
@@ -939,7 +947,7 @@ function TripSummary({ trip }: { trip: Trip }) {
               </span>
             ))
           ) : (
-            <span className="ts-empty">Not booked yet</span>
+            <span className="ts-empty">{trip.stayOptions.length ? `${plural(trip.stayOptions.length, 'hotel')} to compare` : 'Not booked yet'}</span>
           )}
         </span>
         <span className="ts-cell">
@@ -1207,6 +1215,115 @@ function OptionCard({ o, toGo, goal, onToggle, onRemove, busy }: { o: FlightOpti
         </button>
       </footer>
     </article>
+  );
+}
+
+/** "1 km", "850 m", "25 km": close distances in metres, the rest in kilometres. */
+const distanceLabel = (km: number) => (km < 1 ? `${Math.round((km * 1000) / 50) * 50} m` : `${km < 10 ? Math.round(km * 10) / 10 : Math.round(km)} km`);
+
+/** Hotels to weigh before booking, nearest to where the days are spent first, each one tap from the trip. */
+function StayOptions({ trip, booked }: { trip: Trip; booked: boolean }) {
+  const choose = useWrite((id: string) => travelWrite.post(`/stay-options/${id}/choose`));
+  const unchoose = useWrite((id: string) => travelWrite.post(`/stay-options/${id}/unchoose`));
+  const remove = useWrite((id: string) => travelWrite.del(`/stay-options/${id}`));
+  const froms = [...new Set(trip.stayOptions.map((o) => o.distanceFrom).filter(Boolean))];
+  const byDistance = trip.stayOptions.some((o) => o.distanceKm != null);
+  return (
+    <div className={cx('stay-options', booked && 'is-after-booking')}>
+      <p className="stay-options-head">
+        {plural(trip.stayOptions.length, 'option')}
+        {byDistance && (froms.length === 1 ? `, nearest to ${froms[0]} first` : ', nearest first')} · not booked
+      </p>
+      <ol className="stay-list">
+        {trip.stayOptions.map((o, i) => (
+          <StayOptionRow
+            key={o.id}
+            o={o}
+            rank={i + 1}
+            showFrom={froms.length > 1}
+            busy={(choose.isPending && choose.variables === o.id) || (unchoose.isPending && unchoose.variables === o.id)}
+            onToggle={() => (o.chosenAt ? unchoose.mutate(o.id) : choose.mutate(o.id))}
+            onRemove={() => window.confirm(`Remove the hotel option “${o.name}”?`) && remove.mutate(o.id)}
+          />
+        ))}
+      </ol>
+      {(choose.error || unchoose.error) && <p className="error-text">{(choose.error ?? unchoose.error)!.message}</p>}
+    </div>
+  );
+}
+
+function StayOptionRow({ o, rank, showFrom, busy, onToggle, onRemove }: { o: StayOption; rank: number; showFrom: boolean; busy: boolean; onToggle: () => void; onRemove: () => void }) {
+  const more = o.notes.length > 0 || !!o.address;
+  return (
+    <li className={cx('stay-opt', o.recommended && 'is-recommended', o.chosenAt && 'is-chosen')}>
+      <span className="stay-rank num" aria-hidden>
+        {rank}
+      </span>
+      <div className="stay-body">
+        <div className="stay-title-row">
+          <span className="stay-name">{o.name}</span>
+          {o.chosenAt ? (
+            <span className="opt-badge is-chosen">
+              <CheckIcon size={12} /> Added
+            </span>
+          ) : (
+            o.recommended && (
+              <span className="opt-badge">
+                <Star size={12} /> Recommended
+              </span>
+            )
+          )}
+        </div>
+        <div className="stay-meta">
+          {o.distanceKm != null && (
+            <b className="stay-distance">
+              <MapPin size={12} /> {distanceLabel(o.distanceKm)}
+              {showFrom && o.distanceFrom ? ` to ${o.distanceFrom}` : ''}
+            </b>
+          )}
+          {[o.gettingThere, o.area].filter(Boolean).map((x) => (
+            <span key={x}>{x}</span>
+          ))}
+        </div>
+        {o.summary && <p className="stay-summary">{o.summary}</p>}
+        <div className="stay-foot">
+          {more ? (
+            <details className="stay-notes">
+              <summary>{o.notes.length ? plural(o.notes.length, 'thing', 'things') + ' to know' : 'Address'}</summary>
+              <ul>
+                {o.address && <li>{o.address}</li>}
+                {o.notes.map((n, i) => (
+                  <li key={i}>{n}</li>
+                ))}
+              </ul>
+            </details>
+          ) : (
+            <span className="grow" />
+          )}
+          <button
+            type="button"
+            className={cx('btn btn-sm opt-choose stay-choose', o.recommended && !o.chosenAt && 'btn-primary', o.chosenAt && 'is-added')}
+            disabled={busy}
+            aria-pressed={!!o.chosenAt}
+            onClick={onToggle}
+            title={o.chosenAt ? 'Take this planned stay off the trip' : 'Adds this hotel to the trip as a planned stay; book it separately'}
+          >
+            {busy ? <Spinner /> : o.chosenAt ? <CheckIcon size={13} className="opt-added-icon" /> : <Plus size={13} />}
+            {o.chosenAt ? (
+              <span className="opt-added-label">
+                <span className="is-rest">Added to the trip</span>
+                <span className="is-hover">Take it off the trip</span>
+              </span>
+            ) : (
+              'Use this hotel'
+            )}
+          </button>
+          <button type="button" className="icon-btn icon-btn-sm opt-remove" onClick={onRemove} aria-label={`Remove the hotel option ${o.name}`} title="Remove this option">
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    </li>
   );
 }
 

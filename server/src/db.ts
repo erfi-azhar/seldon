@@ -428,6 +428,28 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE trip_options ADD COLUMN added TEXT NOT NULL DEFAULT '{}';
   `,
+  // Hotel options for a trip: places to stay to weigh before booking, nearest to where the days are spent first.
+  `
+  CREATE TABLE trip_stay_options (
+    id TEXT PRIMARY KEY,
+    trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    brand TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    area TEXT NOT NULL DEFAULT '',
+    distance_km REAL,
+    distance_from TEXT NOT NULL DEFAULT '',
+    getting_there TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '[]',
+    recommended INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    chosen_at TEXT,
+    added_segment TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX trip_stay_options_by_trip ON trip_stay_options(trip_id, position);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
