@@ -5221,6 +5221,10 @@ textarea.title-input {
     linear-gradient(135deg, oklch(0.4 0.1 30), oklch(0.28 0.07 10));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.35 0.12 30 / 0.8);
 }
+.trip-hero-top {
+  display: grid;
+  gap: 6px;
+}
 .trip-hero-head {
   display: flex;
   align-items: baseline;

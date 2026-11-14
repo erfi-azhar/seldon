@@ -899,18 +899,21 @@ function TripCountdown({ trip }: { trip: Trip }) {
 
   return (
     <section className={cx('trip-hero', trip.purpose === 'work' ? 'is-work' : 'is-leisure')}>
-      <div className="trip-hero-head">
-        {days > 0 ? (
-          <>
-            <span className="trip-hero-count num">{days}</span>
-            <b>
-              {days === 1 ? 'day' : 'days'} until {trip.title}
-            </b>
-          </>
-        ) : (
-          <b>{trip.title} starts today</b>
-        )}
-        <PlaneTakeoff size={22} className="trip-hero-icon" />
+      <div className="trip-hero-top">
+        <div className="trip-hero-head">
+          {days > 0 ? (
+            <>
+              <span className="trip-hero-count num">{days}</span>
+              <b>
+                {days === 1 ? 'day' : 'days'} until {trip.title}
+              </b>
+            </>
+          ) : (
+            <b>{trip.title} starts today</b>
+          )}
+          <PlaneTakeoff size={22} className="trip-hero-icon" />
+        </div>
+        <p className="trip-hero-note">{summary}</p>
       </div>
       <dl className="trip-hero-legs">
         <div>
@@ -924,7 +927,6 @@ function TripCountdown({ trip }: { trip: Trip }) {
           <dd className="trip-hero-sub">{back ? leg(back) : stays[0]?.title || plural(daysFrom(trip.startDate, trip.endDate) + 1, 'day')}</dd>
         </div>
       </dl>
-      <p className="trip-hero-note">{summary}</p>
       {!trip.itinerary.length && trip.segments.length > 0 && (
         <button type="button" className="btn btn-sm trip-hero-btn" disabled={draft.isPending} onClick={() => draft.mutate()}>
           {draft.isPending ? <Spinner /> : <Wand2 size={13} />} Draft a plan with {agentName}
