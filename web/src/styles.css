@@ -6140,3 +6140,79 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 .trip-feature > .travel-mode {
   z-index: 1;
 }
+
+/* The Spheres tab's hover menu. Its ::before is an invisible bridge from the tab, so
+   the pointer never crosses dead space on the way down. */
+.nav-menu {
+  position: relative;
+}
+.nav-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 220px;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  padding: 6px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: 18px;
+  /* Solid, not blurred: it sits inside the nav's own backdrop filter, and a nested one
+     sees nothing behind it, so the page would show straight through. */
+  background: var(--glass-float), var(--bg);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-float-shadow);
+  animation: nav-drop 0.16s ease-out;
+}
+.nav-dropdown::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12px;
+  height: 12px;
+}
+.nav .nav-dropdown a {
+  height: 40px;
+  padding: 0 12px 0 8px;
+  gap: 10px;
+  border-radius: 12px;
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: none;
+  background: none;
+}
+.nav .nav-dropdown a:hover,
+.nav .nav-dropdown a:focus-visible {
+  background: var(--glass-press);
+}
+.nav .nav-dropdown a.current {
+  background: var(--glass-press);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+}
+.nav .nav-dropdown a.nav-dropdown-all {
+  margin-top: 4px;
+  padding-left: 12px;
+  height: 36px;
+  color: var(--ink-3);
+  font-size: 13px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 12px 12px;
+}
+.nav .nav-dropdown a.nav-dropdown-all:hover {
+  color: var(--ink);
+}
+@keyframes nav-drop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-dropdown {
+    animation: none;
+  }
+}
