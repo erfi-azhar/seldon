@@ -374,6 +374,19 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE activity ADD COLUMN undo_data TEXT;
   `,
+  // Personal access tokens: let another program (Claude Code, a script) act as Seldon.
+  `
+  CREATE TABLE access_tokens (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    scope TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT,
+    last_used_at TEXT,
+    revoked_at TEXT
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

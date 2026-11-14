@@ -734,3 +734,16 @@ export interface JobsState {
   running: boolean;
   lastRunAt: string | null;
 }
+
+// ── Access tokens ───────────────────────────────────────────────────────────
+
+export type AccessScope = 'read' | 'write';
+
+export interface AccessToken {
+  id: string;
+  name: string;
+  scope: AccessScope;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+}

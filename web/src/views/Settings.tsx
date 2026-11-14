@@ -1,6 +1,7 @@
 import { Download, Plus, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { api, useAuth, useMemories, useSettings, useSpheres, useWrite, write } from '../api.ts';
+import { AccessTokens } from '../components/AccessTokens.tsx';
 import { BrainsSection } from '../components/Brains.tsx';
 import { CaptureSetup, GmailConnection, McpConnections } from '../components/Connections.tsx';
 import { Orb } from '../components/Orb.tsx';
@@ -107,6 +108,16 @@ export function Settings() {
           <GmailConnection />
           <McpConnections />
           <CaptureSetup />
+        </div>
+      </section>
+
+      <section className="card settings-section" id="access">
+        <header>
+          <h2>Access</h2>
+          <p>Let another program, such as Claude Code, act as {agentName} here.</p>
+        </header>
+        <div className="settings-body">
+          <AccessTokens />
         </div>
       </section>
 

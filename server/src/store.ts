@@ -2,6 +2,7 @@
 // goes through a Store, so both see the same rules and every change lands in the
 // activity log with who made it.
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import type { DB } from './db.ts';
 import type { Turn } from './agent/types.ts';
@@ -185,6 +186,12 @@ function defaultLabel(provider: ProviderKind, preset: string | null): string {
 
 // ── Store ───────────────────────────────────────────────────────────────────
 
+/** Who a request acts as, when not the person at the app: a program using an access token is Seldon. */
+const ACTING = new AsyncLocalStorage<Actor>();
+export function actingAs<T>(actor: Actor, fn: () => T): T {
+  return ACTING.run(actor, fn);
+}
+
 export class Store {
   readonly db: DB;
   readonly actor: Actor;
@@ -238,7 +245,7 @@ export class Store {
     const r = this.run(
       'INSERT INTO activity (ts, actor, verb, entity_type, entity_id, sphere_id, summary, undo_data) VALUES (?,?,?,?,?,?,?,?)',
       nowIso(),
-      this.actor,
+      ACTING.getStore() ?? this.actor,
       verb,
       entityType,
       entityId,

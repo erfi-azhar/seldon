@@ -15,7 +15,10 @@ import { installFeatures } from './features/index.ts';
 import { hasCaptureToken } from './features/capture.ts';
 import { Scheduler } from './jobs.ts';
 import { screeningsSchema } from './screenings-schema.ts';
-import { Invalid, localDate, NotFound, nowIso, Store } from './store.ts';
+import { actingAs, Invalid, localDate, NotFound, nowIso, Store } from './store.ts';
+import { bearer, checkToken, createToken, listTokens, refusal, revokeToken } from './access.ts';
+import { renderSnapshot } from './agent/prompt.ts';
+import { toolbox } from './agent/tools.ts';
 import { CATALOG_BY_KEY } from '../../shared/catalog.ts';
 import type { AgentEvent, Screenings } from '../../shared/types.ts';
 
@@ -260,6 +263,17 @@ export function createApp(opts: AppOptions): Hono {
     // answers to a known name. Refusing unknown Host headers blocks DNS rebinding.
     if (!opts.passphrase && !anyHost && !allowedHosts.has(new URL(c.req.url).hostname.toLowerCase())) {
       return c.json({ error: 'This host is not allowed. Set TERMINUS_ALLOWED_HOSTS or a passphrase.' }, 403);
+    }
+    // A program with an access token acts as Seldon, within what its token allows. It sends
+    // no cookies, so cross-site checks do not apply; a browser cannot attach this header
+    // to another site's request without a CORS grant this server never gives.
+    const presented = bearer(c.req.header('authorization'));
+    if (presented) {
+      const token = checkToken(store, presented);
+      if (!token) return c.json({ error: 'That access token is not valid: it was revoked, has expired, or is mistyped.' }, 401);
+      const why = refusal(token, c.req.method, c.req.path);
+      if (why) return c.json({ error: why }, 403);
+      return actingAs('agent', () => next());
     }
     // Other websites must not be able to make this browser change anything here.
     if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
@@ -522,6 +536,30 @@ export function createApp(opts: AppOptions): Hono {
   app.delete('/api/conversations/:id', (c) => {
     store.deleteConversation(c.req.param('id'));
     return c.json({ ok: true });
+  });
+
+  // ── Access tokens, and Seldon's tools for programs that hold one ─────────
+
+  app.get('/api/tokens', (c) => c.json(listTokens(store)));
+  app.post('/api/tokens', async (c) => {
+    const input = await read(c, z.object({ name: z.string().min(1).max(60), scope: z.enum(['read', 'write']), days: z.union([z.literal(30), z.literal(90), z.literal(365)]).nullable() }));
+    return c.json(createToken(store, input.name, input.scope, input.days), 201);
+  });
+  app.delete('/api/tokens/:id', (c) => {
+    revokeToken(store, c.req.param('id'));
+    return c.json({ ok: true });
+  });
+
+  /** What Seldon would see at the start of a conversation. */
+  app.get('/api/agent/snapshot', (c) => c.json({ date: today(c), snapshot: renderSnapshot(store, today(c)) }));
+  /** The tools Seldon can use, with their input schemas. */
+  app.get('/api/agent/tools', async (c) => c.json((await toolbox(store)).specs));
+  /** Run one of Seldon's tools: validated, attributed to Seldon, undoable like any of its actions. */
+  app.post('/api/agent/tools/:name', async (c) => {
+    const { input } = await read(c, z.object({ input: z.unknown().default({}) }));
+    const agent = store.as('agent');
+    const result = await (await toolbox(agent)).run(c.req.param('name'), input, { store: agent, today: today(c) });
+    return c.json({ ok: !result.isError, summary: result.summary, result: result.content }, result.isError ? 400 : 200);
   });
 
   app.post('/api/agent/chat', async (c) => {
