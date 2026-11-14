@@ -6980,11 +6980,76 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 .trip-options {
   margin-top: 6px;
 }
+/* One row, scrolled sideways: each card a fixed width, snapping into place. */
 .opt-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(300px, 340px);
   gap: 12px;
   align-items: start;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 18px;
+  margin-inline: -18px;
+  padding-inline: 18px;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 28px), transparent 100%);
+}
+.opt-grid > .opt-card {
+  scroll-snap-align: start;
+}
+@media (max-width: 520px) {
+  .opt-grid {
+    grid-auto-columns: 86%;
+  }
+}
+.opt-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.opt-cabin {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  white-space: nowrap;
+}
+.opt-cabin.is-premium {
+  color: oklch(0.48 0.1 300);
+  background: oklch(0.95 0.03 300);
+  box-shadow: none;
+}
+.opt-cabin.is-business {
+  color: oklch(0.45 0.09 75);
+  background: oklch(0.95 0.04 85);
+  box-shadow: none;
+}
+:root[data-theme='dark'] .opt-cabin.is-premium {
+  color: oklch(0.85 0.08 300);
+  background: oklch(0.3 0.05 300);
+}
+:root[data-theme='dark'] .opt-cabin.is-business {
+  color: oklch(0.88 0.09 85);
+  background: oklch(0.32 0.05 75);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .opt-cabin.is-premium {
+    color: oklch(0.85 0.08 300);
+    background: oklch(0.3 0.05 300);
+  }
+  :root:not([data-theme='light']) .opt-cabin.is-business {
+    color: oklch(0.88 0.09 85);
+    background: oklch(0.32 0.05 75);
+  }
 }
 .opt-card {
   display: grid;
@@ -7220,7 +7285,13 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 /* A trip's page: its sections as separate cards. */
 .trip-detail {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
+}
+.trip-detail > *,
+.trip-section,
+.trip-section-body {
+  min-width: 0;
 }
 .trip-page-head {
   display: flex;

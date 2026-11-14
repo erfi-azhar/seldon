@@ -693,7 +693,11 @@ export interface OptionLeg {
   endUtc: string;
   /** Great-circle distance in statute miles: what frequent-flyer programmes credit. */
   miles: number;
+  /** The cabin booked on this flight. */
+  cabin: Cabin;
 }
+
+export type Cabin = 'economy' | 'premium' | 'business';
 
 /** A way to make a journey, before it is booked: its flights, and what speaks for and against it. */
 export interface FlightOption {

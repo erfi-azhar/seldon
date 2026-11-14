@@ -381,7 +381,7 @@ const optionFromRow = (r: Row): FlightOption => ({
   title: r.title,
   summary: r.summary,
   // Options saved before distances were kept get them worked out here.
-  legs: (JSON.parse(r.legs) as OptionLeg[]).map((l) => ({ ...l, miles: l.miles ?? milesBetween(l.fromCode, l.toCode) })),
+  legs: (JSON.parse(r.legs) as OptionLeg[]).map((l) => ({ ...l, miles: l.miles ?? milesBetween(l.fromCode, l.toCode), cabin: l.cabin ?? 'economy' })),
   notes: JSON.parse(r.notes),
   recommended: !!r.recommended,
   chosenAt: r.chosen_at,
@@ -391,6 +391,7 @@ const optionFromRow = (r: Row): FlightOption => ({
 export interface OptionLegInput {
   carrier: string;
   number: string;
+  cabin?: OptionLeg['cabin'];
   fromCode: string;
   toCode: string;
   startLocal: string;
@@ -424,6 +425,7 @@ function optionLeg(l: OptionLegInput, settings: TravelSettings): OptionLeg {
     startUtc: n.startUtc,
     endUtc: n.endUtc,
     miles: milesBetween(n.fromCode, n.toCode),
+    cabin: l.cabin ?? 'economy',
   };
 }
 
@@ -468,7 +470,8 @@ export function chooseOption(store: Store, id: string): Trip {
   const o = optionFromRow(r);
   const settings = travelSettings(store);
   for (const l of o.legs) {
-    const input: SegmentInput = { kind: 'flight', carrier: l.carrier, number: l.number, fromCode: l.fromCode, toCode: l.toCode, startLocal: l.startLocal, endLocal: l.endLocal, startTz: l.startTz, endTz: l.endTz, notes: `Planned from the option “${o.title}”, not booked yet.` };
+    const cabin = { economy: 'Economy', premium: 'Premium Economy', business: 'Business' }[l.cabin ?? 'economy'];
+    const input: SegmentInput = { kind: 'flight', carrier: l.carrier, number: l.number, fromCode: l.fromCode, toCode: l.toCode, startLocal: l.startLocal, endLocal: l.endLocal, startTz: l.startTz, endTz: l.endTz, cabin, notes: `Planned from the option “${o.title}”, not booked yet.` };
     // A flight already booked on any trip (SQ857 home from Shenzhen, say) stays where it is.
     if (findSame(store, null, normalise(input, settings))) continue;
     addSegment(store, o.tripId, input, 'option');
@@ -990,6 +993,7 @@ const segmentInput = z.object({
   notes: z.string().max(1000).optional(),
 });
 const optionLegInput = z.object({
+  cabin: z.enum(['economy', 'premium', 'business']).optional(),
   carrier: z.string().min(1).max(4),
   number: z.string().min(1).max(8),
   fromCode: z.string().length(3),
@@ -1069,7 +1073,7 @@ registerFeature({
     ),
     tool(
       'add_flight_option',
-      'Save a flight routing for the user to weigh on the trip\'s page, before anything is booked: a short title ("Via Johannesburg"), one line on when it lands, the legs (airline code, flight number, IATA codes, local times "YYYY-MM-DDTHH:MM" at each end), and short notes on what speaks for and against it. Mark at most one recommended. Use real schedules you have checked; say in the notes what to confirm.',
+      'Save a flight routing for the user to weigh on the trip\'s page, before anything is booked: a short title ("Via Johannesburg"), one line on when it lands, the legs (airline code, flight number, IATA codes, local times "YYYY-MM-DDTHH:MM" at each end, and the cabin: economy, premium or business), and short notes on what speaks for and against it. Mark at most one recommended. Use real schedules you have checked; say in the notes what to confirm.',
       optionInput.extend({ trip_id: z.string().min(1) }),
       ({ trip_id, ...o }, { store }) => {
         const opt = addOption(store, trip_id, o);

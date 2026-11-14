@@ -6,7 +6,7 @@
 import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
-import type { FlightOption, ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { Cabin, FlightOption, ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
 import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -903,17 +903,25 @@ function TripSummary({ trip }: { trip: Trip }) {
 }
 
 /**
- * KrisFlyer elite miles: a share of the distance flown, set by the fare. On Singapore Airlines Economy that is
- * 50% (Lite, Value), 75% (Standard) or 100% (Flexi); Star Alliance partners such as Lufthansa and SWISS credit on a
- * similar scale by booking class. Other airlines (LATAM, say) credit nothing. The estimate uses Standard, with the
- * range from Lite to Flexi.
+ * KrisFlyer elite miles: a share of the distance flown, set by cabin and fare. On Singapore Airlines that is, from
+ * Lite to Flexi: Economy 50%–100% (Standard 75%), Premium Economy 100%–125% (Standard 100%), Business 125%–150%
+ * (Standard 125%). Star Alliance partners such as Lufthansa and SWISS credit on a similar scale by booking class.
+ * Other airlines (LATAM, say) credit nothing. The estimate uses Standard, with the range from Lite to Flexi.
  */
+const ELITE_RATE: Record<Cabin, { low: number; mid: number; high: number }> = {
+  economy: { low: 0.5, mid: 0.75, high: 1 },
+  premium: { low: 1, mid: 1, high: 1.25 },
+  business: { low: 1.25, mid: 1.25, high: 1.5 },
+};
+const CABIN_NAME: Record<Cabin, string> = { economy: 'Economy', premium: 'Premium Economy', business: 'Business' };
 const KRISFLYER_ELITE = new Set(['SQ', 'TR', 'A3', 'AC', 'AI', 'AV', 'BR', 'CA', 'CM', 'ET', 'LH', 'LO', 'LX', 'MS', 'NH', 'NZ', 'OS', 'OU', 'OZ', 'SA', 'SK', 'SN', 'TG', 'TK', 'TP', 'UA', 'ZH']);
 const earnsElite = (carrier: string) => KRISFLYER_ELITE.has(carrier.toUpperCase());
 function eliteMiles(o: FlightOption) {
-  const flown = o.legs.reduce((n, l) => n + (earnsElite(l.carrier) ? l.miles : 0), 0);
-  return { low: Math.round(flown * 0.5), mid: Math.round(flown * 0.75), high: flown };
+  const sum = (k: 'low' | 'mid' | 'high') => Math.round(o.legs.reduce((n, l) => n + (earnsElite(l.carrier) ? l.miles * ELITE_RATE[l.cabin ?? 'economy'][k] : 0), 0));
+  return { low: sum('low'), mid: sum('mid'), high: sum('high') };
 }
+/** The cabin an option is really about: the one on its longest flight. */
+const mainCabin = (o: FlightOption): Cabin => [...o.legs].sort((a, b) => b.miles - a.miles)[0]?.cabin ?? 'economy';
 const roughly = (n: number) => (n >= 1000 ? `${(Math.round(n / 100) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : String(n));
 
 /** Ways to make the journey, to weigh before booking: each option's flights, connections and trade-offs. */
@@ -935,10 +943,12 @@ function FlightOptions({ trip }: { trip: Trip }) {
         </h2>
         <span className="trip-section-count">{plural(trip.options.length, 'option')} · not booked</span>
       </div>
-      <div className="opt-grid trip-section-body">
-        {ordered.map((o) => (
-          <OptionCard key={o.id} o={o} toGo={toGo} goal={goal} onChoose={() => choose.mutate(o.id)} onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)} busy={choose.isPending && choose.variables === o.id} />
-        ))}
+      <div className="trip-section-body">
+        <div className="opt-grid">
+          {ordered.map((o) => (
+            <OptionCard key={o.id} o={o} toGo={toGo} goal={goal} onChoose={() => choose.mutate(o.id)} onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)} busy={choose.isPending && choose.variables === o.id} />
+          ))}
+        </div>
       </div>
       {choose.error && <p className="error-text">{choose.error.message}</p>}
     </div>
@@ -956,7 +966,10 @@ function OptionCard({ o, toGo, goal, onChoose, onRemove, busy }: { o: FlightOpti
   return (
     <article className={cx('opt-card', o.recommended && 'is-recommended', o.chosenAt && 'is-chosen')}>
       <header className="opt-head">
-        <span className="opt-title">{o.title}</span>
+        <span className="opt-title-row">
+          <span className="opt-title">{o.title}</span>
+          <span className={cx('opt-cabin', `is-${mainCabin(o)}`)}>{CABIN_NAME[mainCabin(o)]}</span>
+        </span>
         {o.chosenAt ? (
           <span className="opt-badge is-chosen">
             <CheckIcon size={12} /> Added
@@ -1026,6 +1039,7 @@ function OptionCard({ o, toGo, goal, onChoose, onRemove, busy }: { o: FlightOpti
                 <span>
                   {`${l.carrier} ${l.number}`.trim()} · {hm(minutesBetween(l.startUtc, l.endUtc))}
                   {l.miles > 0 && ` · ${l.miles.toLocaleString()} mi`}
+                  {(l.cabin ?? 'economy') !== mainCabin(o) && ` · ${CABIN_NAME[l.cabin ?? 'economy']}`}
                 </span>
                 {!earnsElite(l.carrier) && <span className="opt-no-elite">no elite miles</span>}
               </span>
