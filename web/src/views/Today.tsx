@@ -3,10 +3,11 @@ import { Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import type { Activity, Overview } from '../../../shared/types.ts';
-import { useOverview, useWrite, write } from '../api.ts';
+import { useOverview, useTravel, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, HabitRow, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
+import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
 import { Loading } from '../components/ui.tsx';
@@ -210,8 +211,19 @@ export function ActivityFeed({ items }: { items: Activity[] }) {
   );
 }
 
+/** A trip under two weeks away, for the plane that crosses the sky. */
+function useSkyTrip(): SkyTrip | null {
+  const { data: t } = useTravel();
+  const trip = t?.context.trip;
+  if (!t || !trip || (t.context.mode !== 'upcoming' && t.context.mode !== 'departing')) return null;
+  const days = Math.round((Date.parse(trip.startDate) - Date.parse(todayStr())) / 86_400_000);
+  if (days < 0 || days > 14) return null;
+  return { id: trip.id, label: `${trip.title} · ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}` };
+}
+
 export function Today() {
   const { data: o } = useOverview();
+  const skyTrip = useSkyTrip();
   const { agentName, openSheet, sphere } = useApp();
   const [showAll, setShowAll] = useState(false);
   if (!o) return <Loading />;
@@ -224,7 +236,8 @@ export function Today() {
   const horizon = o.goalsDue.length + o.tasks.upcoming.length > 0;
 
   return (
-    <div className="page">
+    <div className="page page-today">
+      <Sky trip={skyTrip} />
       <header className="hero">
         <div>
           <div className="hero-day">{weekdayLong(today)}</div>
