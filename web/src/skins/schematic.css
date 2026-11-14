@@ -1,0 +1,473 @@
+/* Schematic — a trial theme. Flat paper and ink, hairline rules, square corners,
+   monospaced labels and a few loud flat accents. Bars are the motif: progress fills in
+   ticks and a skyline of bars sits under the Today hero.
+   Everything here is scoped to :root[data-skin='schematic'], so without it Terminus
+   looks exactly as it did. */
+
+:root[data-skin='schematic'] {
+  --bg: #ececea;
+  --surface: #f8f8f6;
+  --surface-2: #f1f1ee;
+  --sunken: #e2e2de;
+  --ink: #111111;
+  --ink-2: #4a4a48;
+  --ink-3: #5f5f5c;
+  --ink-4: #7d7d79;
+  --line: #d9d9d4;
+  --line-2: #bdbdb7;
+  --good: #079a55;
+  --bad: #e34b00;
+  --bad-soft: #ffe5d6;
+  --shadow-1: none;
+  --shadow-2: 0 0 0 1px var(--line-2);
+  --shadow-3: 0 0 0 1px var(--ink), 8px 8px 0 rgb(0 0 0 / 0.08);
+  --radius: 2px;
+  --radius-sm: 2px;
+  --glass: var(--surface);
+  --glass-strong: var(--surface);
+  --glass-edge: var(--line-2);
+  --glass-blur: none;
+  --glass-shadow: none;
+  --glass-float: var(--surface);
+  --glass-float-shadow: none;
+  --glass-press: var(--sunken);
+  --tile: var(--surface);
+  --tile-shadow: none;
+  --primary: #111111;
+  /* No serif anywhere: every serif face falls back to the grotesk. */
+  --serif: var(--sans);
+  /* Flat, loud accents. */
+  --lilac: #cfa3ff;
+  --sun: #ffe100;
+  --flare: #ff6a13;
+  --cobalt: #2f5bff;
+  --mint: #00c97a;
+  --accent: var(--lilac);
+  /* Sphere colours, flatter and more saturated. */
+  --t-main-l: 0.7;
+  --t-soft-l: 0.93;
+  --t-soft-c: 0.06;
+  --t-softer-l: 0.965;
+  --t-ink-l: 0.38;
+  --t-line-l: 0.8;
+}
+:root[data-skin='schematic'][data-theme='dark'] {
+  --bg: #161616;
+  --surface: #1e1e1e;
+  --surface-2: #242424;
+  --sunken: #2b2b2b;
+  --ink: #f2f2ef;
+  --ink-2: #b9b9b4;
+  --ink-3: #a3a39e;
+  --ink-4: #7f7f7a;
+  --line: #2f2f2f;
+  --line-2: #464646;
+  --good: #2ee08f;
+  --bad: #ff7a3a;
+  --bad-soft: #3a2014;
+  --primary: #f2f2ef;
+  --t-main-l: 0.76;
+  --t-soft-l: 0.28;
+  --t-soft-c: 0.06;
+  --t-softer-l: 0.23;
+  --t-ink-l: 0.86;
+  --t-line-l: 0.42;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-skin='schematic']:not([data-theme='light']) {
+    --bg: #161616;
+    --surface: #1e1e1e;
+    --surface-2: #242424;
+    --sunken: #2b2b2b;
+    --ink: #f2f2ef;
+    --ink-2: #b9b9b4;
+    --ink-3: #a3a39e;
+    --ink-4: #7f7f7a;
+    --line: #2f2f2f;
+    --line-2: #464646;
+    --good: #2ee08f;
+    --bad: #ff7a3a;
+    --bad-soft: #3a2014;
+    --primary: #f2f2ef;
+    --t-main-l: 0.76;
+    --t-soft-l: 0.28;
+    --t-soft-c: 0.06;
+    --t-softer-l: 0.23;
+    --t-ink-l: 0.86;
+    --t-line-l: 0.42;
+  }
+}
+
+/* ── Ground ─────────────────────────────────────────────────────────────── */
+[data-skin='schematic'] body {
+  background: var(--bg);
+}
+[data-skin='schematic'] body::before {
+  display: none;
+}
+
+/* ── Surfaces: flat, ruled, square ──────────────────────────────────────── */
+[data-skin='schematic'] :is(.card, .note-card, .sphere-card, .sphere-hero, .hs-hero, .hs-visits li, .composer-box, .modal, .sheet, .metric, .hs-ring, .starter, .tool, .hs-read, .hs-also) {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+[data-skin='schematic'] :is(.metric, .tool, .starter) {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+[data-skin='schematic'] .card-head {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 18px;
+  margin-bottom: 12px;
+}
+
+/* Labels: monospaced, upper case, with a small square marker. */
+[data-skin='schematic'] :is(.card-title, .band-label, .hero-day, .metric-name, .lately, .modal-head h2) {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+[data-skin='schematic'] .card-title::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  background: var(--sphere, var(--accent));
+}
+[data-skin='schematic'] .band-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+[data-skin='schematic'] .band-label::after {
+  content: '';
+  flex: 1;
+  height: 6px;
+  background: repeating-linear-gradient(90deg, var(--line-2) 0 1px, transparent 1px 5px);
+}
+
+/* Headlines: a tight grotesk, never the serif. */
+[data-skin='schematic'] :is(.hero-date, .page-title, .sphere-card h3, .sphere-hero h1, .hs-hero h1, h1, .serif) {
+  font-family: var(--sans);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+[data-skin='schematic'] .hero-date {
+  font-size: 68px;
+  line-height: 0.95;
+  margin: 8px 0 14px;
+}
+[data-skin='schematic'] .hero-line {
+  font-size: 16px;
+  color: var(--ink-2);
+}
+
+/* ── The skyline under the Today hero ───────────────────────────────────── */
+[data-skin='schematic'] .hero {
+  position: relative;
+  padding-bottom: 96px;
+  margin-bottom: 0;
+}
+[data-skin='schematic'] .hero::before,
+[data-skin='schematic'] .hero::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 84px;
+  pointer-events: none;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  z-index: -1;
+}
+[data-skin='schematic'] .hero::before {
+  background: var(--line-2);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%201200%20120%27%20preserveAspectRatio%3D%27none%27%3E%3Crect%20x%3D%270.5%27%20y%3D%27102.5%27%20width%3D%278.5%27%20height%3D%2718.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2713.0%27%20y%3D%2717.8%27%20width%3D%278.5%27%20height%3D%27102.7%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2725.5%27%20y%3D%2775.9%27%20width%3D%278.5%27%20height%3D%2744.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2738.0%27%20y%3D%2783.1%27%20width%3D%278.5%27%20height%3D%2737.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2750.5%27%20y%3D%2735.4%27%20width%3D%278.5%27%20height%3D%2785.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2763.0%27%20y%3D%2753.5%27%20width%3D%278.5%27%20height%3D%2767.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2775.5%27%20y%3D%2772.2%27%20width%3D%278.5%27%20height%3D%2748.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2788.0%27%20y%3D%2733.3%27%20width%3D%278.5%27%20height%3D%2787.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27100.5%27%20y%3D%2733.0%27%20width%3D%278.5%27%20height%3D%2787.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27113.0%27%20y%3D%2752.6%27%20width%3D%278.5%27%20height%3D%2767.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27125.5%27%20y%3D%2739.5%27%20width%3D%278.5%27%20height%3D%2781.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27138.0%27%20y%3D%2744.0%27%20width%3D%278.5%27%20height%3D%2776.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27150.5%27%20y%3D%2727.4%27%20width%3D%278.5%27%20height%3D%2793.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27163.0%27%20y%3D%2780.2%27%20width%3D%278.5%27%20height%3D%2740.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27175.5%27%20y%3D%2768.1%27%20width%3D%278.5%27%20height%3D%2752.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27188.0%27%20y%3D%2737.4%27%20width%3D%278.5%27%20height%3D%2783.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27200.5%27%20y%3D%2738.3%27%20width%3D%278.5%27%20height%3D%2782.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27213.0%27%20y%3D%2797.5%27%20width%3D%278.5%27%20height%3D%2723.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27225.5%27%20y%3D%2739.6%27%20width%3D%278.5%27%20height%3D%2780.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27238.0%27%20y%3D%2759.5%27%20width%3D%278.5%27%20height%3D%2761.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27250.5%27%20y%3D%2717.6%27%20width%3D%278.5%27%20height%3D%27102.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27263.0%27%20y%3D%2728.2%27%20width%3D%278.5%27%20height%3D%2792.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27275.5%27%20y%3D%2791.2%27%20width%3D%278.5%27%20height%3D%2729.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27288.0%27%20y%3D%2755.3%27%20width%3D%278.5%27%20height%3D%2765.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27300.5%27%20y%3D%2717.6%27%20width%3D%278.5%27%20height%3D%27102.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27313.0%27%20y%3D%2739.2%27%20width%3D%278.5%27%20height%3D%2781.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27325.5%27%20y%3D%2743.3%27%20width%3D%278.5%27%20height%3D%2777.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27338.0%27%20y%3D%2749.4%27%20width%3D%278.5%27%20height%3D%2771.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27350.5%27%20y%3D%2718.6%27%20width%3D%278.5%27%20height%3D%27101.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27363.0%27%20y%3D%2718.9%27%20width%3D%278.5%27%20height%3D%27101.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27375.5%27%20y%3D%2768.3%27%20width%3D%278.5%27%20height%3D%2752.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27388.0%27%20y%3D%2771.6%27%20width%3D%278.5%27%20height%3D%2748.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27400.5%27%20y%3D%2725.5%27%20width%3D%278.5%27%20height%3D%2795.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27413.0%27%20y%3D%2771.9%27%20width%3D%278.5%27%20height%3D%2748.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27425.5%27%20y%3D%2788.5%27%20width%3D%278.5%27%20height%3D%2732.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27438.0%27%20y%3D%2775.1%27%20width%3D%278.5%27%20height%3D%2745.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27450.5%27%20y%3D%2763.1%27%20width%3D%278.5%27%20height%3D%2757.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27463.0%27%20y%3D%2775.4%27%20width%3D%278.5%27%20height%3D%2745.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27475.5%27%20y%3D%2716.3%27%20width%3D%278.5%27%20height%3D%27104.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27488.0%27%20y%3D%2751.2%27%20width%3D%278.5%27%20height%3D%2769.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27500.5%27%20y%3D%2735.4%27%20width%3D%278.5%27%20height%3D%2785.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27513.0%27%20y%3D%2721.7%27%20width%3D%278.5%27%20height%3D%2798.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27525.5%27%20y%3D%2797.1%27%20width%3D%278.5%27%20height%3D%2723.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27538.0%27%20y%3D%2777.3%27%20width%3D%278.5%27%20height%3D%2743.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27550.5%27%20y%3D%2750.9%27%20width%3D%278.5%27%20height%3D%2769.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27563.0%27%20y%3D%2755.7%27%20width%3D%278.5%27%20height%3D%2764.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27575.5%27%20y%3D%2784.7%27%20width%3D%278.5%27%20height%3D%2735.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27588.0%27%20y%3D%2797.5%27%20width%3D%278.5%27%20height%3D%2723.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27600.5%27%20y%3D%2770.8%27%20width%3D%278.5%27%20height%3D%2749.7%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27613.0%27%20y%3D%2717.5%27%20width%3D%278.5%27%20height%3D%27103.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27625.5%27%20y%3D%2787.3%27%20width%3D%278.5%27%20height%3D%2733.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27638.0%27%20y%3D%2776.4%27%20width%3D%278.5%27%20height%3D%2744.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27650.5%27%20y%3D%2763.5%27%20width%3D%278.5%27%20height%3D%2757.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27663.0%27%20y%3D%2753.6%27%20width%3D%278.5%27%20height%3D%2766.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27675.5%27%20y%3D%2781.0%27%20width%3D%278.5%27%20height%3D%2739.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27688.0%27%20y%3D%2760.4%27%20width%3D%278.5%27%20height%3D%2760.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27700.5%27%20y%3D%2744.1%27%20width%3D%278.5%27%20height%3D%2776.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27713.0%27%20y%3D%2755.0%27%20width%3D%278.5%27%20height%3D%2765.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27725.5%27%20y%3D%2739.1%27%20width%3D%278.5%27%20height%3D%2781.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27738.0%27%20y%3D%2766.0%27%20width%3D%278.5%27%20height%3D%2754.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27750.5%27%20y%3D%2779.4%27%20width%3D%278.5%27%20height%3D%2741.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27763.0%27%20y%3D%2770.2%27%20width%3D%278.5%27%20height%3D%2750.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27775.5%27%20y%3D%2766.5%27%20width%3D%278.5%27%20height%3D%2754.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27788.0%27%20y%3D%2721.8%27%20width%3D%278.5%27%20height%3D%2798.7%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27800.5%27%20y%3D%2727.1%27%20width%3D%278.5%27%20height%3D%2793.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27813.0%27%20y%3D%2765.1%27%20width%3D%278.5%27%20height%3D%2755.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27825.5%27%20y%3D%2795.3%27%20width%3D%278.5%27%20height%3D%2725.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27838.0%27%20y%3D%2782.3%27%20width%3D%278.5%27%20height%3D%2738.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27850.5%27%20y%3D%2789.2%27%20width%3D%278.5%27%20height%3D%2731.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27863.0%27%20y%3D%2748.0%27%20width%3D%278.5%27%20height%3D%2772.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27875.5%27%20y%3D%2717.7%27%20width%3D%278.5%27%20height%3D%27102.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27888.0%27%20y%3D%2720.6%27%20width%3D%278.5%27%20height%3D%2799.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27900.5%27%20y%3D%2719.0%27%20width%3D%278.5%27%20height%3D%27101.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27913.0%27%20y%3D%2777.2%27%20width%3D%278.5%27%20height%3D%2743.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27925.5%27%20y%3D%2779.7%27%20width%3D%278.5%27%20height%3D%2740.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27938.0%27%20y%3D%27102.4%27%20width%3D%278.5%27%20height%3D%2718.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27950.5%27%20y%3D%2781.2%27%20width%3D%278.5%27%20height%3D%2739.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27963.0%27%20y%3D%2757.5%27%20width%3D%278.5%27%20height%3D%2763.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27975.5%27%20y%3D%2780.6%27%20width%3D%278.5%27%20height%3D%2739.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27988.0%27%20y%3D%2780.9%27%20width%3D%278.5%27%20height%3D%2739.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271000.5%27%20y%3D%2720.2%27%20width%3D%278.5%27%20height%3D%27100.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271013.0%27%20y%3D%2757.5%27%20width%3D%278.5%27%20height%3D%2763.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271025.5%27%20y%3D%2718.5%27%20width%3D%278.5%27%20height%3D%27102.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271038.0%27%20y%3D%2717.7%27%20width%3D%278.5%27%20height%3D%27102.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271050.5%27%20y%3D%2719.7%27%20width%3D%278.5%27%20height%3D%27100.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271063.0%27%20y%3D%2713.4%27%20width%3D%278.5%27%20height%3D%27107.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271075.5%27%20y%3D%2740.0%27%20width%3D%278.5%27%20height%3D%2780.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271088.0%27%20y%3D%2782.0%27%20width%3D%278.5%27%20height%3D%2738.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271100.5%27%20y%3D%2750.6%27%20width%3D%278.5%27%20height%3D%2769.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271113.0%27%20y%3D%2731.7%27%20width%3D%278.5%27%20height%3D%2788.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271125.5%27%20y%3D%2736.8%27%20width%3D%278.5%27%20height%3D%2783.7%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271138.0%27%20y%3D%2799.5%27%20width%3D%278.5%27%20height%3D%2721.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271150.5%27%20y%3D%2717.9%27%20width%3D%278.5%27%20height%3D%27102.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271163.0%27%20y%3D%2739.2%27%20width%3D%278.5%27%20height%3D%2781.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271175.5%27%20y%3D%2799.1%27%20width%3D%278.5%27%20height%3D%2721.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271188.0%27%20y%3D%2723.3%27%20width%3D%278.5%27%20height%3D%2797.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3C%2Fsvg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%201200%20120%27%20preserveAspectRatio%3D%27none%27%3E%3Crect%20x%3D%270.5%27%20y%3D%27102.5%27%20width%3D%278.5%27%20height%3D%2718.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2713.0%27%20y%3D%2717.8%27%20width%3D%278.5%27%20height%3D%27102.7%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2725.5%27%20y%3D%2775.9%27%20width%3D%278.5%27%20height%3D%2744.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2738.0%27%20y%3D%2783.1%27%20width%3D%278.5%27%20height%3D%2737.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2750.5%27%20y%3D%2735.4%27%20width%3D%278.5%27%20height%3D%2785.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2763.0%27%20y%3D%2753.5%27%20width%3D%278.5%27%20height%3D%2767.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2775.5%27%20y%3D%2772.2%27%20width%3D%278.5%27%20height%3D%2748.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%2788.0%27%20y%3D%2733.3%27%20width%3D%278.5%27%20height%3D%2787.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27100.5%27%20y%3D%2733.0%27%20width%3D%278.5%27%20height%3D%2787.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27113.0%27%20y%3D%2752.6%27%20width%3D%278.5%27%20height%3D%2767.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27125.5%27%20y%3D%2739.5%27%20width%3D%278.5%27%20height%3D%2781.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27138.0%27%20y%3D%2744.0%27%20width%3D%278.5%27%20height%3D%2776.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27150.5%27%20y%3D%2727.4%27%20width%3D%278.5%27%20height%3D%2793.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27163.0%27%20y%3D%2780.2%27%20width%3D%278.5%27%20height%3D%2740.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27175.5%27%20y%3D%2768.1%27%20width%3D%278.5%27%20height%3D%2752.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27188.0%27%20y%3D%2737.4%27%20width%3D%278.5%27%20height%3D%2783.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27200.5%27%20y%3D%2738.3%27%20width%3D%278.5%27%20height%3D%2782.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27213.0%27%20y%3D%2797.5%27%20width%3D%278.5%27%20height%3D%2723.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27225.5%27%20y%3D%2739.6%27%20width%3D%278.5%27%20height%3D%2780.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27238.0%27%20y%3D%2759.5%27%20width%3D%278.5%27%20height%3D%2761.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27250.5%27%20y%3D%2717.6%27%20width%3D%278.5%27%20height%3D%27102.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27263.0%27%20y%3D%2728.2%27%20width%3D%278.5%27%20height%3D%2792.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27275.5%27%20y%3D%2791.2%27%20width%3D%278.5%27%20height%3D%2729.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27288.0%27%20y%3D%2755.3%27%20width%3D%278.5%27%20height%3D%2765.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27300.5%27%20y%3D%2717.6%27%20width%3D%278.5%27%20height%3D%27102.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27313.0%27%20y%3D%2739.2%27%20width%3D%278.5%27%20height%3D%2781.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27325.5%27%20y%3D%2743.3%27%20width%3D%278.5%27%20height%3D%2777.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27338.0%27%20y%3D%2749.4%27%20width%3D%278.5%27%20height%3D%2771.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27350.5%27%20y%3D%2718.6%27%20width%3D%278.5%27%20height%3D%27101.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27363.0%27%20y%3D%2718.9%27%20width%3D%278.5%27%20height%3D%27101.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27375.5%27%20y%3D%2768.3%27%20width%3D%278.5%27%20height%3D%2752.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27388.0%27%20y%3D%2771.6%27%20width%3D%278.5%27%20height%3D%2748.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27400.5%27%20y%3D%2725.5%27%20width%3D%278.5%27%20height%3D%2795.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27413.0%27%20y%3D%2771.9%27%20width%3D%278.5%27%20height%3D%2748.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27425.5%27%20y%3D%2788.5%27%20width%3D%278.5%27%20height%3D%2732.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27438.0%27%20y%3D%2775.1%27%20width%3D%278.5%27%20height%3D%2745.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27450.5%27%20y%3D%2763.1%27%20width%3D%278.5%27%20height%3D%2757.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27463.0%27%20y%3D%2775.4%27%20width%3D%278.5%27%20height%3D%2745.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27475.5%27%20y%3D%2716.3%27%20width%3D%278.5%27%20height%3D%27104.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27488.0%27%20y%3D%2751.2%27%20width%3D%278.5%27%20height%3D%2769.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27500.5%27%20y%3D%2735.4%27%20width%3D%278.5%27%20height%3D%2785.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27513.0%27%20y%3D%2721.7%27%20width%3D%278.5%27%20height%3D%2798.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27525.5%27%20y%3D%2797.1%27%20width%3D%278.5%27%20height%3D%2723.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27538.0%27%20y%3D%2777.3%27%20width%3D%278.5%27%20height%3D%2743.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27550.5%27%20y%3D%2750.9%27%20width%3D%278.5%27%20height%3D%2769.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27563.0%27%20y%3D%2755.7%27%20width%3D%278.5%27%20height%3D%2764.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27575.5%27%20y%3D%2784.7%27%20width%3D%278.5%27%20height%3D%2735.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27588.0%27%20y%3D%2797.5%27%20width%3D%278.5%27%20height%3D%2723.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27600.5%27%20y%3D%2770.8%27%20width%3D%278.5%27%20height%3D%2749.7%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27613.0%27%20y%3D%2717.5%27%20width%3D%278.5%27%20height%3D%27103.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27625.5%27%20y%3D%2787.3%27%20width%3D%278.5%27%20height%3D%2733.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27638.0%27%20y%3D%2776.4%27%20width%3D%278.5%27%20height%3D%2744.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27650.5%27%20y%3D%2763.5%27%20width%3D%278.5%27%20height%3D%2757.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27663.0%27%20y%3D%2753.6%27%20width%3D%278.5%27%20height%3D%2766.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27675.5%27%20y%3D%2781.0%27%20width%3D%278.5%27%20height%3D%2739.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27688.0%27%20y%3D%2760.4%27%20width%3D%278.5%27%20height%3D%2760.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27700.5%27%20y%3D%2744.1%27%20width%3D%278.5%27%20height%3D%2776.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27713.0%27%20y%3D%2755.0%27%20width%3D%278.5%27%20height%3D%2765.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27725.5%27%20y%3D%2739.1%27%20width%3D%278.5%27%20height%3D%2781.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27738.0%27%20y%3D%2766.0%27%20width%3D%278.5%27%20height%3D%2754.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27750.5%27%20y%3D%2779.4%27%20width%3D%278.5%27%20height%3D%2741.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27763.0%27%20y%3D%2770.2%27%20width%3D%278.5%27%20height%3D%2750.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27775.5%27%20y%3D%2766.5%27%20width%3D%278.5%27%20height%3D%2754.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27788.0%27%20y%3D%2721.8%27%20width%3D%278.5%27%20height%3D%2798.7%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27800.5%27%20y%3D%2727.1%27%20width%3D%278.5%27%20height%3D%2793.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27813.0%27%20y%3D%2765.1%27%20width%3D%278.5%27%20height%3D%2755.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27825.5%27%20y%3D%2795.3%27%20width%3D%278.5%27%20height%3D%2725.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27838.0%27%20y%3D%2782.3%27%20width%3D%278.5%27%20height%3D%2738.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27850.5%27%20y%3D%2789.2%27%20width%3D%278.5%27%20height%3D%2731.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27863.0%27%20y%3D%2748.0%27%20width%3D%278.5%27%20height%3D%2772.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27875.5%27%20y%3D%2717.7%27%20width%3D%278.5%27%20height%3D%27102.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27888.0%27%20y%3D%2720.6%27%20width%3D%278.5%27%20height%3D%2799.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27900.5%27%20y%3D%2719.0%27%20width%3D%278.5%27%20height%3D%27101.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27913.0%27%20y%3D%2777.2%27%20width%3D%278.5%27%20height%3D%2743.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27925.5%27%20y%3D%2779.7%27%20width%3D%278.5%27%20height%3D%2740.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27938.0%27%20y%3D%27102.4%27%20width%3D%278.5%27%20height%3D%2718.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27950.5%27%20y%3D%2781.2%27%20width%3D%278.5%27%20height%3D%2739.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27963.0%27%20y%3D%2757.5%27%20width%3D%278.5%27%20height%3D%2763.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27975.5%27%20y%3D%2780.6%27%20width%3D%278.5%27%20height%3D%2739.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%27988.0%27%20y%3D%2780.9%27%20width%3D%278.5%27%20height%3D%2739.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271000.5%27%20y%3D%2720.2%27%20width%3D%278.5%27%20height%3D%27100.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271013.0%27%20y%3D%2757.5%27%20width%3D%278.5%27%20height%3D%2763.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271025.5%27%20y%3D%2718.5%27%20width%3D%278.5%27%20height%3D%27102.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271038.0%27%20y%3D%2717.7%27%20width%3D%278.5%27%20height%3D%27102.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271050.5%27%20y%3D%2719.7%27%20width%3D%278.5%27%20height%3D%27100.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271063.0%27%20y%3D%2713.4%27%20width%3D%278.5%27%20height%3D%27107.1%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271075.5%27%20y%3D%2740.0%27%20width%3D%278.5%27%20height%3D%2780.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271088.0%27%20y%3D%2782.0%27%20width%3D%278.5%27%20height%3D%2738.5%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271100.5%27%20y%3D%2750.6%27%20width%3D%278.5%27%20height%3D%2769.9%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271113.0%27%20y%3D%2731.7%27%20width%3D%278.5%27%20height%3D%2788.8%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271125.5%27%20y%3D%2736.8%27%20width%3D%278.5%27%20height%3D%2783.7%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271138.0%27%20y%3D%2799.5%27%20width%3D%278.5%27%20height%3D%2721.0%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271150.5%27%20y%3D%2717.9%27%20width%3D%278.5%27%20height%3D%27102.6%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271163.0%27%20y%3D%2739.2%27%20width%3D%278.5%27%20height%3D%2781.3%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271175.5%27%20y%3D%2799.1%27%20width%3D%278.5%27%20height%3D%2721.4%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3Crect%20x%3D%271188.0%27%20y%3D%2723.3%27%20width%3D%278.5%27%20height%3D%2797.2%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271%27%2F%3E%3C%2Fsvg%3E");
+}
+[data-skin='schematic'] .hero::after {
+  background: var(--accent);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%201200%20120%27%20preserveAspectRatio%3D%27none%27%3E%3Crect%20x%3D%27562.5%27%20y%3D%27113.1%27%20width%3D%279.5%27%20height%3D%276.9%27%2F%3E%3Crect%20x%3D%27575.0%27%20y%3D%27109.8%27%20width%3D%279.5%27%20height%3D%2710.2%27%2F%3E%3Crect%20x%3D%27587.5%27%20y%3D%27110.1%27%20width%3D%279.5%27%20height%3D%279.9%27%2F%3E%3Crect%20x%3D%27600.0%27%20y%3D%27106.7%27%20width%3D%279.5%27%20height%3D%2713.3%27%2F%3E%3Crect%20x%3D%27612.5%27%20y%3D%27105.2%27%20width%3D%279.5%27%20height%3D%2714.8%27%2F%3E%3Crect%20x%3D%27625.0%27%20y%3D%27103.4%27%20width%3D%279.5%27%20height%3D%2716.6%27%2F%3E%3Crect%20x%3D%27637.5%27%20y%3D%27101.0%27%20width%3D%279.5%27%20height%3D%2719.0%27%2F%3E%3Crect%20x%3D%27650.0%27%20y%3D%2798.4%27%20width%3D%279.5%27%20height%3D%2721.6%27%2F%3E%3Crect%20x%3D%27662.5%27%20y%3D%2792.0%27%20width%3D%279.5%27%20height%3D%2728.0%27%2F%3E%3Crect%20x%3D%27675.0%27%20y%3D%2784.4%27%20width%3D%279.5%27%20height%3D%2735.6%27%2F%3E%3Crect%20x%3D%27687.5%27%20y%3D%2780.5%27%20width%3D%279.5%27%20height%3D%2739.5%27%2F%3E%3Crect%20x%3D%27700.0%27%20y%3D%2779.4%27%20width%3D%279.5%27%20height%3D%2740.6%27%2F%3E%3Crect%20x%3D%27712.5%27%20y%3D%2777.3%27%20width%3D%279.5%27%20height%3D%2742.7%27%2F%3E%3Crect%20x%3D%27725.0%27%20y%3D%2764.2%27%20width%3D%279.5%27%20height%3D%2755.8%27%2F%3E%3Crect%20x%3D%27737.5%27%20y%3D%2764.0%27%20width%3D%279.5%27%20height%3D%2756.0%27%2F%3E%3Crect%20x%3D%27750.0%27%20y%3D%2762.1%27%20width%3D%279.5%27%20height%3D%2757.9%27%2F%3E%3Crect%20x%3D%27762.5%27%20y%3D%2764.2%27%20width%3D%279.5%27%20height%3D%2755.8%27%2F%3E%3Crect%20x%3D%27775.0%27%20y%3D%2747.7%27%20width%3D%279.5%27%20height%3D%2772.3%27%2F%3E%3Crect%20x%3D%27787.5%27%20y%3D%2763.1%27%20width%3D%279.5%27%20height%3D%2756.9%27%2F%3E%3Crect%20x%3D%27800.0%27%20y%3D%2761.2%27%20width%3D%279.5%27%20height%3D%2758.8%27%2F%3E%3Crect%20x%3D%27812.5%27%20y%3D%2756.2%27%20width%3D%279.5%27%20height%3D%2763.8%27%2F%3E%3Crect%20x%3D%27825.0%27%20y%3D%2726.2%27%20width%3D%279.5%27%20height%3D%2793.8%27%2F%3E%3Crect%20x%3D%27837.5%27%20y%3D%2735.9%27%20width%3D%279.5%27%20height%3D%2784.1%27%2F%3E%3Crect%20x%3D%27850.0%27%20y%3D%2740.3%27%20width%3D%279.5%27%20height%3D%2779.7%27%2F%3E%3Crect%20x%3D%27862.5%27%20y%3D%2750.4%27%20width%3D%279.5%27%20height%3D%2769.6%27%2F%3E%3Crect%20x%3D%27875.0%27%20y%3D%2724.0%27%20width%3D%279.5%27%20height%3D%2796.0%27%2F%3E%3Crect%20x%3D%27887.5%27%20y%3D%2724.4%27%20width%3D%279.5%27%20height%3D%2795.6%27%2F%3E%3Crect%20x%3D%27900.0%27%20y%3D%2729.8%27%20width%3D%279.5%27%20height%3D%2790.2%27%2F%3E%3Crect%20x%3D%27912.5%27%20y%3D%2756.9%27%20width%3D%279.5%27%20height%3D%2763.1%27%2F%3E%3Crect%20x%3D%27925.0%27%20y%3D%2756.4%27%20width%3D%279.5%27%20height%3D%2763.6%27%2F%3E%3Crect%20x%3D%27937.5%27%20y%3D%2741.5%27%20width%3D%279.5%27%20height%3D%2778.5%27%2F%3E%3Crect%20x%3D%27950.0%27%20y%3D%2741.0%27%20width%3D%279.5%27%20height%3D%2779.0%27%2F%3E%3Crect%20x%3D%27962.5%27%20y%3D%2746.5%27%20width%3D%279.5%27%20height%3D%2773.5%27%2F%3E%3Crect%20x%3D%27975.0%27%20y%3D%2745.3%27%20width%3D%279.5%27%20height%3D%2774.7%27%2F%3E%3Crect%20x%3D%27987.5%27%20y%3D%2763.1%27%20width%3D%279.5%27%20height%3D%2756.9%27%2F%3E%3Crect%20x%3D%271000.0%27%20y%3D%2773.2%27%20width%3D%279.5%27%20height%3D%2746.8%27%2F%3E%3Crect%20x%3D%271012.5%27%20y%3D%2779.4%27%20width%3D%279.5%27%20height%3D%2740.6%27%2F%3E%3Crect%20x%3D%271025.0%27%20y%3D%2770.3%27%20width%3D%279.5%27%20height%3D%2749.7%27%2F%3E%3Crect%20x%3D%271037.5%27%20y%3D%2786.0%27%20width%3D%279.5%27%20height%3D%2734.0%27%2F%3E%3Crect%20x%3D%271050.0%27%20y%3D%2786.7%27%20width%3D%279.5%27%20height%3D%2733.3%27%2F%3E%3Crect%20x%3D%271062.5%27%20y%3D%2784.8%27%20width%3D%279.5%27%20height%3D%2735.2%27%2F%3E%3Crect%20x%3D%271075.0%27%20y%3D%2792.7%27%20width%3D%279.5%27%20height%3D%2727.3%27%2F%3E%3Crect%20x%3D%271087.5%27%20y%3D%2796.6%27%20width%3D%279.5%27%20height%3D%2723.4%27%2F%3E%3Crect%20x%3D%271100.0%27%20y%3D%27101.1%27%20width%3D%279.5%27%20height%3D%2718.9%27%2F%3E%3Crect%20x%3D%271112.5%27%20y%3D%2798.1%27%20width%3D%279.5%27%20height%3D%2721.9%27%2F%3E%3Crect%20x%3D%271125.0%27%20y%3D%27102.7%27%20width%3D%279.5%27%20height%3D%2717.3%27%2F%3E%3Crect%20x%3D%271137.5%27%20y%3D%27107.7%27%20width%3D%279.5%27%20height%3D%2712.3%27%2F%3E%3Crect%20x%3D%271150.0%27%20y%3D%27109.5%27%20width%3D%279.5%27%20height%3D%2710.5%27%2F%3E%3Crect%20x%3D%271162.5%27%20y%3D%27107.8%27%20width%3D%279.5%27%20height%3D%2712.2%27%2F%3E%3Crect%20x%3D%271175.0%27%20y%3D%27109.9%27%20width%3D%279.5%27%20height%3D%2710.1%27%2F%3E%3Crect%20x%3D%271187.5%27%20y%3D%27111.3%27%20width%3D%279.5%27%20height%3D%278.7%27%2F%3E%3C%2Fsvg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%201200%20120%27%20preserveAspectRatio%3D%27none%27%3E%3Crect%20x%3D%27562.5%27%20y%3D%27113.1%27%20width%3D%279.5%27%20height%3D%276.9%27%2F%3E%3Crect%20x%3D%27575.0%27%20y%3D%27109.8%27%20width%3D%279.5%27%20height%3D%2710.2%27%2F%3E%3Crect%20x%3D%27587.5%27%20y%3D%27110.1%27%20width%3D%279.5%27%20height%3D%279.9%27%2F%3E%3Crect%20x%3D%27600.0%27%20y%3D%27106.7%27%20width%3D%279.5%27%20height%3D%2713.3%27%2F%3E%3Crect%20x%3D%27612.5%27%20y%3D%27105.2%27%20width%3D%279.5%27%20height%3D%2714.8%27%2F%3E%3Crect%20x%3D%27625.0%27%20y%3D%27103.4%27%20width%3D%279.5%27%20height%3D%2716.6%27%2F%3E%3Crect%20x%3D%27637.5%27%20y%3D%27101.0%27%20width%3D%279.5%27%20height%3D%2719.0%27%2F%3E%3Crect%20x%3D%27650.0%27%20y%3D%2798.4%27%20width%3D%279.5%27%20height%3D%2721.6%27%2F%3E%3Crect%20x%3D%27662.5%27%20y%3D%2792.0%27%20width%3D%279.5%27%20height%3D%2728.0%27%2F%3E%3Crect%20x%3D%27675.0%27%20y%3D%2784.4%27%20width%3D%279.5%27%20height%3D%2735.6%27%2F%3E%3Crect%20x%3D%27687.5%27%20y%3D%2780.5%27%20width%3D%279.5%27%20height%3D%2739.5%27%2F%3E%3Crect%20x%3D%27700.0%27%20y%3D%2779.4%27%20width%3D%279.5%27%20height%3D%2740.6%27%2F%3E%3Crect%20x%3D%27712.5%27%20y%3D%2777.3%27%20width%3D%279.5%27%20height%3D%2742.7%27%2F%3E%3Crect%20x%3D%27725.0%27%20y%3D%2764.2%27%20width%3D%279.5%27%20height%3D%2755.8%27%2F%3E%3Crect%20x%3D%27737.5%27%20y%3D%2764.0%27%20width%3D%279.5%27%20height%3D%2756.0%27%2F%3E%3Crect%20x%3D%27750.0%27%20y%3D%2762.1%27%20width%3D%279.5%27%20height%3D%2757.9%27%2F%3E%3Crect%20x%3D%27762.5%27%20y%3D%2764.2%27%20width%3D%279.5%27%20height%3D%2755.8%27%2F%3E%3Crect%20x%3D%27775.0%27%20y%3D%2747.7%27%20width%3D%279.5%27%20height%3D%2772.3%27%2F%3E%3Crect%20x%3D%27787.5%27%20y%3D%2763.1%27%20width%3D%279.5%27%20height%3D%2756.9%27%2F%3E%3Crect%20x%3D%27800.0%27%20y%3D%2761.2%27%20width%3D%279.5%27%20height%3D%2758.8%27%2F%3E%3Crect%20x%3D%27812.5%27%20y%3D%2756.2%27%20width%3D%279.5%27%20height%3D%2763.8%27%2F%3E%3Crect%20x%3D%27825.0%27%20y%3D%2726.2%27%20width%3D%279.5%27%20height%3D%2793.8%27%2F%3E%3Crect%20x%3D%27837.5%27%20y%3D%2735.9%27%20width%3D%279.5%27%20height%3D%2784.1%27%2F%3E%3Crect%20x%3D%27850.0%27%20y%3D%2740.3%27%20width%3D%279.5%27%20height%3D%2779.7%27%2F%3E%3Crect%20x%3D%27862.5%27%20y%3D%2750.4%27%20width%3D%279.5%27%20height%3D%2769.6%27%2F%3E%3Crect%20x%3D%27875.0%27%20y%3D%2724.0%27%20width%3D%279.5%27%20height%3D%2796.0%27%2F%3E%3Crect%20x%3D%27887.5%27%20y%3D%2724.4%27%20width%3D%279.5%27%20height%3D%2795.6%27%2F%3E%3Crect%20x%3D%27900.0%27%20y%3D%2729.8%27%20width%3D%279.5%27%20height%3D%2790.2%27%2F%3E%3Crect%20x%3D%27912.5%27%20y%3D%2756.9%27%20width%3D%279.5%27%20height%3D%2763.1%27%2F%3E%3Crect%20x%3D%27925.0%27%20y%3D%2756.4%27%20width%3D%279.5%27%20height%3D%2763.6%27%2F%3E%3Crect%20x%3D%27937.5%27%20y%3D%2741.5%27%20width%3D%279.5%27%20height%3D%2778.5%27%2F%3E%3Crect%20x%3D%27950.0%27%20y%3D%2741.0%27%20width%3D%279.5%27%20height%3D%2779.0%27%2F%3E%3Crect%20x%3D%27962.5%27%20y%3D%2746.5%27%20width%3D%279.5%27%20height%3D%2773.5%27%2F%3E%3Crect%20x%3D%27975.0%27%20y%3D%2745.3%27%20width%3D%279.5%27%20height%3D%2774.7%27%2F%3E%3Crect%20x%3D%27987.5%27%20y%3D%2763.1%27%20width%3D%279.5%27%20height%3D%2756.9%27%2F%3E%3Crect%20x%3D%271000.0%27%20y%3D%2773.2%27%20width%3D%279.5%27%20height%3D%2746.8%27%2F%3E%3Crect%20x%3D%271012.5%27%20y%3D%2779.4%27%20width%3D%279.5%27%20height%3D%2740.6%27%2F%3E%3Crect%20x%3D%271025.0%27%20y%3D%2770.3%27%20width%3D%279.5%27%20height%3D%2749.7%27%2F%3E%3Crect%20x%3D%271037.5%27%20y%3D%2786.0%27%20width%3D%279.5%27%20height%3D%2734.0%27%2F%3E%3Crect%20x%3D%271050.0%27%20y%3D%2786.7%27%20width%3D%279.5%27%20height%3D%2733.3%27%2F%3E%3Crect%20x%3D%271062.5%27%20y%3D%2784.8%27%20width%3D%279.5%27%20height%3D%2735.2%27%2F%3E%3Crect%20x%3D%271075.0%27%20y%3D%2792.7%27%20width%3D%279.5%27%20height%3D%2727.3%27%2F%3E%3Crect%20x%3D%271087.5%27%20y%3D%2796.6%27%20width%3D%279.5%27%20height%3D%2723.4%27%2F%3E%3Crect%20x%3D%271100.0%27%20y%3D%27101.1%27%20width%3D%279.5%27%20height%3D%2718.9%27%2F%3E%3Crect%20x%3D%271112.5%27%20y%3D%2798.1%27%20width%3D%279.5%27%20height%3D%2721.9%27%2F%3E%3Crect%20x%3D%271125.0%27%20y%3D%27102.7%27%20width%3D%279.5%27%20height%3D%2717.3%27%2F%3E%3Crect%20x%3D%271137.5%27%20y%3D%27107.7%27%20width%3D%279.5%27%20height%3D%2712.3%27%2F%3E%3Crect%20x%3D%271150.0%27%20y%3D%27109.5%27%20width%3D%279.5%27%20height%3D%2710.5%27%2F%3E%3Crect%20x%3D%271162.5%27%20y%3D%27107.8%27%20width%3D%279.5%27%20height%3D%2712.2%27%2F%3E%3Crect%20x%3D%271175.0%27%20y%3D%27109.9%27%20width%3D%279.5%27%20height%3D%2710.1%27%2F%3E%3Crect%20x%3D%271187.5%27%20y%3D%27111.3%27%20width%3D%279.5%27%20height%3D%278.7%27%2F%3E%3C%2Fsvg%3E");
+}
+[data-skin='schematic'] .sphere-strip {
+  border-top: 1px solid var(--ink);
+  border-radius: 0;
+}
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+[data-skin='schematic'] .btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 2px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+[data-skin='schematic'] .btn:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+[data-skin='schematic'] :is(.btn-primary, .btn-primary:hover) {
+  background: var(--ink);
+  color: var(--bg);
+}
+[data-skin='schematic'] .btn-primary:hover {
+  background: var(--accent);
+  color: #111;
+  border-color: var(--accent);
+}
+[data-skin='schematic'] .btn-ghost {
+  border-color: transparent;
+}
+[data-skin='schematic'] .btn-sm {
+  height: 26px;
+  font-size: 10.5px;
+}
+[data-skin='schematic'] .chip {
+  height: 22px;
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+[data-skin='schematic'] .chip-tint {
+  background: var(--sphere);
+  color: #111;
+}
+[data-skin='schematic'] .chip-bad {
+  background: var(--flare);
+  color: #111;
+}
+[data-skin='schematic'] :is(.input, .textarea, .select, .search-input .input, .metric-log input) {
+  border-radius: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  box-shadow: none;
+}
+[data-skin='schematic'] :is(.input, .textarea, .select, .metric-log input):focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+[data-skin='schematic'] .seg {
+  border-radius: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  box-shadow: none;
+  padding: 2px;
+}
+[data-skin='schematic'] .seg button {
+  border-radius: 1px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+[data-skin='schematic'] .seg button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: none;
+}
+[data-skin='schematic'] .check {
+  border-radius: 2px;
+}
+[data-skin='schematic'] .dot {
+  border-radius: 1px;
+}
+
+/* Progress fills in ticks. */
+[data-skin='schematic'] .progress {
+  height: 10px;
+  border-radius: 0;
+  background: repeating-linear-gradient(90deg, var(--line) 0 4px, transparent 4px 6px);
+  box-shadow: none;
+}
+[data-skin='schematic'] .progress > i {
+  border-radius: 0;
+  box-shadow: none;
+  background: repeating-linear-gradient(90deg, var(--sphere, var(--ink)) 0 4px, transparent 4px 6px);
+}
+
+/* Orbs become flat discs; the agent's, a flat lilac square. */
+[data-skin='schematic'] .orb {
+  background: oklch(0.78 0.15 var(--h));
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+  color: #111;
+}
+[data-skin='schematic'] .orb::before {
+  display: none;
+}
+[data-skin='schematic'] .orb-ring circle {
+  stroke-width: 4;
+  stroke-linecap: butt;
+}
+[data-skin='schematic'] .orb-ring .track {
+  stroke: var(--line);
+  stroke-dasharray: 2 2;
+}
+[data-skin='schematic'] .orb-agent {
+  /* A lilac tile with a tiny three-bar skyline in ink. */
+  border-radius: 2px;
+  background:
+    linear-gradient(#111, #111) 22% 82% / 14% 30% no-repeat,
+    linear-gradient(#111, #111) 50% 82% / 14% 58% no-repeat,
+    linear-gradient(#111, #111) 78% 82% / 14% 42% no-repeat,
+    var(--lilac);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+}
+
+/* Odds and ends that were round. */
+[data-skin='schematic'] .glass-pill {
+  border-radius: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+[data-skin='schematic'] .travel-mode::before {
+  background: none;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--cobalt);
+}
+[data-skin='schematic'] .tm-away::before {
+  background: var(--mint);
+}
+[data-skin='schematic'] .tm-kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+[data-skin='schematic'] .tm-block {
+  border-radius: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+[data-skin='schematic'] :is(.signal-icon, .spark-dot, .describe, .train-stats) {
+  border-radius: 2px;
+}
+[data-skin='schematic'] .week button {
+  border-radius: 1px;
+  width: 13px;
+  height: 13px;
+}
+[data-skin='schematic'] .week button:hover {
+  transform: none;
+  border-color: var(--ink);
+}
+
+/* ── Chrome ─────────────────────────────────────────────────────────────── */
+[data-skin='schematic'] .topbar {
+  height: 60px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line-2);
+  pointer-events: auto;
+}
+[data-skin='schematic'] :is(.nav, .agent-button, .topbar .icon-btn, .askbar, .tabbar-pill, .tabbar-round) {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+[data-skin='schematic'] .nav {
+  padding: 3px;
+  gap: 2px;
+  background: transparent;
+  border-color: transparent;
+}
+[data-skin='schematic'] :is(.nav a, .nav button) {
+  height: 30px;
+  border-radius: 1px;
+  font-size: 14px;
+}
+[data-skin='schematic'] .nav a.active {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: none;
+}
+[data-skin='schematic'] .nav .nav-dropdown {
+  background: var(--surface);
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  box-shadow: 6px 6px 0 rgb(0 0 0 / 0.08);
+}
+[data-skin='schematic'] .nav .nav-dropdown a {
+  border-radius: 1px;
+}
+[data-skin='schematic'] .nav .nav-dropdown a.nav-dropdown-all {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 0;
+}
+[data-skin='schematic'] .agent-button {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+[data-skin='schematic'] .askbar {
+  border: 1px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 6px 6px 0 rgb(0 0 0 / 0.08);
+}
+[data-skin='schematic'] .tabbar-pill a.active {
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 1px;
+  box-shadow: none;
+}
+[data-skin='schematic'] .sphere-add {
+  border-radius: 2px;
+}
+[data-skin='schematic'] .wordmark {
+  border-radius: 2px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+@media (max-width: 720px) {
+  [data-skin='schematic'] .hero-date {
+    font-size: 52px;
+    white-space: nowrap;
+  }
+  [data-skin='schematic'] .hero {
+    padding-bottom: 80px;
+  }
+  [data-skin='schematic'] .hero::before,
+  [data-skin='schematic'] .hero::after {
+    height: 68px;
+  }
+}

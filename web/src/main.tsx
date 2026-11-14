@@ -1,12 +1,23 @@
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import './styles.css';
+import './skins/schematic.css';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ApiError } from './api.ts';
 import { App } from './App.tsx';
+
+// Trial themes: ?skin=schematic turns one on (and remembers it); ?skin=off goes back.
+try {
+  const asked = new URLSearchParams(location.search).get('skin');
+  if (asked) localStorage.setItem('terminus-skin', asked === 'off' ? '' : asked);
+  const skin = localStorage.getItem('terminus-skin');
+  if (skin) document.documentElement.dataset.skin = skin;
+} catch {
+  // Storage can be unavailable (private windows); the default look is fine.
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
