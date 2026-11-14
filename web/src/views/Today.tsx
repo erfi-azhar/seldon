@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowUpRight, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import type { Activity, Overview } from '../../../shared/types.ts';
@@ -212,7 +212,7 @@ export function ActivityFeed({ items }: { items: Activity[] }) {
 
 export function Today() {
   const { data: o } = useOverview();
-  const { ask, agentName, openSheet, sphere } = useApp();
+  const { agentName, openSheet, sphere } = useApp();
   const [showAll, setShowAll] = useState(false);
   if (!o) return <Loading />;
 
@@ -246,9 +246,6 @@ export function Today() {
         <div className="hero-side">
           <NextPrayerPill />
           <TravelPill />
-          <button type="button" className="btn" onClick={() => ask('Help me plan today. Look at what is due, my habits and how each sphere has been going, then suggest a realistic plan.')}>
-            <span className="btn-text">Plan today with {agentName}</span> <ArrowUpRight size={15} />
-          </button>
         </div>
       </header>
 

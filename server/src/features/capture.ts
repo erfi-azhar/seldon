@@ -47,6 +47,8 @@ export interface Extracted {
   author: string;
   text: string;
   imageUrl: string | null;
+  /** The post's own words from an embed (a tweet, a TikTok caption): the summary when no brain writes one. */
+  caption?: string;
   /** A picture or PDF fetched directly. */
   file?: { data: Buffer; mime: string };
 }
@@ -86,12 +88,53 @@ export function readableText(html: string): string {
   return stripTags(main).slice(0, 15_000);
 }
 
-const OEMBED: { test: RegExp; endpoint: (u: string) => string; kind: CaptureKind; site: string }[] = [
+interface OembedProvider {
+  test: RegExp;
+  endpoint: (u: string) => string;
+  kind: CaptureKind;
+  site: string;
+}
+
+const REAL_OEMBED: OembedProvider[] = [
   { test: /^https?:\/\/(www\.|mobile\.)?(x|twitter)\.com\/[^/]+\/status\/\d+/i, endpoint: (u) => `https://publish.twitter.com/oembed?omit_script=1&dnt=true&url=${encodeURIComponent(u)}`, kind: 'tweet', site: 'X' },
-  { test: /^https?:\/\/(www\.|vm\.|vt\.)?tiktok\.com\//i, endpoint: (u) => `https://www.tiktok.com/oembed?url=${encodeURIComponent(u)}`, kind: 'video', site: 'TikTok' },
+  { test: /^https?:\/\/(www\.|m\.|vm\.|vt\.)?tiktok\.com\//i, endpoint: (u) => `https://www.tiktok.com/oembed?url=${encodeURIComponent(u)}`, kind: 'video', site: 'TikTok' },
   { test: /^https?:\/\/((www|m)\.)?(youtube\.com\/(watch|shorts)|youtu\.be\/)/i, endpoint: (u) => `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(u)}`, kind: 'video', site: 'YouTube' },
   { test: /^https?:\/\/(www\.)?vimeo\.com\/\d+/i, endpoint: (u) => `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(u)}`, kind: 'video', site: 'Vimeo' },
 ];
+let OEMBED = REAL_OEMBED;
+/** Tests can point embeds at local servers; null puts the real providers back. */
+export function useOembedProvidersForTests(providers: OembedProvider[] | null): void {
+  OEMBED = providers ?? REAL_OEMBED;
+}
+
+/** What a site's embed says about a post, or null when it has no embed or will not answer. */
+async function fromOembed(url: string): Promise<Extracted | null> {
+  const known = OEMBED.find((o) => o.test.test(url));
+  if (!known) return null;
+  try {
+    const res = await safeFetch(known.endpoint(url), { accept: 'application/json', maxBytes: 500_000 });
+    if (res.status !== 200) return null;
+    const o = JSON.parse(res.body.toString('utf8')) as { title?: string; author_name?: string; html?: string; thumbnail_url?: string };
+    const words = o.html ? stripTags(o.html.replace(/<a[^>]*>(pic\.twitter\.com|https?:\/\/t\.co)[^<]*<\/a>/gi, '')) : '';
+    // A tweet's embed ends with "— Name (@handle) date"; the words before it are the post.
+    const text = known.kind === 'tweet' ? words.replace(/—\s*[^—]*$/, '').trim() : words;
+    const author = o.author_name?.trim() ?? '';
+    // TikTok answers a short link with an empty embed; that is no answer at all.
+    if (!o.title?.trim() && !author && !text) return null;
+    return {
+      kind: known.kind,
+      title: o.title?.trim() || (author ? `${author} on ${known.site}` : known.kind === 'tweet' ? 'Post on X' : known.site),
+      description: '',
+      caption: text.slice(0, 4000),
+      site: known.site,
+      author,
+      text,
+      imageUrl: o.thumbnail_url ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /** A fetched file's name from its link, for a title. */
 function fileTitle(url: string, host: string): string {
@@ -105,29 +148,15 @@ function fileTitle(url: string, host: string): string {
 }
 
 export async function extract(url: string): Promise<Extracted> {
-  const known = OEMBED.find((o) => o.test.test(url));
-  if (known) {
-    try {
-      const res = await safeFetch(known.endpoint(url), { accept: 'application/json', maxBytes: 500_000 });
-      if (res.status === 200) {
-        const o = JSON.parse(res.body.toString('utf8')) as { title?: string; author_name?: string; html?: string; thumbnail_url?: string };
-        const text = o.html ? stripTags(o.html.replace(/<a[^>]*>(pic\.twitter\.com|https?:\/\/t\.co)[^<]*<\/a>/gi, '')) : '';
-        return {
-          kind: known.kind,
-          title: o.title?.trim() || (known.kind === 'tweet' ? `${o.author_name ?? 'Post'} on X` : known.site),
-          description: '',
-          site: known.site,
-          author: o.author_name ?? '',
-          text: known.kind === 'tweet' ? text.replace(/—\s*[^—]*$/, '').trim() : text,
-          imageUrl: o.thumbnail_url ?? null,
-        };
-      }
-    } catch {
-      // Fall back to reading the page itself.
-    }
-  }
+  const embedded = await fromOembed(url);
+  if (embedded) return embedded;
 
   const res = await safeFetch(url, { maxBytes: MAX_IMAGE });
+  // A short link (vt.tiktok.com/…) only has an embed under the address it leads to.
+  if (res.url !== url) {
+    const landed = await fromOembed(res.url);
+    if (landed) return landed;
+  }
   if (res.status >= 400) throw new FetchError(`The site answered ${res.status}`);
   const host = new URL(res.url).hostname.replace(/^www\./, '');
   const type = res.contentType.split(';')[0]!.trim();
@@ -288,7 +317,7 @@ async function process(store: Store, id: string, input: CaptureInput, via: strin
   // Keep the file itself (a PDF or picture from a link); an upload was stored when it arrived.
   const fileId = base.fileId ?? (x.file ? saveFile(store, x.file.data, x.file.mime, x.title) : null);
   const imageFileId = x.file && RASTER.has(x.file.mime) ? fileId : await fetchThumbnail(store, x.imageUrl);
-  let meta: Meta = { ...base, kind: x.kind, site: x.site, author: x.author, imageFileId, fileId, summary: x.description };
+  let meta: Meta = { ...base, kind: x.kind, site: x.site, author: x.author, imageFileId, fileId, summary: x.description || x.caption || '' };
   let title = x.title;
   let sphereId: string | null = null;
   try {
@@ -368,7 +397,8 @@ export function readAgain(store: Store, id: string): Note {
   if (!meta) throw new Invalid('Only saved links and files can be read again.');
   if (n.status === 'processing') return n;
   // A read item's body holds the summary; reading it again would fold that into the note.
-  if (n.status !== 'failed') throw new Invalid('Only something that could not be read can be read again.');
+  // One that came back with nothing to say has no summary to fold in, so it can be tried again.
+  if (n.status !== 'failed' && n.body.trim()) throw new Invalid('Only something that could not be read can be read again.');
   const fileId = meta.fileId ?? (n.url ? null : meta.imageFileId);
   const stored = fileId ? getFile(store, fileId) : null;
   if (fileId && !stored) throw new Invalid('The saved file is gone, so it cannot be read again.');
