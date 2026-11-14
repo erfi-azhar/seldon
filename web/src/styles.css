@@ -1122,6 +1122,75 @@ button.chip:hover {
   color: var(--ink-3);
 }
 
+/* Sphere page footnote: the latest change, muted, with older entries tucked behind it. */
+.lately {
+  margin: 28px 0 0;
+  padding: 0 4px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.lately > summary,
+p.lately {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.lately > summary {
+  width: fit-content;
+  max-width: 100%;
+  list-style: none;
+  cursor: pointer;
+}
+.lately > summary::-webkit-details-marker {
+  display: none;
+}
+.lately-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.lately-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.lately time {
+  flex: none;
+}
+.lately-toggle {
+  flex: none;
+  color: var(--ink-4);
+}
+.lately-toggle::after {
+  content: attr(data-closed);
+}
+.lately > summary:hover .lately-toggle,
+.lately > summary:focus-visible .lately-toggle {
+  color: var(--ink-2);
+}
+/* Open: the list below says it all, so the summary shrinks to its toggle. */
+.lately[open] .lately-line {
+  display: none;
+}
+.lately[open] .lately-toggle::after {
+  content: attr(data-open);
+}
+.lately > ul {
+  margin-top: 6px;
+}
+.lately .feed-item {
+  padding: 4px 0;
+  font-size: 12.5px;
+}
+
+.feed-item {
+  padding: 4px;
+  font-size: 12.5px;
+}
+
 .feed-item {
   display: flex;
   align-items: baseline;
