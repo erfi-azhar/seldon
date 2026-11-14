@@ -347,16 +347,34 @@ export function Today() {
             </section>
           )}
 
-          {o.activity.length > 0 && (
-            <section className="card" style={{ paddingBottom: 12 }}>
-              <div className="card-head">
-                <h2 className="card-title">Lately</h2>
-              </div>
-              <ActivityFeed items={o.activity.slice(0, 9)} />
-            </section>
-          )}
         </div>
       </div>
+      {/* What changed lately: a quiet footnote, the rest (and Undo) one click away. */}
+      {o.activity.length > 0 && <Lately items={o.activity} />}
     </div>
+  );
+}
+
+/* A quiet footnote rather than a card: the latest change on one muted line, the rest one click away. */
+export function Lately({ items }: { items: Activity[] }) {
+  const [latest] = items;
+  const more = items.length - 1;
+  const line = (
+    <span className="lately-line">
+      Last change <span className="lately-text">{latest.summary}</span>
+      <span aria-hidden="true">·</span>
+      <time dateTime={latest.ts}>{timeAgo(latest.ts)}</time>
+    </span>
+  );
+  // Only expandable when there is something behind it: older entries, or an Undo to reach.
+  if (more === 0 && !(latest.actor === 'agent' && latest.undoable)) return <p className="lately">{line}</p>;
+  return (
+    <details className="lately">
+      <summary>
+        {line}
+        <span className="lately-toggle" data-closed={more > 0 ? `${more} more` : 'Undo'} data-open="Hide" />
+      </summary>
+      <ActivityFeed items={items} />
+    </details>
   );
 }

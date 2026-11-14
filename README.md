@@ -121,7 +121,7 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
 
 - **Job alerts.** Name the companies you would join — by careers page, a job link, or just
   the name — and what fits (titles, places, remote). Terminus finds the Greenhouse, Lever,
-  Ashby, Workable or SmartRecruiters board behind them and reads its public API every six
+  Ashby, Workable, SmartRecruiters or Recruitee board behind them and reads its public API every six
   hours. The first look records what's already open; after that, each new role that fits
   becomes a signal. Roles that disappear are closed.
 

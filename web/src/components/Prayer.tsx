@@ -6,7 +6,7 @@ import { Check, Clock, LocateFixed, MapPin, MoonStar, Pencil, X } from 'lucide-r
 import { useEffect, useState } from 'react';
 import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
-import { cx, parseDay, plural, todayStr } from '../lib.ts';
+import { addDays, cx, parseDay, plural, todayStr } from '../lib.ts';
 import { Field, Modal } from './ui.tsx';
 
 const NAME: Record<PrayerName, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
@@ -170,14 +170,26 @@ function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramada
         </div>
       </div>
     );
+  // Islamic days begin at sunset, so the first tarawih is prayed after Isha on the
+  // evening before 1 Ramadan, and the first fast is 1 Ramadan itself.
+  const fmt = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  const tarawih = addDays(ramadan.start, -1);
   return (
     <div className="ramadan">
       <div className="ramadan-count num">{ramadan.daysUntil}</div>
       <div>
         <b>{ramadan.daysUntil === 1 ? 'day' : 'days'} until Ramadan</b>
-        <span>
-          Expected to begin around {parseDay(ramadan.start).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} — confirmed by the local moon sighting.
-        </span>
+        <dl className="ramadan-dates">
+          <div>
+            <dt>First tarawih</dt>
+            <dd>{tarawih === todayStr() ? 'Tonight' : fmt(tarawih)}, after Isha</dd>
+          </div>
+          <div>
+            <dt>First fast</dt>
+            <dd>{fmt(ramadan.start)}</dd>
+          </div>
+        </dl>
+        <span>Expected dates — confirmed by the local moon sighting.</span>
       </div>
       <MoonStar size={22} className="ramadan-moon" />
     </div>

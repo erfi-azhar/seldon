@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { renderSnapshot } from '../src/agent/prompt.ts';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
-import { addWatch, checkAll, fetchPostings, findBoard, slugGuesses, listPostings, listWatches, matches, setJobFetcher, setPreferences } from '../src/features/job-alerts.ts';
+import { addWatch, checkAll, fetchPostings, findBoard, highlighted, slugGuesses, listPostings, listWatches, matches, setJobFetcher, setPreferences } from '../src/features/job-alerts.ts';
 import { runTool } from '../src/agent/tools.ts';
 import { listSignals } from '../src/features/signals.ts';
 import { Store } from '../src/store.ts';
@@ -45,13 +45,13 @@ test('finds the job board in a link or a careers page', () => {
 });
 
 test('matching: title keywords as whole words, exclusions, places, remote anywhere', () => {
-  const prefs = { keywords: ['product designer', 'design lead'], exclude: ['intern'], locations: ['Singapore'], remote: true };
+  const prefs = { keywords: ['product designer', 'design lead'], exclude: ['intern'], locations: ['Singapore'], remote: true, highlight: [] };
   assert.equal(matches({ title: 'Senior Product Designer', location: 'Singapore', department: 'Design', remote: false }, prefs), true);
   assert.equal(matches({ title: 'Product Designer', location: 'London', department: '', remote: false }, prefs), false);
   assert.equal(matches({ title: 'Product Designer', location: 'Anywhere', department: '', remote: true }, prefs), true);
   assert.equal(matches({ title: 'Product Designer Intern', location: 'Singapore', department: '', remote: false }, prefs), false);
   assert.equal(matches({ title: 'Software Engineer', location: 'Singapore', department: '', remote: false }, prefs), false);
-  assert.equal(matches({ title: 'Anything', location: 'Mars', department: '', remote: false }, { keywords: [], exclude: [], locations: [], remote: false }), true);
+  assert.equal(matches({ title: 'Anything', location: 'Mars', department: '', remote: false }, { keywords: [], exclude: [], locations: [], remote: false, highlight: [] }), true);
 });
 
 test('each board API is read into the same shape', async () => {
@@ -223,6 +223,22 @@ test('name guessing tries the company before the link host, and never a job site
   assert.deepEqual(listPostings(store).map((p) => p.title), ['Acme role']);
 });
 
+test('name guessing passes over an empty board for one that lists roles, and falls back to the empty one', async () => {
+  const store = jobsStore();
+  boards({
+    // An abandoned Greenhouse board under the name, and the live one on Ashby.
+    [GH]: { jobs: [] },
+    'https://api.ashbyhq.com/posting-api/job-board/acme': { jobs: [{ id: 'a1', title: 'Designer', location: 'SG', jobUrl: 'https://jobs.ashbyhq.com/acme/a1' }] },
+  });
+  const w = await addWatch(store, 'Acme', '');
+  assert.deepEqual([`${w.ats}:${w.board}`, w.openings], ['ashby:acme', 1]);
+
+  const other = jobsStore();
+  boards({ [GH]: { jobs: [] } });
+  const quiet = await addWatch(other, 'Acme', '');
+  assert.deepEqual([`${quiet.ats}:${quiet.board}`, quiet.openings], ['greenhouse:acme', 0]);
+});
+
 test('SmartRecruiters boards are read page by page, so a big company’s roles are not closed by mistake', async () => {
   const store = jobsStore();
   let ids = Array.from({ length: 150 }, (_, i) => i + 1);
@@ -297,9 +313,66 @@ test('Greenhouse roles get their department, so "Leave out" team words work ther
   });
   const roles = await fetchPostings({ ats: 'greenhouse', board: 'acme' });
   assert.deepEqual(roles.map((r) => r.department), ['Sales', 'Design']);
-  const prefs = { keywords: [], exclude: ['sales'], locations: [], remote: true };
+  const prefs = { keywords: [], exclude: ['sales'], locations: [], remote: true, highlight: [] };
   assert.deepEqual(roles.filter((r) => matches(r, prefs)).map((r) => r.title), ['Product Designer']);
   // Without the departments list the roles still come through.
   boards({ [GH]: gh([{ id: 1, title: 'Account Executive', location: 'Singapore' }]) });
   assert.equal((await fetchPostings({ ats: 'greenhouse', board: 'acme' }))[0]!.department, '');
+});
+
+test('highlighted roles: named companies or words in a title or team come first, and alert above the rest', async () => {
+  const prefs = { keywords: [], exclude: [], locations: [], remote: true, highlight: ['GovTech', 'Payments'] };
+  assert.equal(highlighted({ company: 'GovTech', title: 'Lead Designer', department: '' }, prefs), true);
+  assert.equal(highlighted({ company: 'Grab', title: 'Senior Product Designer, Payments', department: '' }, prefs), true);
+  assert.equal(highlighted({ company: 'Grab', title: 'Designer', department: 'Payments' }, prefs), true);
+  assert.equal(highlighted({ company: 'Grab', title: 'Senior Product Designer, Maps', department: '' }, prefs), false);
+  assert.equal(highlighted({ company: 'Govtechnica', title: 'Designer', department: '' }, prefs), false, 'whole words only');
+
+  const store = jobsStore();
+  boards({ [GH]: gh([{ id: 1, title: 'Designer, Maps', location: 'SG' }]) });
+  await addWatch(store, 'Acme', 'greenhouse:acme');
+  setPreferences(store, { keywords: ['designer'], highlight: ['payments'] });
+  boards({ [GH]: gh([{ id: 1, title: 'Designer, Maps', location: 'SG' }, { id: 2, title: 'Designer, Search', location: 'SG' }, { id: 3, title: 'Designer, Payments', location: 'SG' }]) });
+  await checkAll(store);
+  assert.deepEqual(listPostings(store).map((p) => [p.title, p.highlighted]), [
+    ['Designer, Payments', true],
+    ['Designer, Search', false],
+    ['Designer, Maps', false],
+  ]);
+  // With places set, roles there come before remote ones elsewhere, highlighted or not.
+  setPreferences(store, { locations: ['Singapore'], remote: true });
+  boards({ [GH]: gh([{ id: 1, title: 'Designer, Maps', location: 'Singapore' }, { id: 4, title: 'Designer, Payments (US)', location: 'Remote - USA' }, { id: 3, title: 'Designer, Payments', location: 'Singapore' }]) });
+  await checkAll(store);
+  assert.deepEqual(listPostings(store).map((p) => p.title).slice(0, 2), ['Designer, Payments', 'Designer, Payments (US)']);
+  const byTitle = Object.fromEntries(listSignals(store).map((s) => [s.title, s.priority]));
+  assert.equal(byTitle['Acme is hiring: Designer, Payments'], 2);
+  assert.equal(byTitle['Acme is hiring: Designer, Search'], 1);
+});
+
+test('Recruitee boards: found in links and pages, read from the offers API', async () => {
+  assert.deepEqual(findBoard('https://opengovernmentproducts.recruitee.com/o/senior-product-designer'), { ats: 'recruitee', board: 'opengovernmentproducts' });
+  assert.deepEqual(findBoard('<a href="https://www.recruitee.com">Powered by Recruitee</a> <script src="https://acme.recruitee.com/embed.js">'), { ats: 'recruitee', board: 'acme' });
+  assert.equal(findBoard('https://app.recruitee.com/login'), null);
+  assert.deepEqual(findBoard('recruitee:acme'), { ats: 'recruitee', board: 'acme' });
+  boards({
+    'https://acme.recruitee.com/api/offers/': {
+      offers: [
+        { id: 7, slug: 'senior-product-designer', title: 'Senior Product Designer', location: 'Singapore', department: 'Design', remote: false, careers_url: 'https://acme.recruitee.com/o/senior-product-designer', published_at: '2026-11-01 09:00:00 UTC', status: 'published' },
+        { id: 8, slug: 'remote-designer', title: 'Product Designer', city: 'Lisbon', country: 'Portugal', remote: true, published_at: '2026-11-02T00:00:00Z' },
+        { id: 9, slug: 'draft', title: 'Hidden', status: 'draft' },
+      ],
+    },
+  });
+  const roles = await fetchPostings({ ats: 'recruitee', board: 'acme' });
+  assert.deepEqual(
+    roles.map((r) => [r.externalId, r.title, r.location, r.department, r.remote, r.url]),
+    [
+      ['7', 'Senior Product Designer', 'Singapore', 'Design', false, 'https://acme.recruitee.com/o/senior-product-designer'],
+      ['8', 'Product Designer', 'Lisbon, Portugal', '', true, 'https://acme.recruitee.com/o/remote-designer'],
+    ],
+  );
+  // With only a name, Recruitee is among the boards tried.
+  const store = jobsStore();
+  const w = await addWatch(store, 'Acme', '');
+  assert.equal(`${w.ats}:${w.board}`, 'recruitee:acme');
 });
