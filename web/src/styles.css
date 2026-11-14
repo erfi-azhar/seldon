@@ -1383,7 +1383,8 @@ p.lately {
 }
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  /* Two equal columns on every band, so cards line up from Today down to Reference. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -5586,4 +5587,31 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 .access-made code.token {
   overflow-wrap: anywhere;
   min-width: 0;
+}
+
+/* ── Sphere page bands: Today, Progress, Reference ──────────────────────── */
+
+.band-label {
+  margin: 30px 2px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.sphere-hero + .band-label {
+  margin-top: 8px;
+}
+.band-label + .card,
+.band-label + .screenings-entry {
+  margin-bottom: 20px;
+}
+.prayer-missed-tag {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--bad);
+  background: var(--bad-soft);
 }

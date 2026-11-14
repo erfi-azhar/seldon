@@ -387,6 +387,10 @@ const MIGRATIONS: string[] = [
     revoked_at TEXT
   );
   `,
+  // A prayer whose time passed unmarked is recorded as missed, flagged so the person can correct it.
+  `
+  ALTER TABLE prayer_log ADD COLUMN auto INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

@@ -48,7 +48,8 @@ test('methods follow the time zone; Ramadan is counted from the Umm al-Qura cale
 test('current and next prayer, unmarked prayers, and the make-up ledger', () => {
   const store = new Store(openDb(':memory:'));
   store.onboard({ userName: 'Sam', agentName: 'Seldon', sphereKeys: ['faith'] });
-  store.db.prepare("INSERT INTO settings (key, value) VALUES ('prayer', ?)").run(JSON.stringify({ ...SG, backlog: { fajr: 2, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 } }));
+  // Tracking began at 07:00 Singapore time on the 14th, after that morning's Fajr had ended.
+  store.db.prepare("INSERT INTO settings (key, value) VALUES ('prayer', ?)").run(JSON.stringify({ ...SG, since: '2026-11-13T23:00:00.000Z', backlog: { fajr: 2, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 } }));
 
   // 17:00 Singapore time on the 14th: Asr's time, Maghrib next.
   const at5pm = new Date('2026-11-14T09:00:00Z');
@@ -58,8 +59,7 @@ test('current and next prayer, unmarked prayers, and the make-up ledger', () => 
   assert.equal(f.current!.prayer, 'asr');
   assert.equal(f.next!.prayer, 'maghrib');
   assert.equal(f.week.length, 7);
-  assert.ok(!f.unmarked.some((u) => u.date === '2026-11-14'), 'Asr is still in its time, so it is not unmarked');
-  assert.equal(f.unmarked.filter((u) => u.date === '2026-11-13').length, 5);
+  assert.deepEqual(f.autoMissed, [], 'nothing before tracking began counts, and Asr is still in its time');
   assert.deepEqual(f.owed, { fajr: 2, dhuhr: 1, asr: 0, maghrib: 0, isha: 0 });
 
   // After midnight, yesterday's Isha is still current until Fajr.
@@ -69,8 +69,9 @@ test('current and next prayer, unmarked prayers, and the make-up ledger', () => 
 
   adjustQada(store, 'dhuhr', -1);
   adjustQada(store, 'fajr', -1);
-  assert.deepEqual(faithState(store, '2026-11-14', at5pm).owed, { fajr: 1, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 });
-  assert.throws(() => adjustQada(store, 'asr', -1), /No missed Asr/);
+  // By then Asr and Maghrib of the 14th had passed unmarked, so they count as missed too.
+  assert.deepEqual(faithState(store, '2026-11-14', at5pm).owed, { fajr: 1, dhuhr: 0, asr: 1, maghrib: 1, isha: 0 });
+  assert.throws(() => adjustQada(store, 'isha', -1), /No missed Isha/);
   logPrayer(store, '2026-11-14', 'dhuhr', 'late');
   assert.equal(faithState(store, '2026-11-14', at5pm).owed.dhuhr, 0, 'a miss later marked as prayed late is no longer owed');
 
@@ -183,4 +184,35 @@ test('an empty time zone is refused, and a saved one falls back to UTC', async (
   const r = await call('POST', '/api/faith/log', { date: '2026-11-13', prayer: 'asr', status: 'missed' });
   assert.equal(r.status, 200, await r.clone().text());
   assert.match(store.listActivity()[0]!.summary, /^Missed Asr/);
+});
+
+test('a prayer whose time passes unmarked counts as missed, and can still be marked prayed', () => {
+  const store = new Store(openDb(':memory:'));
+  store.onboard({ userName: 'Sam', agentName: 'Seldon', sphereKeys: ['faith'] });
+  store.db.prepare("INSERT INTO settings (key, value) VALUES ('prayer', ?)").run(JSON.stringify({ ...SG, since: '2026-11-13T23:00:00.000Z' }));
+  logPrayer(store, '2026-11-14', 'dhuhr', 'prayed');
+  // 00:30 on the 15th in Singapore: Asr and Maghrib of the 14th have ended unmarked; Isha is still in its time.
+  const lateNight = new Date('2026-11-14T16:30:00Z');
+  let f = faithState(store, '2026-11-15', lateNight);
+  assert.deepEqual(f.autoMissed, [{ date: '2026-11-14', prayer: 'maghrib' }, { date: '2026-11-14', prayer: 'asr' }]);
+  assert.deepEqual(f.owed, { fajr: 0, dhuhr: 0, asr: 1, maghrib: 1, isha: 0 });
+  assert.equal(f.week.find((d) => d.date === '2026-11-14')!.log.asr, 'missed');
+  // Reading again settles nothing twice.
+  f = faithState(store, '2026-11-15', lateNight);
+  assert.equal(f.autoMissed.length, 2);
+
+  // Prayed Asr late after all: it leaves the missed list and the make-up count.
+  logPrayer(store, '2026-11-14', 'asr', 'late');
+  f = faithState(store, '2026-11-15', lateNight);
+  assert.deepEqual(f.autoMissed, [{ date: '2026-11-14', prayer: 'maghrib' }]);
+  assert.equal(f.owed.asr, 0);
+  // Making one up works the same as for a miss you marked yourself.
+  adjustQada(store, 'maghrib', -1);
+  assert.deepEqual(faithState(store, '2026-11-15', lateNight).autoMissed, []);
+
+  // An install from before this: tracking starts from now, so earlier days are never counted.
+  const fresh = new Store(openDb(':memory:'));
+  fresh.onboard({ userName: '', agentName: 'Seldon', sphereKeys: ['faith'] });
+  fresh.db.prepare("INSERT INTO settings (key, value) VALUES ('prayer', ?)").run(JSON.stringify(SG));
+  assert.deepEqual(faithState(fresh, '2026-11-15', lateNight).autoMissed, []);
 });

@@ -460,6 +460,10 @@ export interface PrayerSettings {
   adjustments: Record<PrayerName, number>;
   /** Missed prayers from before you started tracking, still to make up. */
   backlog: Record<PrayerName, number>;
+  /** When tracking began (ISO): prayers that ended before this are never counted as missed. */
+  since?: string | null;
+  /** The last date whose five prayers have all been settled. */
+  settledThrough?: string | null;
 }
 
 export interface PrayerDay {
@@ -478,8 +482,8 @@ export interface FaithState {
   next: { prayer: PrayerName; at: string } | null;
   /** The last seven days, oldest first, including today. */
   week: PrayerDay[];
-  /** Past prayers in the last week you haven't marked. */
-  unmarked: { date: string; prayer: PrayerName }[];
+  /** Prayers in the last week whose time passed unmarked, so were counted as missed. Newest first. */
+  autoMissed: { date: string; prayer: PrayerName }[];
   /** Missed prayers still to make up: logged misses plus the backlog. */
   owed: Record<PrayerName, number>;
   hijri: string;

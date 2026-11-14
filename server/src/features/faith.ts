@@ -149,8 +149,45 @@ export function ramadanFrom(date: string): FaithState['ramadan'] {
   return null;
 }
 
+/**
+ * Count prayers whose time has ended without a mark as missed, so they join the make-up
+ * count like any other miss. Only prayers that ended after tracking began are counted, and
+ * each day is settled once; the person can still mark any of them prayed or prayed late.
+ */
+function settle(store: Store, s: PrayerSettings, today: string, now: Date): PrayerSettings {
+  if (timesFor(s, today) === null) return s;
+  const since = s.since ?? (() => {
+    // Installs from before this: from the first prayer logged, or from now.
+    const first = store.db.prepare('SELECT MIN(logged_at) AS t FROM prayer_log').get() as { t: string | null };
+    return first.t ?? now.toISOString();
+  })();
+  const sinceMs = Date.parse(since);
+  let settled = s.settledThrough ?? addDays(since.slice(0, 10), -2);
+  const insert = store.db.prepare("INSERT INTO prayer_log (date, prayer, status, logged_at, auto) VALUES (?, ?, 'missed', ?, 1) ON CONFLICT(date, prayer) DO NOTHING");
+  // Never walk more than a year back, however long the app was closed.
+  let d = addDays(settled, 1) < addDays(today, -366) ? addDays(today, -366) : addDays(settled, 1);
+  let contiguous = true;
+  for (; d <= today; d = addDays(d, 1)) {
+    let allEnded = true;
+    for (const p of PRAYERS) {
+      const end = endOf(s, d, p);
+      if (!end) continue;
+      const endMs = Date.parse(end);
+      if (endMs > now.getTime()) allEnded = false;
+      else if (endMs > sinceMs) insert.run(d, p, now.toISOString());
+    }
+    if (allEnded && contiguous) settled = d;
+    else contiguous = false;
+  }
+  if (since !== s.since || settled !== s.settledThrough) {
+    s = { ...s, since, settledThrough: settled };
+    saveSettings(store, s);
+  }
+  return s;
+}
+
 export function faithState(store: Store, today: string, now: Date = new Date()): FaithState {
-  const s = getSettings(store);
+  const s = settle(store, getSettings(store), today, now);
   const configured = timesFor(s, today) !== null;
   const from = addDays(today, -6);
   const logs = logFor(store, addDays(from, -1), today);
@@ -159,7 +196,7 @@ export function faithState(store: Store, today: string, now: Date = new Date()):
 
   let current: FaithState['current'] = null;
   let next: FaithState['next'] = null;
-  const unmarked: FaithState['unmarked'] = [];
+
   if (configured) {
     // Isha's time runs past midnight: yesterday's Isha may still be current.
     const yesterdayIsha = { date: addDays(today, -1), prayer: 'isha' as PrayerName };
@@ -173,15 +210,14 @@ export function faithState(store: Store, today: string, now: Date = new Date()):
       (x) => Date.parse(x.at) > now.getTime(),
     );
     next = upcoming ?? null;
-    for (const d of week) {
-      for (const p of PRAYERS) {
-        if (d.log[p]) continue;
-        if (Date.parse(endOf(s, d.date, p)!) <= now.getTime()) unmarked.push({ date: d.date, prayer: p });
-      }
-    }
   }
+  const autoMissed = (
+    store.db.prepare("SELECT date, prayer FROM prayer_log WHERE auto = 1 AND status = 'missed' AND made_up_at IS NULL AND date >= ? AND date <= ?").all(from, today) as { date: string; prayer: PrayerName }[]
+  )
+    .map((r) => ({ date: r.date, prayer: r.prayer }))
+    .sort((a, b) => b.date.localeCompare(a.date) || PRAYERS.indexOf(b.prayer) - PRAYERS.indexOf(a.prayer));
 
-  return { configured, settings: s, today: day, current, next, week, unmarked, owed: owed(store, s), hijri: hijriLabel(today), ramadan: ramadanFrom(today) };
+  return { configured, settings: s, today: day, current, next, week, autoMissed, owed: owed(store, s), hijri: hijriLabel(today), ramadan: ramadanFrom(today) };
 }
 
 export function logPrayer(store: Store, date: string, prayer: PrayerName, status: PrayerStatus | null): void {
@@ -191,8 +227,8 @@ export function logPrayer(store: Store, date: string, prayer: PrayerName, status
   }
   store.db
     .prepare(
-      `INSERT INTO prayer_log (date, prayer, status, logged_at) VALUES (?,?,?,?)
-       ON CONFLICT(date, prayer) DO UPDATE SET status = excluded.status, logged_at = excluded.logged_at,
+      `INSERT INTO prayer_log (date, prayer, status, logged_at, auto) VALUES (?,?,?,?,0)
+       ON CONFLICT(date, prayer) DO UPDATE SET status = excluded.status, logged_at = excluded.logged_at, auto = 0,
          made_up_at = CASE WHEN excluded.status = 'missed' THEN prayer_log.made_up_at ELSE NULL END`,
     )
     .run(date, prayer, status, nowIso());
@@ -240,7 +276,7 @@ registerSnapshotSection<Store>('Prayer', (store, today) => {
   ];
   const owedTotal = PRAYERS.reduce((n, p) => n + f.owed[p], 0);
   if (owedTotal) lines.push(`Missed prayers still to make up: ${PRAYERS.filter((p) => f.owed[p]).map((p) => `${cap(p)} ${f.owed[p]}`).join(', ')}.`);
-  if (f.unmarked.length) lines.push(`${f.unmarked.length} past prayers this week not yet marked.`);
+  if (f.autoMissed.length) lines.push(`${f.autoMissed.length} prayers this week passed without being marked, so were counted as missed (the person can still mark them prayed).`);
   lines.push(`Hijri date: ${f.hijri}.`);
   if (f.ramadan) lines.push(f.ramadan.inRamadan ? `It is Ramadan, day ${f.ramadan.day}.` : `Ramadan expected to begin around ${f.ramadan.start} (${f.ramadan.daysUntil} days, Umm al-Qura estimate; subject to local moon sighting).`);
   return lines.join('\n');
@@ -306,6 +342,7 @@ registerFeature({
       }
       // First time: pick the method people use where you are.
       if (first && !input.method && input.timezone) next.method = methodForTimezone(input.timezone);
+      if (!next.since && next.lat !== null) next.since = new Date().toISOString();
       if (next.lat !== null && next.lng !== null && !timesFor(next, todayOf(c))) throw new Invalid("Prayer times can't be calculated this close to the pole.");
       saveSettings(store, next);
       return c.json(faithState(store, todayOf(c)));

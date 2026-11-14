@@ -167,12 +167,12 @@ at(16, () => store.createTask({ title: 'Renew passports', sphereId: sphere.trave
 at(88, () => store.updateSphere(sphere.faith!, { vision: 'Five prayers on time, the Quran every day, and a heart that remembers between them.' }));
 // Prayers live in the prayer tracker, at Singapore's times.
 store.db.prepare("INSERT INTO settings (key, value) VALUES ('prayer', ?)").run(
-  JSON.stringify({ lat: 1.3521, lng: 103.8198, label: 'Singapore', timezone: 'Asia/Singapore', method: 'Singapore', madhab: 'shafi', backlog: { fajr: 3, dhuhr: 0, asr: 1, maghrib: 0, isha: 0 } }),
+  JSON.stringify({ lat: 1.3521, lng: 103.8198, label: 'Singapore', timezone: 'Asia/Singapore', method: 'Singapore', madhab: 'shafi', since: `${day(35)}T00:00:00.000Z`, backlog: { fajr: 3, dhuhr: 0, asr: 1, maghrib: 0, isha: 0 } }),
 );
 const rates = { fajr: 0.72, dhuhr: 0.9, asr: 0.84, maghrib: 0.97, isha: 0.9 } as const;
 for (let ago = 1; ago <= 34; ago++) {
   for (const [prayer, rate] of Object.entries(rates)) {
-    if (ago <= 6 && ago % 3 === 0 && prayer === 'asr') continue; // a few left unmarked
+    if (ago <= 6 && ago % 3 === 0 && prayer === 'asr') continue; // a few left unmarked, so they count as missed
     const r = rand();
     const status = r < rate ? 'prayed' : r < rate + 0.06 ? 'late' : 'missed';
     store.db.prepare('INSERT INTO prayer_log (date, prayer, status, logged_at, made_up_at) VALUES (?,?,?,?,?)').run(day(ago), prayer, status, new Date().toISOString(), status === 'missed' && ago > 20 ? new Date().toISOString() : null);

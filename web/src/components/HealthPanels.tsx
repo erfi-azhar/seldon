@@ -523,16 +523,8 @@ export function BodyCard({ h }: { h: HealthState }) {
   );
 }
 
-export function HealthPanels() {
+/** Today's food: logged every meal, so it sits with the day's other actions. */
+export function HealthToday() {
   const { data: h } = useHealth();
-  if (!h) return null;
-  return (
-    <div className="health-panels">
-      <NutritionCard h={h} />
-      <div className="col">
-        <BodyCard h={h} />
-        <TrainingCard h={h} />
-      </div>
-    </div>
-  );
+  return h ? <NutritionCard h={h} /> : null;
 }

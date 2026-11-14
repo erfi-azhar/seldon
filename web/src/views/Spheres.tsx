@@ -2,13 +2,13 @@ import { ArrowLeft, ArrowUpRight, Pencil, Plus, Stethoscope } from 'lucide-react
 import { useState } from 'react';
 import { Link } from 'wouter';
 import { CATALOG_BY_KEY } from '../../../shared/catalog.ts';
-import { useSphere, useSpheres, useWrite, write } from '../api.ts';
+import { useHealth, useSphere, useSpheres, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
 import { PrayerCard } from '../components/Prayer.tsx';
-import { HealthPanels } from '../components/HealthPanels.tsx';
-import { TravelPanels, WorkTrips } from '../components/Travel.tsx';
+import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
+import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
 import { cx, hueStyle, pct, plural, shortDay, timeAgo, todayStr } from '../lib.ts';
@@ -125,6 +125,8 @@ export function SphereDetail({ id }: { id: string }) {
   const habitIdeas = (kit?.habits ?? []).filter((h) => !habitNames.has(h.name.toLowerCase()));
   const metricIdeas = (kit?.metrics ?? []).filter((m) => !metricNames.has(m.name.toLowerCase()));
   const quiet = s.stats.quietDays;
+  // Spheres with a card you use every day: food, prayers, job alerts.
+  const hasDaily = s.key === 'health' || s.key === 'faith' || s.key === 'work';
 
   return (
     <div className="page tint" style={hueStyle(s.hue)}>
@@ -157,14 +159,77 @@ export function SphereDetail({ id }: { id: string }) {
         </div>
       </header>
 
-      {s.key === 'health' && <ScreeningsEntry sphereId={id} />}
-      {s.key === 'health' && <HealthPanels />}
-      {s.key === 'travels' && <TravelPanels />}
-
+      {/* Today: what you act on most days. */}
+      <div className="band-label">Today</div>
+      {s.key === 'travels' && <TravelTrips />}
+      {/* With a daily card on the left, tasks join habits on the right so the columns even out. */}
       <div className="detail-grid">
         <div className="col">
           <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
+          {s.key === 'health' && <HealthToday />}
+          {s.key === 'faith' && <PrayerCard />}
           {s.key === 'work' && <JobAlertsCard />}
+          {!hasDaily && (
+            <section className="card">
+              <div className="card-head">
+                <h2 className="card-title">Tasks</h2>
+              </div>
+              {tasks.length === 0 && <p className="empty">Nothing open in {s.name}.</p>}
+              <ul>
+                {tasks.map((t) => (
+                  <TaskRow key={t.id} task={t} showSphere={false} />
+                ))}
+              </ul>
+              <AddTask sphereId={id} placeholder={`Add a task to ${s.name}…`} />
+            </section>
+          )}
+        </div>
+        <div className="col">
+          <section className="card">
+            <div className="card-head">
+              <h2 className="card-title">Habits</h2>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSheet({ kind: 'habit', sphereId: id })}>
+                <Plus size={14} /> New habit
+              </button>
+            </div>
+            {habits.length === 0 && <p className="empty">No habits yet.</p>}
+            <ul style={{ paddingBottom: habitIdeas.length ? 6 : 12 }}>
+              {habits.map((h) => (
+                <HabitRow key={h.id} habit={h} />
+              ))}
+            </ul>
+            {habitIdeas.length > 0 && (
+              <div className="suggest">
+                <span className="hint">Ideas</span>
+                {habitIdeas.map((h) => (
+                  <button key={h.name} type="button" className="chip chip-outline" onClick={() => addHabit.mutate(h)}>
+                    <Plus size={12} /> {h.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+          {hasDaily && (
+            <section className="card">
+              <div className="card-head">
+                <h2 className="card-title">Tasks</h2>
+              </div>
+              {tasks.length === 0 && <p className="empty">Nothing open in {s.name}.</p>}
+              <ul>
+                {tasks.map((t) => (
+                  <TaskRow key={t.id} task={t} showSphere={false} />
+                ))}
+              </ul>
+              <AddTask sphereId={id} placeholder={`Add a task to ${s.name}…`} />
+            </section>
+          )}
+        </div>
+      </div>
+
+      {/* Progress: what you update now and then, and read for the trend. */}
+      <div className="band-label">Progress</div>
+      <div className="detail-grid">
+        <div className="col">
           <section className="card">
             <div className="card-head">
               <h2 className="card-title">Goals</h2>
@@ -192,67 +257,9 @@ export function SphereDetail({ id }: { id: string }) {
               </>
             )}
           </section>
-
-          <section className="card">
-            <div className="card-head">
-              <h2 className="card-title">Tasks</h2>
-            </div>
-            {tasks.length === 0 && <p className="empty">Nothing open in {s.name}.</p>}
-            <ul>
-              {tasks.map((t) => (
-                <TaskRow key={t.id} task={t} showSphere={false} />
-              ))}
-            </ul>
-            <AddTask sphereId={id} placeholder={`Add a task to ${s.name}…`} />
-          </section>
-
-          <section className="card" style={{ paddingBottom: 10 }}>
-            <div className="card-head">
-              <h2 className="card-title">Notes</h2>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSheet({ kind: 'new-note', sphereId: id })}>
-                <Plus size={14} /> New note
-              </button>
-            </div>
-            {notes.length === 0 && <p className="empty">Ideas, references and links for {s.name} land here.</p>}
-            {notes.map((n) => (
-              <button key={n.id} type="button" className="horizon-item" onClick={() => openSheet({ kind: 'note', id: n.id })}>
-                <span className="grow clamp-1">{n.title || n.body.slice(0, 80) || n.url}</span>
-                <span className="faint" style={{ fontSize: 12.5 }}>
-                  {shortDay(todayStr(new Date(n.updatedAt)))}
-                </span>
-              </button>
-            ))}
-          </section>
+          {s.key === 'health' && <TrainingAndBody part="training" />}
         </div>
-
         <div className="col">
-          {s.key === 'faith' && <PrayerCard />}
-          {s.key === 'work' && <WorkTrips />}
-          <section className="card">
-            <div className="card-head">
-              <h2 className="card-title">Habits</h2>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSheet({ kind: 'habit', sphereId: id })}>
-                <Plus size={14} /> New habit
-              </button>
-            </div>
-            {habits.length === 0 && <p className="empty">No habits yet.</p>}
-            <ul style={{ paddingBottom: habitIdeas.length ? 6 : 12 }}>
-              {habits.map((h) => (
-                <HabitRow key={h.id} habit={h} />
-              ))}
-            </ul>
-            {habitIdeas.length > 0 && (
-              <div className="suggest">
-                <span className="hint">Ideas</span>
-                {habitIdeas.map((h) => (
-                  <button key={h.name} type="button" className="chip chip-outline" onClick={() => addHabit.mutate(h)}>
-                    <Plus size={12} /> {h.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-
           <section className="card">
             <div className="card-head">
               <h2 className="card-title">Numbers</h2>
@@ -278,9 +285,41 @@ export function SphereDetail({ id }: { id: string }) {
               </div>
             )}
           </section>
-
+          {s.key === 'health' && <TrainingAndBody part="body" />}
         </div>
       </div>
+
+      {/* Reference: what you look things up in, and rarely change. */}
+      <div className="band-label">Reference</div>
+      {s.key === 'health' && <ScreeningsEntry sphereId={id} />}
+      {s.key === 'travels' && <TravelLoyalty />}
+      <div className={s.key === 'work' ? 'detail-grid' : undefined}>
+        <div className="col">
+          <section className="card" style={{ paddingBottom: 10 }}>
+            <div className="card-head">
+              <h2 className="card-title">Notes</h2>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSheet({ kind: 'new-note', sphereId: id })}>
+                <Plus size={14} /> New note
+              </button>
+            </div>
+            {notes.length === 0 && <p className="empty">Ideas, references and links for {s.name} land here.</p>}
+            {notes.map((n) => (
+              <button key={n.id} type="button" className="horizon-item" onClick={() => openSheet({ kind: 'note', id: n.id })}>
+                <span className="grow clamp-1">{n.title || n.body.slice(0, 80) || n.url}</span>
+                <span className="faint" style={{ fontSize: 12.5 }}>
+                  {shortDay(todayStr(new Date(n.updatedAt)))}
+                </span>
+              </button>
+            ))}
+          </section>
+        </div>
+        {s.key === 'work' && (
+          <div className="col">
+            <WorkTrips />
+          </div>
+        )}
+      </div>
+      {/* What changed lately: a quiet footnote, the rest one click away. */}
       {activity.length > 0 && <Lately items={activity} />}
     </div>
   );
@@ -308,4 +347,11 @@ function Lately({ items }: { items: Activity[] }) {
       <ActivityFeed items={items} />
     </details>
   );
+}
+
+/** Health's training and body cards, placed separately in the Progress band. */
+function TrainingAndBody({ part }: { part: 'training' | 'body' }) {
+  const { data: h } = useHealth();
+  if (!h) return null;
+  return part === 'training' ? <TrainingCard h={h} /> : <BodyCard h={h} />;
 }

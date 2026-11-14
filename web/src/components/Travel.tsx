@@ -718,9 +718,9 @@ function TripCard({ trip, state, open, onToggle }: { trip: Trip; state: TravelSt
 
 // ── The Travels sphere ──────────────────────────────────────────────────────
 
-export function TravelPanels() {
+/** Trips, with their bookings and plans: what you work with in the Travels sphere. */
+export function TravelTrips() {
   const { data: t } = useTravel();
-  const [loyalty, setLoyalty] = useState<LoyaltyAccount | 'new' | null>(null);
   const [newTrip, setNewTrip] = useState(false);
   const [importing, setImporting] = useState(false);
   const [open, setOpen] = useState<string | null | undefined>(undefined);
@@ -732,55 +732,60 @@ export function TravelPanels() {
   const openId = open === undefined ? (upcoming[0]?.id ?? null) : open;
 
   return (
-    <div className="travel-panels">
-      <section className="card">
-        <div className="card-head">
-          <h2 className="card-title">Status &amp; points</h2>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLoyalty('new')}>
-            <Plus size={13} /> Programme
+    <section className="card">
+      <div className="card-head">
+        <h2 className="card-title">Trips</h2>
+        <div className="row" style={{ gap: 4 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImporting(true)}>
+            <Camera size={13} /> From a confirmation
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNewTrip(true)}>
+            <Plus size={13} /> New trip
           </button>
         </div>
-        {t.loyalty.length === 0 ? (
-          <p className="empty">Add KrisFlyer and Marriott Bonvoy to see your tier, miles and points here — and the lounges they get you into.</p>
-        ) : (
-          <div className="loyalty-row">
-            {t.loyalty.map((a) => (
-              <LoyaltyCard key={a.id} a={a} onEdit={() => setLoyalty(a)} />
-            ))}
-          </div>
+      </div>
+      {upcoming.length === 0 && <p className="empty">Nothing booked. Start a trip, or send a confirmation.</p>}
+      <div className="trip-list">
+        {upcoming.map((trip) => (
+          <TripCard key={trip.id} trip={trip} state={t} open={openId === trip.id} onToggle={() => setOpen(openId === trip.id ? null : trip.id)} />
+        ))}
+        {past.length > 0 && (
+          <button type="button" className="link trip-past-toggle" onClick={() => setShowPast((v) => !v)}>
+            {showPast ? 'Hide past trips' : `Past trips (${past.length})`}
+          </button>
         )}
-      </section>
-
-      <section className="card">
-        <div className="card-head">
-          <h2 className="card-title">Trips</h2>
-          <div className="row" style={{ gap: 4 }}>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImporting(true)}>
-              <Camera size={13} /> From a confirmation
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNewTrip(true)}>
-              <Plus size={13} /> New trip
-            </button>
-          </div>
-        </div>
-        {upcoming.length === 0 && <p className="empty">Nothing booked. Start a trip, or send a confirmation.</p>}
-        <div className="trip-list">
-          {upcoming.map((trip) => (
-            <TripCard key={trip.id} trip={trip} state={t} open={openId === trip.id} onToggle={() => setOpen(openId === trip.id ? null : trip.id)} />
-          ))}
-          {past.length > 0 && (
-            <button type="button" className="link trip-past-toggle" onClick={() => setShowPast((v) => !v)}>
-              {showPast ? 'Hide past trips' : `Past trips (${past.length})`}
-            </button>
-          )}
-          {showPast && past.map((trip) => <TripCard key={trip.id} trip={trip} state={t} open={openId === trip.id} onToggle={() => setOpen(openId === trip.id ? null : trip.id)} />)}
-        </div>
-      </section>
-
-      {loyalty && <LoyaltySheet account={loyalty === 'new' ? null : loyalty} onClose={() => setLoyalty(null)} />}
+        {showPast && past.map((trip) => <TripCard key={trip.id} trip={trip} state={t} open={openId === trip.id} onToggle={() => setOpen(openId === trip.id ? null : trip.id)} />)}
+      </div>
       {newTrip && <TripSheet trip={null} onClose={() => setNewTrip(false)} />}
       {importing && <ImportSheet onClose={() => setImporting(false)} />}
-    </div>
+    </section>
+  );
+}
+
+/** Tier, miles and points: something you look up more than you change. */
+export function TravelLoyalty() {
+  const { data: t } = useTravel();
+  const [loyalty, setLoyalty] = useState<LoyaltyAccount | 'new' | null>(null);
+  if (!t) return null;
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2 className="card-title">Status &amp; points</h2>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLoyalty('new')}>
+          <Plus size={13} /> Programme
+        </button>
+      </div>
+      {t.loyalty.length === 0 ? (
+        <p className="empty">Add KrisFlyer and Marriott Bonvoy to see your tier, miles and points here — and the lounges they get you into.</p>
+      ) : (
+        <div className="loyalty-row">
+          {t.loyalty.map((a) => (
+            <LoyaltyCard key={a.id} a={a} onEdit={() => setLoyalty(a)} />
+          ))}
+        </div>
+      )}
+      {loyalty && <LoyaltySheet account={loyalty === 'new' ? null : loyalty} onClose={() => setLoyalty(null)} />}
+    </section>
   );
 }
 

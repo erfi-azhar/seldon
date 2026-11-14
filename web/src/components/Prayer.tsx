@@ -134,7 +134,7 @@ function LocationSheet({ faith, onClose }: { faith: FaithState; onClose: () => v
   );
 }
 
-function StatusButtons({ date, prayer, status, disabled }: { date: string; prayer: PrayerName; status: PrayerStatus | undefined; disabled?: boolean }) {
+function StatusButtons({ date, prayer, status, disabled, offerMissed = true }: { date: string; prayer: PrayerName; status: PrayerStatus | undefined; disabled?: boolean; offerMissed?: boolean }) {
   const log = useWrite(faithWrite.log);
   const set = (next: PrayerStatus) => log.mutate({ date, prayer, status: status === next ? null : next });
   const pending = log.isPending ? (log.variables as { status: PrayerStatus | null }).status : undefined;
@@ -149,10 +149,12 @@ function StatusButtons({ date, prayer, status, disabled }: { date: string; praye
         <Clock size={13} strokeWidth={2.4} />
         <span className="sr-only">Prayed late</span>
       </button>
-      <button type="button" className="pb pb-missed" aria-pressed={shown === 'missed'} disabled={disabled} onClick={() => set('missed')} title="Missed — add to prayers to make up">
-        <X size={13} strokeWidth={2.8} />
-        <span className="sr-only">Missed</span>
-      </button>
+      {offerMissed && (
+        <button type="button" className="pb pb-missed" aria-pressed={shown === 'missed'} disabled={disabled} onClick={() => set('missed')} title="Missed — add to prayers to make up">
+          <X size={13} strokeWidth={2.8} />
+          <span className="sr-only">Missed</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -276,26 +278,23 @@ export function PrayerCard() {
               ))}
             </div>
 
-            {faith.unmarked.length > 0 && (
+            {faith.autoMissed.length > 0 && (
               <div className="prayer-unmarked">
                 <div className="list-label" style={{ padding: '0 0 4px' }}>
-                  Not marked yet
+                  Missed — time passed
                 </div>
                 <ul>
-                  {faith.unmarked
-                    .slice()
-                    .reverse()
-                    .slice(0, 6)
-                    .map((u) => (
-                      <li key={`${u.date}-${u.prayer}`} className="prayer-row">
-                        <span className="prayer-name">{NAME[u.prayer]}</span>
-                        <span className="prayer-when">{u.date === today ? 'today' : parseDay(u.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                        <span />
-                        <StatusButtons date={u.date} prayer={u.prayer} status={undefined} />
-                      </li>
-                    ))}
+                  {faith.autoMissed.slice(0, 6).map((u) => (
+                    <li key={`${u.date}-${u.prayer}`} className="prayer-row">
+                      <span className="prayer-name">{NAME[u.prayer]}</span>
+                      <span className="prayer-when">{u.date === today ? 'today' : parseDay(u.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                      <span className="prayer-missed-tag">Missed</span>
+                      {/* Prayed after all? Mark it, and it comes off the make-up count. */}
+                      <StatusButtons date={u.date} prayer={u.prayer} status="missed" offerMissed={false} />
+                    </li>
+                  ))}
                 </ul>
-                {faith.unmarked.length > 6 && <span className="hint">and {plural(faith.unmarked.length - 6, 'more')} earlier this week</span>}
+                {faith.autoMissed.length > 6 && <span className="hint">and {faith.autoMissed.length - 6} more earlier this week</span>}
               </div>
             )}
           </>
