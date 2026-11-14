@@ -6,6 +6,7 @@ import { useOverview, useTravel, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, HabitRow, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
+import { HillBand } from '../components/Hill.tsx';
 import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
@@ -340,6 +341,7 @@ export function Today() {
       </div>
       {/* What changed lately: a quiet footnote, the rest (and Undo) one click away. */}
       {o.activity.length > 0 && <Lately items={o.activity} />}
+      <HillBand />
     </div>
   );
 }

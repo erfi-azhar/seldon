@@ -17,40 +17,31 @@
     --serif: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
     --sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-    --vault-sky: radial-gradient(120% 90% at 50% 30%, #fbfbfc 0%, #ececee 52%, #d9dadd 100%);
-    --vault-ink: #23252b;
-    --vault-glow: rgb(255 255 255 / 0.97);
-    --vault-glow-edge: rgb(255 255 255 / 0);
-    --vault-holo-s: 78;
-    --vault-holo-l: 52;
-    --vault-blend: normal;
-    --vault-flash:
-      conic-gradient(from 210deg at 50% 46%, rgb(160 220 255 / 0.28), rgb(255 170 230 / 0.24), rgb(255 236 170 / 0.24), rgb(170 255 220 / 0.24), rgb(160 220 255 / 0.28)),
-      radial-gradient(circle at 50% 46%, rgb(255 255 255) 0%, rgb(250 250 252 / 0.96) 45%, rgb(240 241 245 / 0.92) 100%);
+    /* The wash of light at the brightest moment of an unlock. */
+    --vault-flash: radial-gradient(circle at 50% 42%, rgb(255 251 244) 0%, rgb(255 247 236 / 0.97) 50%, rgb(250 242 232 / 0.94) 100%);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #0b0c0f; --ink: #f1f2f6; --ink-2: #a8acb8; --line: rgb(255 255 255 / 0.16); --field: rgb(255 255 255 / 0.06);
       --panel: rgb(24 25 30 / 0.78); --button: #f1f2f6; --button-ink: #0b0c0f; --focus: #a8a8ff;
-      --vault-sky: radial-gradient(120% 90% at 50% 30%, #1b1c20 0%, #0d0e11 55%, #050506 100%);
-      --vault-ink: #e8eaef; --vault-glow: rgb(255 255 255 / 0.92); --vault-glow-edge: rgb(255 255 255 / 0);
-      --vault-holo-s: 92; --vault-holo-l: 74; --vault-blend: lighter;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #0b0c0f; --ink: #f1f2f6; --ink-2: #a8acb8; --line: rgb(255 255 255 / 0.16); --field: rgb(255 255 255 / 0.06);
     --panel: rgb(24 25 30 / 0.78); --button: #f1f2f6; --button-ink: #0b0c0f; --focus: #a8a8ff;
-    --vault-sky: radial-gradient(120% 90% at 50% 30%, #1b1c20 0%, #0d0e11 55%, #050506 100%);
-    --vault-ink: #e8eaef; --vault-glow: rgb(255 255 255 / 0.92); --vault-glow-edge: rgb(255 255 255 / 0);
-    --vault-holo-s: 92; --vault-holo-l: 74; --vault-blend: lighter;
     color-scheme: dark;
+  }
+
+  /* Dusk: blue-grey, as in the app. */
+  :root[data-phase="dusk"] {
+    --bg: #121820; --ink: #eef1f5; --ink-2: #b6bfcb; --line: rgb(220 232 255 / 0.16); --field: rgb(230 240 255 / 0.06);
+    --panel: rgb(27 34 44 / 0.8); --button: #eef1f5; --button-ink: #121820;
   }
 
   [hidden] { display: none !important; }
   html, body { height: 100%; }
   body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
-  body::after { content: ''; position: fixed; inset: 0; z-index: 0; background: var(--vault-sky); pointer-events: none; }
 
   .vault-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; z-index: 1; pointer-events: none; transition: opacity 0.6s ease; }
   .vault-canvas.is-gone { opacity: 0; }
@@ -59,9 +50,10 @@
   main { position: relative; z-index: 2; min-height: 100%; display: grid; justify-items: center; padding-block: 24px 120px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .screen { width: min(100%, 560px); display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
   .anchor { width: 100%; flex: none; }
-  .signin .anchor { height: min(54vh, 520px); }
-  .names .anchor { height: min(44vh, 420px); }
-  .spheres .anchor { height: min(42vh, 380px); }
+  /* The sky fills the box; the crest sits a third of the way up from its bottom. */
+  .signin .anchor { height: min(62vh, 600px); }
+  .names .anchor { height: min(52vh, 500px); }
+  .spheres .anchor { height: min(40vh, 380px); }
   h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(38px, 7vw, 54px); line-height: 1.04; margin: 0; letter-spacing: -0.015em; text-wrap: balance; text-shadow: 0 1px 18px var(--bg); }
   .lede { margin: 0; color: var(--ink-2); max-width: 46ch; text-wrap: pretty; text-shadow: 0 1px 12px var(--bg); }
   form { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; }
@@ -145,11 +137,12 @@
       <button class="chip" type="button" data-go="names">Names</button>
       <button class="chip" type="button" data-go="spheres">Seldon</button>
     </div>
-    <h2>Theme</h2>
+    <h2>Time of day</h2>
     <div class="chips">
-      <button class="chip" type="button" data-theme-pick="system">Device</button>
-      <button class="chip" type="button" data-theme-pick="dark">Dusk</button>
-      <button class="chip" type="button" data-theme-pick="light">Daylight</button>
+      <button class="chip" type="button" data-phase-pick="dawn">Dawn</button>
+      <button class="chip" type="button" data-phase-pick="day">Day</button>
+      <button class="chip" type="button" data-phase-pick="dusk">Dusk</button>
+      <button class="chip" type="button" data-phase-pick="evening">Evening</button>
     </div>
     <div class="row" style="justify-content: flex-start"><button class="chip" type="button" id="replay">↺ Replay from the start</button></div>
     <p>Type anything as the passphrase. Nothing you enter leaves this page.</p>
