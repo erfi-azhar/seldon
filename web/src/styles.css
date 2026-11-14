@@ -6753,6 +6753,44 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   gap: 10px;
   align-content: start;
 }
+/* Between two connecting flights: how long the wait is, on a dashed line joining the cards. */
+.layover-gap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: -4px 0;
+}
+.layover-gap::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  left: 50%;
+  border-left: 1.5px dashed var(--line-2);
+}
+.layover-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.layover-pill b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.layover-gap.is-tight .layover-pill {
+  color: oklch(0.55 0.15 40);
+  box-shadow: inset 0 0 0 1px oklch(0.65 0.14 40 / 0.5);
+}
+.layover-gap.is-long .layover-pill {
+  color: oklch(0.55 0.1 250);
+}
 .globe-card {
   display: flex;
   min-width: 0;
@@ -7404,21 +7442,128 @@ form.stage-center.is-opening > :not(.vault-anchor) {
     color: oklch(0.75 0.04 80);
   }
 }
-/* Flight options fold away; an added option's button takes its flights off again. */
-.opt-toggle {
-  display: inline-flex;
+/* Flight options fold away: a summary bar that opens the cards, with a peek at each option while folded. */
+.opt-bar {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 18px;
+  text-align: left;
   color: inherit;
   cursor: pointer;
 }
-.opt-toggle-chev {
+.opt-bar.is-open {
+  padding-bottom: 12px;
+}
+.opt-bar-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex: none;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.opt-bar-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.opt-bar-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.opt-bar-sub {
+  font-size: 12.5px;
   color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.opt-bar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 5px 10px 5px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  background: var(--surface-2);
+}
+.opt-bar:hover .opt-bar-action {
+  color: var(--ink);
+}
+.opt-bar-chev {
   transition: transform 0.18s;
 }
-.opt-toggle-chev.is-closed {
-  transform: rotate(-90deg);
+.opt-bar.is-open .opt-bar-chev {
+  transform: rotate(180deg);
+}
+.opt-peek {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 18px 16px 64px;
+  scrollbar-width: none;
+}
+.opt-peek::-webkit-scrollbar {
+  display: none;
+}
+.opt-peek-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.opt-peek-chip b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.opt-peek-chip:hover {
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.opt-peek-chip.is-added {
+  box-shadow: inset 0 0 0 1.5px oklch(0.6 0.12 250 / 0.6);
+}
+.opt-peek-check {
+  color: oklch(0.6 0.13 250);
+}
+.opt-peek-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-4);
+}
+.opt-peek-dot.is-premium {
+  background: oklch(0.62 0.12 300);
+}
+.opt-peek-dot.is-business {
+  background: oklch(0.72 0.12 80);
+}
+@media (max-width: 640px) {
+  .opt-peek {
+    padding-left: 18px;
+  }
+  .opt-bar-best {
+    display: none;
+  }
+  .opt-bar-action {
+    padding: 5px 8px;
+  }
 }
 .opt-choose.is-added {
   color: var(--ink-2);

@@ -4,7 +4,7 @@
 // do with it, or the day you are on when away.
 
 import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { Cabin, FlightOption, ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
@@ -673,23 +673,28 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
     d.setDate(d.getDate() + i);
     return todayStr(d);
   });
-  const layovers = state.context.trip?.id === trip.id ? state.context.layovers : [];
   const past = trip.endDate < today;
   const flights = trip.segments.filter((s) => s.kind === 'flight');
   const others = trip.segments.filter((s) => s.kind !== 'flight');
   const legs = globeLegs(flights);
   const openTodos = trip.todos.filter((x) => !x.done).length;
   const row = (s: Segment) => {
-    const lay = layovers.find((l) => l.afterSegmentId === s.id);
+    if (s.kind !== 'flight') return <StayRow key={s.id} s={s} onEdit={() => setBooking(s)} />;
+    const next = flights[flights.indexOf(s) + 1];
+    const wait = next && s.toCode && s.toCode === next.fromCode ? minutesBetween(s.endUtc, next.startUtc) : 0;
     return (
-      <div key={s.id}>
-        {s.kind === 'flight' ? <FlightRow s={s} onEdit={() => setBooking(s)} /> : <StayRow s={s} onEdit={() => setBooking(s)} />}
-        {lay && (
-          <div className="layover">
-            <Clock size={12} /> {lay.hours} h connection in {lay.city}
+      <Fragment key={s.id}>
+        <FlightRow s={s} onEdit={() => setBooking(s)} />
+        {wait > 0 && wait < 24 * 60 && (
+          <div className={cx('layover-gap', wait < 60 && 'is-tight', wait >= 6 * 60 && 'is-long')}>
+            <span className="layover-pill">
+              <Clock size={12} aria-hidden />
+              <b>{hm(wait)}</b> layover in {s.toCity || s.toName || s.toCode}
+              {wait < 60 ? ' · tight' : wait >= 6 * 60 ? ' · long' : ''}
+            </span>
           </div>
         )}
-      </div>
+      </Fragment>
     );
   };
 
@@ -950,6 +955,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
     }
   };
   const chosen = trip.options.filter((o) => o.chosenAt).length;
+  const best = [...trip.options].sort((a, b) => eliteMiles(b).mid - eliteMiles(a).mid)[0];
   // How far there is still to go for the next KrisFlyer tier, to show what each option does for it.
   const kf = t?.loyalty.find((a) => a.program === 'KrisFlyer');
   const toGo = kf && kf.progress !== null && kf.progressTarget ? Math.max(0, kf.progressTarget - kf.progress) : null;
@@ -958,15 +964,39 @@ function FlightOptions({ trip }: { trip: Trip }) {
   const ordered = [...trip.options].sort((a, b) => Number(b.recommended) - Number(a.recommended) || eliteMiles(b).mid - eliteMiles(a).mid);
   return (
     <div className="trip-options">
-      <div className="card-head">
-        <button type="button" className="card-title opt-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <Route size={15} /> Flight options
-          <ChevronDown size={15} className={cx('opt-toggle-chev', !open && 'is-closed')} aria-hidden />
-        </button>
-        <span className="trip-section-count">
-          {plural(trip.options.length, 'option')} · {chosen ? `${chosen} added to the trip` : 'not booked'}
+      <button type="button" className={cx('opt-bar', open && 'is-open')} aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="opt-bar-icon" aria-hidden>
+          <Route size={16} />
         </span>
-      </div>
+        <span className="opt-bar-text">
+          <span className="opt-bar-title">Flight options</span>
+          <span className="opt-bar-sub">
+            {plural(trip.options.length, 'option')} · {chosen ? `${chosen} added to the trip` : 'nothing booked yet'}
+            {best && <span className="opt-bar-best"> · most elite miles: {CABIN_NAME[mainCabin(best)]}, ≈ {roughly(eliteMiles(best).mid)}</span>}
+          </span>
+        </span>
+        <span className="opt-bar-action">
+          {open ? 'Hide' : 'Show'}
+          <ChevronDown size={15} className="opt-bar-chev" aria-hidden />
+        </span>
+      </button>
+      {!open && (
+        <div className="opt-peek">
+          {ordered.map((o) => {
+            const last = o.legs[o.legs.length - 1]!;
+            return (
+              <button key={o.id} type="button" className={cx('opt-peek-chip', o.chosenAt && 'is-added')} onClick={() => setOpen(true)}>
+                <span className={cx('opt-peek-dot', `is-${mainCabin(o)}`)} aria-hidden />
+                <b>{CABIN_NAME[mainCabin(o)]}</b>
+                <span>
+                  lands {weekday(dayOf(last.endLocal))} {time(last.endLocal)} · ≈ {roughly(eliteMiles(o).mid)}
+                </span>
+                {o.chosenAt && <CheckIcon size={12} className="opt-peek-check" aria-label="added to the trip" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {open && (
         <div className="trip-section-body">
           <div className="opt-grid">
