@@ -1,7 +1,7 @@
 // The repeating pieces: a task, a habit, a metric, a goal.
 
 import { ArrowDownRight, ArrowUpRight, Flame, Pencil, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Goal, Habit, Metric, Task } from '../../../shared/types.ts';
 import { useWrite, write } from '../api.ts';
 import { addDays, cx, dueLabel, formatNumber, hueStyle, parseDay, parseNumber, pct, relativeDay, todayStr } from '../lib.ts';
@@ -52,14 +52,41 @@ export function AddTask({
   const [title, setTitle] = useState('');
   const [sphere, setSphere] = useState<string | null>(null);
   const [due, setDue] = useState(dueDate);
+  // A word after adding when the new task won't appear in this list (a list of what's due
+  // on a day only shows that day), or when the add failed.
+  const [note, setNote] = useState<{ text: string; failed?: boolean } | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(noteTimer.current), []);
+  const say = (next: { text: string; failed?: boolean } | null) => {
+    clearTimeout(noteTimer.current);
+    setNote(next);
+    if (next && !next.failed) noteTimer.current = setTimeout(() => setNote(null), 8000);
+  };
   const add = useWrite((body: object) => write.post('/tasks', body));
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
-    add.mutate({ title, sphereId: sphereId ?? sphere, goalId: goalId ?? null, ...(tripId ? { tripId } : {}), dueDate: due || null });
+    const name = title.trim();
+    if (!name) return;
+    const chosenDue = due;
+    add.mutate(
+      { title: name, sphereId: sphereId ?? sphere, goalId: goalId ?? null, ...(tripId ? { tripId } : {}), dueDate: chosenDue || null },
+      {
+        onSuccess: () => {
+          if (!dueDate || chosenDue === dueDate || (chosenDue && chosenDue < dueDate)) return say(null);
+          say({ text: chosenDue ? `Added “${name}”, due ${dueLabel(chosenDue, todayStr()).text}. It shows here on the day.` : `Added “${name}” with no due date, so it won't show on Today.` });
+        },
+        onError: (err) => {
+          // Put the words back so nothing typed is lost.
+          setTitle((t) => t || name);
+          setDue(chosenDue);
+          say({ text: `Couldn't add it: ${err.message}`, failed: true });
+        },
+      },
+    );
     setTitle('');
     setDue(dueDate);
+    say(null);
   };
 
   return (
@@ -74,6 +101,11 @@ export function AddTask({
             Add
           </button>
         </>
+      )}
+      {note && (
+        <p className={cx('add-note', note.failed && 'failed')} role="status">
+          {note.text}
+        </p>
       )}
     </form>
   );
