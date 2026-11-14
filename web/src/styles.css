@@ -6980,15 +6980,14 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 .opt-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 10px;
-  margin-bottom: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  align-items: start;
 }
 .opt-card {
   display: grid;
-  align-content: start;
-  gap: 12px;
-  padding: 16px 16px 12px;
+  gap: 14px;
+  padding: 16px;
   border-radius: 18px;
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(16 18 30 / 0.04), 0 10px 24px -18px rgb(16 18 30 / 0.25);
@@ -6998,13 +6997,24 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 .opt-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
+}
+.opt-head-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 .opt-title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 15.5px;
+  font-weight: 650;
+}
+.opt-summary {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
 }
 .opt-badge {
   display: inline-flex;
@@ -7017,97 +7027,175 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   color: oklch(0.45 0.12 155);
   background: oklch(0.95 0.04 155);
   white-space: nowrap;
+  flex: none;
 }
 .opt-badge.is-chosen {
   color: oklch(0.45 0.12 250);
   background: oklch(0.95 0.03 250);
 }
-.opt-arrive {
+/* Three numbers that decide it */
+.opt-stats {
   display: grid;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--surface-2);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
-.opt-arrive-label {
-  font-size: 11px;
+.opt-stats > div {
+  min-width: 0;
+  padding: 0 10px;
+}
+.opt-stats > div:first-child {
+  padding-left: 0;
+}
+.opt-stats > div + div {
+  border-left: 1px solid var(--line);
+}
+.opt-stats dt {
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.opt-arrive b {
-  font-size: 18px;
+.opt-stats dd {
+  margin: 3px 0 0;
+  font-size: 15px;
   font-weight: 650;
-  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.opt-arrive span:last-child {
-  font-size: 12.5px;
+.opt-stats .opt-stat-sub {
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--ink-3);
 }
-.opt-summary {
-  margin: 0;
-  font-size: 13px;
-  color: var(--ink-2);
-}
-.opt-legs {
+/* The route as a timeline of airports, the flights between them */
+.opt-journey {
   display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.opt-leg {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
+.opt-stop.is-onward .opt-time {
+  font-weight: 500;
+  color: var(--ink-2);
 }
-.opt-leg-main {
+.opt-dot.is-small {
+  width: 5px;
+  height: 5px;
+  background: var(--ink-4);
+  box-shadow: none;
+}
+.opt-stop,
+.opt-flight {
   display: grid;
-  min-width: 0;
-}
-.opt-leg-route {
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-.opt-leg-route b {
-  font-weight: 650;
-}
-.opt-leg-route sup {
-  margin-left: 2px;
-  font-size: 10px;
-  color: var(--ink-3);
-}
-.opt-leg-meta {
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-.opt-layover {
-  display: flex;
+  grid-template-columns: 48px 14px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  margin: 2px 0 2px 12px;
-  padding: 3px 0 3px 24px;
-  border-left: 1.5px dashed var(--line-2);
+  column-gap: 10px;
+}
+.opt-stop {
+  min-height: 26px;
+}
+.opt-time {
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.opt-time sup {
+  margin-left: 1px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.opt-dot {
+  justify-self: center;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--ink-3);
+}
+.opt-dot.is-end {
+  background: var(--ink-2);
+  box-shadow: none;
+}
+.opt-place {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.opt-place b {
+  margin-right: 3px;
+  font-weight: 650;
+  color: var(--ink);
+}
+.opt-day {
   font-size: 12px;
   color: var(--ink-3);
+  white-space: nowrap;
 }
-.opt-notes {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 10px 0 0 16px;
-  border-top: 1px solid var(--line);
+.opt-wait {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.opt-flight {
+  min-height: 34px;
+}
+.opt-rail {
+  justify-self: center;
+  align-self: stretch;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--line-2);
+}
+.opt-flight-body {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12.5px;
+  color: var(--ink-3);
+}
+/* The fine print, folded away */
+.opt-notes {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.opt-notes summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+.opt-notes ul {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding-left: 16px;
+  font-size: 12.5px;
+  line-height: 1.45;
   color: var(--ink-2);
 }
 .opt-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 4px;
+  gap: 8px;
+}
+.opt-choose {
+  flex: 1;
+  justify-content: center;
 }
 .opt-remove {
   color: var(--ink-3);

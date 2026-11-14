@@ -114,3 +114,16 @@ test('flight options: legs resolved like bookings, shown on the trip, and chosen
   assert.equal((await call('DELETE', `/travel/options/${opt.id}`)).status, 200);
   assert.equal(getTrip(store, trip.id).options.length, 0);
 });
+
+test('an option’s flights can be changed: resolved again, and no longer marked as added', async () => {
+  const { store } = setup();
+  const trip = createTrip(store, { title: 'São Paulo', purpose: 'work', startDate: '2026-11-29', endDate: '2026-12-12' });
+  const { addOption, chooseOption, updateOption } = await import('../src/features/travel.ts');
+  const o = addOption(store, trip.id, { title: 'Via Frankfurt', legs: [{ carrier: 'SQ', number: '893', fromCode: 'HKG', toCode: 'SIN', startLocal: '2026-11-28T15:40', endLocal: '2026-11-28T19:25' }] });
+  chooseOption(store, o.id);
+  const changed = updateOption(store, o.id, { legs: [{ carrier: 'ZH', number: '229', fromCode: 'SZX', toCode: 'SIN', startLocal: '2026-11-28T13:55', endLocal: '2026-11-28T18:00' }] });
+  assert.equal(changed.legs[0]!.fromCity, 'Shenzhen');
+  assert.equal(changed.legs[0]!.startUtc, '2026-11-28T05:55:00.000Z');
+  assert.equal(changed.chosenAt, null);
+  assert.equal(updateOption(store, o.id, { title: 'Via Frankfurt, from Shenzhen' }).legs[0]!.number, '229', 'other edits keep the legs');
+});

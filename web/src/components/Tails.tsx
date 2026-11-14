@@ -51,6 +51,8 @@ const LIVERIES: Record<string, Livery> = {
   BR: { base: '#00704a', art: band(19, 5, '#f39800') },
   // China Airlines: white with a pink blossom.
   CI: { base: '#ffffff', art: <circle cx="25" cy="17" r="5" fill="#e4007f" /> },
+  // Shenzhen Airlines: red, a gold sweep.
+  ZH: { base: '#c41230', art: <>{stroke('M13 31 C18 24 24 18 32 14', '#e5b84b', 2.8)}{stroke('M17 34 C21 29 26 25 32 23', '#e5b84b', 1.4)}</> },
   // China Southern: blue, a red flower.
   CZ: { base: '#0b4ea2', art: <circle cx="25" cy="16" r="4.6" fill="#e60012" /> },
   // China Eastern: white, red and blue.

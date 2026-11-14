@@ -924,17 +924,23 @@ function FlightOptions({ trip }: { trip: Trip }) {
   );
 }
 
+/** One way to make the journey: three numbers that decide it, the route as a timeline of airports, then the fine print. */
 function OptionCard({ o, onChoose, onRemove, busy }: { o: FlightOption; onChoose: () => void; onRemove: () => void; busy: boolean }) {
   const first = o.legs[0]!;
   const last = o.legs[o.legs.length - 1]!;
   const total = minutesBetween(first.startUtc, last.endUtc);
+  const stops = o.legs.slice(0, -1).map((l, i) => ({ code: l.toCode, wait: minutesBetween(l.endUtc, o.legs[i + 1]!.startUtc) }));
+  const plusDays = (from: string, to: string) => daysFrom(dayOf(from), dayOf(to));
   return (
     <article className={cx('opt-card', o.recommended && 'is-recommended', o.chosenAt && 'is-chosen')}>
       <header className="opt-head">
-        <span className="opt-title">{o.title}</span>
+        <div className="opt-head-text">
+          <span className="opt-title">{o.title}</span>
+          {o.summary && <p className="opt-summary">{o.summary}</p>}
+        </div>
         {o.chosenAt ? (
           <span className="opt-badge is-chosen">
-            <CheckIcon size={12} /> Added to trip
+            <CheckIcon size={12} /> Added
           </span>
         ) : (
           o.recommended && (
@@ -944,53 +950,84 @@ function OptionCard({ o, onChoose, onRemove, busy }: { o: FlightOption; onChoose
           )
         )}
       </header>
-      <div className="opt-arrive">
-        <span className="opt-arrive-label">Lands</span>
-        <b>
-          {weekday(dayOf(last.endLocal))} · {time(last.endLocal)}
-        </b>
-        <span>
-          in {last.toCity || last.toCode} · {hm(total)} door to door · {plural(o.legs.length, 'flight')}
-        </span>
-      </div>
-      {o.summary && <p className="opt-summary">{o.summary}</p>}
-      <ol className="opt-legs">
-        {o.legs.map((l, i) => {
-          const prev = o.legs[i - 1];
-          const wait = prev ? minutesBetween(prev.endUtc, l.startUtc) : 0;
-          return (
-            <li key={i}>
-              {prev && (
-                <div className="opt-layover">
-                  <Clock size={12} /> {hm(wait)} in {prev.toCity || prev.toCode}
-                </div>
-              )}
-              <div className="opt-leg">
-                <AirlineTail code={l.carrier} size={26} />
-                <span className="opt-leg-main">
-                  <span className="opt-leg-route">
-                    <b>{time(l.startLocal)}</b> {l.fromCode} <span className="faint">→</span> <b>{time(l.endLocal)}</b> {l.toCode}
-                    {dayOf(l.endLocal) !== dayOf(l.startLocal) && <sup>+{daysFrom(dayOf(l.startLocal), dayOf(l.endLocal))}</sup>}
-                  </span>
-                  <span className="opt-leg-meta">
-                    {`${l.carrier} ${l.number}`.trim()} · {weekday(dayOf(l.startLocal))} · {hm(minutesBetween(l.startUtc, l.endUtc))}
-                  </span>
+
+      <dl className="opt-stats">
+        <div>
+          <dt>Lands</dt>
+          <dd>{time(last.endLocal)}</dd>
+          <dd className="opt-stat-sub">{weekday(dayOf(last.endLocal))}</dd>
+        </div>
+        <div>
+          <dt>Journey</dt>
+          <dd>{hm(total)}</dd>
+          <dd className="opt-stat-sub">{plural(o.legs.length, 'flight')}</dd>
+        </div>
+        <div>
+          <dt>{stops.length === 1 ? 'Stop' : 'Stops'}</dt>
+          <dd>{stops.length ? stops.map((x) => x.code).join(' · ') : 'Nonstop'}</dd>
+          <dd className="opt-stat-sub">{stops.length ? `${hm(stops.reduce((n, x) => n + x.wait, 0))} wait` : '—'}</dd>
+        </div>
+      </dl>
+
+      <ol className="opt-journey">
+        {o.legs.map((l, i) => (
+          <li key={i} className="opt-segment">
+            {i === 0 ? (
+              <div className="opt-stop">
+                <span className="opt-time">{time(l.startLocal)}</span>
+                <span className="opt-dot" aria-hidden />
+                <span className="opt-place">
+                  <b>{l.fromCode}</b> {l.fromCity}
                 </span>
+                <span className="opt-day">{weekday(dayOf(l.startLocal))}</span>
               </div>
-            </li>
-          );
-        })}
+            ) : (
+              <div className="opt-stop is-onward">
+                <span className="opt-time">{time(l.startLocal)}</span>
+                <span className="opt-dot is-small" aria-hidden />
+                <span className="opt-place faint">departs</span>
+                <span className="opt-day">{dayOf(l.startLocal) !== dayOf(o.legs[i - 1]!.endLocal) ? weekday(dayOf(l.startLocal)) : ''}</span>
+              </div>
+            )}
+            <div className="opt-flight">
+              <span />
+              <span className="opt-rail" aria-hidden />
+              <span className="opt-flight-body">
+                <AirlineTail code={l.carrier} size={22} />
+                <span>
+                  {`${l.carrier} ${l.number}`.trim()} · {hm(minutesBetween(l.startUtc, l.endUtc))}
+                </span>
+              </span>
+            </div>
+            <div className="opt-stop is-arrival">
+              <span className="opt-time">
+                {time(l.endLocal)}
+                {plusDays(l.startLocal, l.endLocal) > 0 && <sup>+{plusDays(l.startLocal, l.endLocal)}</sup>}
+              </span>
+              <span className={cx('opt-dot', i === o.legs.length - 1 && 'is-end')} aria-hidden />
+              <span className="opt-place">
+                <b>{l.toCode}</b> {l.toCity}
+              </span>
+              {i < o.legs.length - 1 ? <span className="opt-wait">{hm(stops[i]!.wait)} connection</span> : <span className="opt-day">{weekday(dayOf(l.endLocal))}</span>}
+            </div>
+          </li>
+        ))}
       </ol>
+
       {o.notes.length > 0 && (
-        <ul className="opt-notes">
-          {o.notes.map((n, i) => (
-            <li key={i}>{n}</li>
-          ))}
-        </ul>
+        <details className="opt-notes">
+          <summary>{plural(o.notes.length, 'thing', 'things')} to know</summary>
+          <ul>
+            {o.notes.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ul>
+        </details>
       )}
+
       <footer className="opt-foot">
-        <button type="button" className="btn btn-sm opt-choose" disabled={!!o.chosenAt || busy} onClick={onChoose} title="Adds these flights to the trip as planned flights; book them separately">
-          {busy ? <Spinner /> : <Plus size={13} />} {o.chosenAt ? 'Flights added' : 'Add these flights to the trip'}
+        <button type="button" className={cx('btn btn-sm opt-choose', o.recommended && !o.chosenAt && 'btn-primary')} disabled={!!o.chosenAt || busy} onClick={onChoose} title="Adds these flights to the trip as planned flights; book them separately">
+          {busy ? <Spinner /> : o.chosenAt ? <CheckIcon size={13} /> : <Plus size={13} />} {o.chosenAt ? 'Flights added to the trip' : 'Use these flights'}
         </button>
         <button type="button" className="icon-btn icon-btn-sm opt-remove" onClick={onRemove} aria-label={`Remove the option ${o.title}`} title="Remove this option">
           <Trash2 size={14} />
