@@ -32,8 +32,11 @@ export function parseJsonObject(text: string): unknown {
 
 export function wrapUntrusted(label: string, text: string, max = 24_000): string {
   const clipped = text.length > max ? `${text.slice(0, max)}\n[…truncated]` : text;
-  // Keep the content from closing our tag early.
-  return `<untrusted source="${label}">\n${clipped.replaceAll('</untrusted', '<\\/untrusted')}\n</untrusted>`;
+  // Keep the content from closing our tag early, in any case or spacing a model
+  // might still read as a closing tag, and keep the label from breaking out of its quotes.
+  const body = clipped.replace(/<\s*\/\s*untrusted/gi, '<\\/untrusted');
+  const source = label.replace(/["<>\n\r]/g, ' ');
+  return `<untrusted source="${source}">\n${body}\n</untrusted>`;
 }
 
 export interface ThinkRequest<T> {
@@ -51,6 +54,10 @@ export interface ThinkRequest<T> {
   signal?: AbortSignal;
 }
 
+/** The model answered but would not or could not do this task (a refusal, or JSON that never fit),
+ * as opposed to the model being out of reach. */
+export class Declined extends ProviderError {}
+
 export async function think<T>(req: ThinkRequest<T>): Promise<T> {
   const cfg = req.config ?? req.store.getModelConfig(req.role ?? 'background');
   if (!cfg) throw new NoBrain();
@@ -60,7 +67,7 @@ export async function think<T>(req: ThinkRequest<T>): Promise<T> {
   let lastProblem = '';
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await provider.complete({ system: PREAMBLE, turns, tools: [], signal: req.signal, onText: () => undefined });
-    if (res.stopped) throw new ProviderError(res.stopped.message);
+    if (res.stopped) throw new Declined(res.stopped.message);
     try {
       const parsed = req.schema.safeParse(parseJsonObject(res.text));
       if (parsed.success) return parsed.data;
@@ -71,5 +78,5 @@ export async function think<T>(req: ThinkRequest<T>): Promise<T> {
     turns.push({ role: 'assistant', text: res.text, toolCalls: [], native: res.native });
     turns.push({ role: 'user', text: `That was not valid. Problems:\n${lastProblem}\nReply again with only the corrected JSON object.`, display: '' });
   }
-  throw new ProviderError(`The model's answer could not be used: ${lastProblem}`);
+  throw new Declined(`The model's answer could not be used: ${lastProblem}`);
 }

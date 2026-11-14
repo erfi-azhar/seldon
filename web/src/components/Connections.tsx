@@ -156,8 +156,11 @@ export function CaptureSetup() {
   );
 }
 
+/** Tools the server didn't mark safe or destructive wait for the person's OK. */
+type McpServer = McpServerView & { unconfirmed?: { name: string; allowed: boolean }[] };
+
 interface McpList {
-  servers: McpServerView[];
+  servers: McpServer[];
   known: { name: string; url: string; blurb: string }[];
 }
 
@@ -197,6 +200,7 @@ export function McpConnections() {
   const add = useWrite((body: { name: string; url: string }) => write.post<{ authorizeUrl: string | null }>('/mcp/servers', body));
   const signIn = useWrite((id: string) => write.post<{ authorizeUrl: string | null }>(`/mcp/servers/${id}/auth`));
   const setMode = useWrite((v: { id: string; mode: string }) => write.patch(`/mcp/servers/${v.id}`, { mode: v.mode }));
+  const allowTool = useWrite((v: { id: string; tool: string; allowed: boolean }) => write.patch(`/mcp/servers/${v.id}`, { allow: { tool: v.tool, allowed: v.allowed } }));
   const check = useWrite((id: string) => write.post(`/mcp/servers/${id}/check`));
   const remove = useWrite((id: string) => write.del(`/mcp/servers/${id}`));
 
@@ -253,6 +257,21 @@ export function McpConnections() {
             <p className="hint">
               Never offered to {agentName}: {s.withheld.join(', ')} — {agentName} doesn't delete things.
             </p>
+          )}
+          {(s.unconfirmed?.length ?? 0) > 0 && (
+            <div>
+              <p className="hint">
+                {s.name} doesn't say whether these change or remove things, so {agentName} only gets the ones you allow:
+              </p>
+              <div className="row-wrap" style={{ gap: 12 }}>
+                {s.unconfirmed!.map((t) => (
+                  <label key={t.name} className="row" style={{ gap: 6 }}>
+                    <input type="checkbox" checked={t.allowed} onChange={(e) => allowTool.mutate({ id: s.id, tool: t.name, allowed: e.target.checked }, { onError: (err) => toast({ message: err.message }) })} />
+                    <span>{t.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           )}
           {s.id === 'gravl' && s.status === 'connected' && <GravlSync />}
           <div className="row" style={{ gap: 4 }}>

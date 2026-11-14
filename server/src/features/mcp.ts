@@ -2,14 +2,17 @@
 // workouts and food), sign in with OAuth, and Seldon can use its tools.
 //
 // Seldon never gets a server's destructive tools (anything the server marks
-// destructive, or named delete_*): like everything else in Terminus, the agent can
-// add and change but not delete. "Read" mode offers only tools marked read-only.
+// destructive, or named like a delete): like everything else in Terminus, the agent
+// can add and change but not delete. A tool the server doesn't mark either way counts
+// as destructive, as the MCP spec says, until the person allows it in Settings.
+// "Read" mode offers only tools marked read-only.
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { auth, UnauthorizedError, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import type { Context } from 'hono';
 import { z } from 'zod';
 import { registerToolSource, type ExternalTool } from '../agent/tools.ts';
 import { read } from '../http.ts';
@@ -19,6 +22,7 @@ import { getIntegration, removeIntegration, saveIntegration, updateIntegration, 
 import { registerFeature } from './registry.ts';
 
 const PREFIX = 'mcp:';
+const GRAVL_SERVER = 'mcp:gravl';
 
 interface McpSecrets {
   clientInformation?: OAuthClientInformationMixed;
@@ -137,8 +141,38 @@ export async function callTool(store: Store, id: string, name: string, args: Rec
 
 interface CachedTools {
   at: number;
-  tools: { name: string; description: string; schema: Record<string, unknown>; readOnly: boolean; destructive: boolean }[];
+  tools: {
+    name: string;
+    description: string;
+    schema: Record<string, unknown>;
+    readOnly: boolean;
+    /** Marked destructive, or named like a delete: never offered. */
+    destructive: boolean;
+    /** Not marked safe either way, so presumed destructive until the person allows it. */
+    unconfirmed: boolean;
+  }[];
 }
+
+/** Server views carry the tools waiting on the person's OK. */
+type ServerView = McpServerView & { unconfirmed: { name: string; allowed: boolean }[] };
+
+const DELETE_VERBS = new Set(['delete', 'del', 'remove', 'rm', 'destroy', 'purge', 'wipe', 'clear', 'erase', 'drop', 'trash', 'archive', 'revoke', 'unsubscribe', 'unlink']);
+
+/** deleteFoodEntry, delete-workout, food_entry_delete, clear_food_log… */
+function namedLikeDelete(name: string): boolean {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/);
+  return words.some((w) => DELETE_VERBS.has(w));
+}
+
+// A server's own words reach the model as tool descriptions; keep them from posing as our tags.
+const neutralise = (text: string) => text.replace(/<\s*\/?\s*untrusted/gi, '‹untrusted');
+
+const allowedOf = (rec: IntegrationRecord): string[] => (Array.isArray(rec.settings.allowed) ? (rec.settings.allowed as string[]) : []);
+
 const toolCache = new Map<string, CachedTools>();
 
 async function serverTools(store: Store, id: string, fresh = false): Promise<CachedTools['tools']> {
@@ -151,12 +185,16 @@ async function serverTools(store: Store, id: string, fresh = false): Promise<Cac
     do {
       const page = await client.listTools(cursor ? { cursor } : {});
       for (const t of page.tools) {
+        const readOnly = t.annotations?.readOnlyHint === true;
+        const destructive = t.annotations?.destructiveHint === true || namedLikeDelete(t.name);
         out.push({
           name: t.name,
           description: t.description ?? '',
           schema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object' },
-          readOnly: t.annotations?.readOnlyHint === true,
-          destructive: t.annotations?.destructiveHint === true || /^(delete|remove|destroy|purge|wipe)_/i.test(t.name),
+          readOnly,
+          destructive,
+          // The spec's default for destructiveHint is true unless the tool is read-only.
+          unconfirmed: !destructive && !readOnly && t.annotations?.destructiveHint !== false,
         });
       }
       cursor = page.nextCursor;
@@ -168,8 +206,15 @@ async function serverTools(store: Store, id: string, fresh = false): Promise<Cac
   }
 }
 
-function view(store: Store, rec: IntegrationRecord): McpServerView {
+/** The tools Seldon is offered in this mode. */
+function offered(rec: IntegrationRecord, tools: CachedTools['tools'], mode: string): CachedTools['tools'] {
+  const allowed = allowedOf(rec);
+  return tools.filter((t) => !t.destructive && (!t.unconfirmed || allowed.includes(t.name)) && (mode !== 'read' || t.readOnly));
+}
+
+function view(store: Store, rec: IntegrationRecord): ServerView {
   const cached = toolCache.get(rec.id)?.tools ?? [];
+  const allowed = allowedOf(rec);
   return {
     id: rec.id.slice(PREFIX.length),
     name: String(rec.settings.name ?? ''),
@@ -177,8 +222,9 @@ function view(store: Store, rec: IntegrationRecord): McpServerView {
     mode: (rec.settings.mode as McpServerView['mode']) ?? 'write',
     status: (rec.settings.status as McpServerView['status']) ?? 'unknown',
     error: rec.lastError,
-    toolCount: cached.filter((t) => !t.destructive).length,
+    toolCount: offered(rec, cached, 'write').length,
     withheld: cached.filter((t) => t.destructive).map((t) => t.name),
+    unconfirmed: cached.filter((t) => t.unconfirmed).map((t) => ({ name: t.name, allowed: allowed.includes(t.name) })),
     connectedAt: (rec.settings.connectedAt as string | null) ?? null,
   };
 }
@@ -211,31 +257,64 @@ async function startAuth(store: Store, id: string): Promise<string | null> {
   return provider.authorizationUrl.toString();
 }
 
-const toolName = (server: string, tool: string) => `${server}__${tool}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+/**
+ * A model-safe tool name. Sanitising and the 64-character limit can make two names
+ * the same ('food.log' and 'food_log'), so a clash gets a short hash of the original.
+ */
+function toolName(server: string, tool: string, taken: Set<string>): string {
+  let name = `${server}__${tool}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+  if (taken.has(name)) name = `${name.slice(0, 57)}_${createHash('sha256').update(`${server}/${tool}`).digest('hex').slice(0, 6)}`;
+  taken.add(name);
+  return name;
+}
 
-// Connected servers' tools join Seldon's toolbox.
+// Connected servers' tools join Seldon's toolbox. What they return is wrapped as
+// untrusted by the toolbox before the model sees it.
 registerToolSource(async (store): Promise<ExternalTool[]> => {
   const out: ExternalTool[] = [];
+  const taken = new Set<string>();
   for (const rec of records(store)) {
     const mode = (rec.settings.mode as string) ?? 'write';
     if (!rec.enabled || mode === 'off' || rec.settings.status !== 'connected') continue;
     const tools = await serverTools(store, rec.id).catch(() => []);
     const server = String(rec.settings.name ?? rec.id.slice(PREFIX.length));
-    for (const t of tools) {
-      if (t.destructive || (mode === 'read' && !t.readOnly)) continue;
+    for (const t of offered(rec, tools, mode)) {
       out.push({
-        name: toolName(slug(server), t.name),
-        description: `[${server}] ${t.description}`.slice(0, 1024),
+        name: toolName(rec.id.slice(PREFIX.length), t.name, taken),
+        description: neutralise(`[${server}] ${t.description}`).slice(0, 1024),
         schema: t.schema,
         run: async (input) => {
           const text = await callTool(store, rec.id, t.name, (input ?? {}) as Record<string, unknown>);
-          return { data: text.slice(0, 20_000), summary: `${server}: ${t.name.replaceAll('_', ' ')}` };
+          return { data: text, summary: `${server}: ${t.name.replaceAll('_', ' ')}` };
         },
       });
     }
   }
   return out;
 });
+
+/**
+ * Point OAuth's redirect at the address the person is using now. The client was
+ * registered with the old address, and an authorization server that checks
+ * redirect_uri exactly would refuse it, so a new address means a new registration
+ * and a fresh sign-in (tokens issued to the old client can't be refreshed by a new one).
+ */
+function setRedirect(store: Store, id: string, origin: string): void {
+  const redirectUrl = `${origin}/api/mcp/callback?server=${encodeURIComponent(id.slice(PREFIX.length))}`;
+  updateIntegration(store, id, (r) => {
+    if (r.settings.redirectUrl === redirectUrl) return;
+    r.settings.redirectUrl = redirectUrl;
+    const s = secretsOf(r);
+    delete s.clientInformation;
+    delete s.tokens;
+    delete s.codeVerifier;
+    delete s.state;
+    r.secrets = { mcp: JSON.stringify(s) };
+  });
+}
+
+// OAuth sends the person back to this address; it must be how they reach Terminus.
+const originOf = (c: Context) => c.req.header('origin') ?? new URL(c.req.url).origin;
 
 registerFeature({
   id: 'mcp',
@@ -247,16 +326,20 @@ registerFeature({
       const url = new URL(input.url);
       const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
       if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) throw new Invalid('MCP servers must use https (or http on this machine).');
-      // OAuth sends the person back to this address; it must be how they reach Terminus.
-      const origin = c.req.header('origin') ?? new URL(c.req.url).origin;
       const id = `${PREFIX}${slug(input.name)}`;
       const existing = getIntegration(store, id);
+      const sameUrl = existing.settings.url === url.toString();
+      // 'Notion' and 'notion!' share an id; don't let one silently replace the other.
+      if (existing.settings.url && !sameUrl && existing.settings.name !== input.name) {
+        throw new Invalid(`${String(existing.settings.name)} is already connected under a name like that. Pick another name, or disconnect it first.`);
+      }
       saveIntegration(store, {
         ...existing,
         enabled: true,
-        settings: { ...existing.settings, name: input.name, url: url.toString(), mode: existing.settings.mode ?? 'write', redirectUrl: `${origin}/api/mcp/callback?server=${encodeURIComponent(id.slice(PREFIX.length))}`, status: 'unknown' },
-        secrets: existing.settings.url === url.toString() ? existing.secrets : {},
+        settings: { ...existing.settings, name: input.name, url: url.toString(), mode: existing.settings.mode ?? 'write', status: 'unknown', ...(sameUrl ? {} : { allowed: [] }) },
+        secrets: sameUrl ? existing.secrets : {},
       });
+      setRedirect(store, id, originOf(c));
       await check(store, id);
       const needs = getIntegration(store, id).settings.status === 'needs_auth';
       const authorizeUrl = needs ? await startAuth(store, id) : null;
@@ -266,6 +349,7 @@ registerFeature({
     app.post('/api/mcp/servers/:id/auth', async (c) => {
       const id = `${PREFIX}${c.req.param('id')}`;
       if (!getIntegration(store, id).settings.url) throw new NotFound('MCP server');
+      setRedirect(store, id, originOf(c));
       return c.json({ authorizeUrl: await startAuth(store, id) });
     });
 
@@ -294,9 +378,17 @@ registerFeature({
 
     app.patch('/api/mcp/servers/:id', async (c) => {
       const id = `${PREFIX}${c.req.param('id')}`;
-      const { mode } = await read(c, z.object({ mode: z.enum(['off', 'read', 'write']) }));
+      const { mode, allow } = await read(
+        c,
+        z.object({ mode: z.enum(['off', 'read', 'write']).optional(), allow: z.object({ tool: z.string().max(200), allowed: z.boolean() }).optional() }),
+      );
       if (!getIntegration(store, id).settings.url) throw new NotFound('MCP server');
-      updateIntegration(store, id, (r) => (r.settings.mode = mode));
+      // Only a tool that isn't marked or named destructive can be allowed.
+      if (allow && !(toolCache.get(id)?.tools ?? []).some((t) => t.unconfirmed && t.name === allow.tool)) throw new Invalid('That tool can\'t be allowed.');
+      updateIntegration(store, id, (r) => {
+        if (mode) r.settings.mode = mode;
+        if (allow) r.settings.allowed = [...allowedOf(r).filter((n) => n !== allow.tool), ...(allow.allowed ? [allow.tool] : [])];
+      });
       return c.json(view(store, getIntegration(store, id)));
     });
 
@@ -309,10 +401,12 @@ registerFeature({
 
     app.delete('/api/mcp/servers/:id', (c) => {
       const id = `${PREFIX}${c.req.param('id')}`;
+      if (!getIntegration(store, id).settings.url) throw new NotFound('MCP server');
       removeIntegration(store, id);
       toolCache.delete(id);
-      // Anything syncing from this server stops with it.
-      updateIntegration(store, c.req.param('id'), (r) => (r.enabled = false));
+      // The Gravl sync reads from the Gravl server and stops with it. Other ids (gmail,
+      // travel, jobs) belong to built-in features that don't depend on any server.
+      if (id === GRAVL_SERVER && getIntegration(store, 'gravl').enabled) updateIntegration(store, 'gravl', (r) => (r.enabled = false));
       return c.json({ ok: true });
     });
   },

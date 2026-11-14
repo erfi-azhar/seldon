@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { addDays, formatValue, prettyDay, type Store } from '../store.ts';
 import { renderSnapshot } from './prompt.ts';
+import { wrapUntrusted } from './think.ts';
 import type { ToolSpec } from './types.ts';
 import type { Goal, Habit, Metric, Task } from '../../../shared/types.ts';
 
@@ -108,7 +109,12 @@ const TOOLS: ToolDef[] = [
           habits: d.habits.map(habitView),
           metrics: d.metrics.map(metricView),
           open_tasks: d.tasks.map(taskView),
-          notes: d.notes.map((n) => ({ id: n.id, title: n.title || n.body.slice(0, 60), url: n.url || undefined })),
+          // Saved links and pictures hold page text (or a model's summary of it): outside content.
+          notes: d.notes.map((n) =>
+            n.capture
+              ? { id: n.id, saved_item: wrapUntrusted('saved item', `${n.title || n.body.slice(0, 60)}${n.url ? `\nlink: ${n.url}` : ''}`, 400) }
+              : { id: n.id, title: n.title || n.body.slice(0, 60), url: n.url || undefined },
+          ),
           recent_activity: d.activity.map((a) => `${a.ts.slice(0, 10)} ${a.summary}`),
         },
         summary: `Read the ${d.sphere.name} sphere`,
@@ -375,7 +381,13 @@ const TOOLS: ToolDef[] = [
     'search',
     'Search across goals, tasks, habits, metrics, notes and journal entries by text. Call this to find something the user refers to that is not in the snapshot.',
     z.object({ query: z.string().min(1).max(200) }),
-    ({ query }, { store }) => ({ data: store.search(query, 20), summary: `Searched for “${query}”` }),
+    ({ query }, { store }) => {
+      const captured = new Set((store.db.prepare('SELECT id FROM notes WHERE capture IS NOT NULL').all() as { id: string }[]).map((r) => r.id));
+      const hits = store.search(query, 20).map((h) =>
+        h.type === 'note' && captured.has(h.id) ? { ...h, title: wrapUntrusted('saved item', h.title, 300), snippet: wrapUntrusted('saved item', h.snippet, 600) } : h,
+      );
+      return { data: hits, summary: `Searched for “${query}”` };
+    },
   ),
 
   tool(
@@ -426,20 +438,24 @@ export interface Toolbox {
 
 /** Everything the agent can use right now: built-in and feature tools, then connected servers'. */
 export async function toolbox(store: Store): Promise<Toolbox> {
-  const external = (await Promise.all(SOURCES.map((src) => src(store).catch(() => [] as ExternalTool[])))).flat();
-  external.sort((a, b) => a.name.localeCompare(b.name));
-  const byName = new Map(external.map((t) => [t.name, t]));
+  const all = (await Promise.all(SOURCES.map((src) => src(store).catch(() => [] as ExternalTool[])))).flat();
+  all.sort((a, b) => a.name.localeCompare(b.name));
+  // Model APIs reject a request whose tool names repeat, so a clash would break every turn.
+  const byName = new Map<string, ExternalTool>();
+  for (const t of all) if (!byName.has(t.name) && !TOOLS.some((b) => b.name === t.name)) byName.set(t.name, t);
+  const external = [...byName.values()];
   return {
     specs: [...TOOLS.map(specOf), ...external.map((t) => ({ name: t.name, description: t.description, schema: t.schema }))],
     run: async (name, input, ctx) => {
       const ext = byName.get(name);
       if (!ext) return runTool(name, input, ctx);
+      // Whatever a connected server sends back is outside data, and so are its error messages.
       try {
         const out = await ext.run(input, ctx);
-        return { content: typeof out.data === 'string' ? out.data : JSON.stringify(out.data), isError: false, summary: out.summary };
+        return { content: wrapUntrusted(name, typeof out.data === 'string' ? out.data : JSON.stringify(out.data), 20_000), isError: false, summary: out.summary };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return { content: `Error: ${message}`, isError: true, summary: `Couldn't run ${name.replaceAll('_', ' ')}: ${message}` };
+        return { content: `Error: ${wrapUntrusted(name, message, 2000)}`, isError: true, summary: `Couldn't run ${name.replaceAll('_', ' ')}: ${message}` };
       }
     },
   };

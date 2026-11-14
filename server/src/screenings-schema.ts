@@ -41,7 +41,8 @@ export const screeningsSchema = z.object({
         note: s(400).optional(),
         ref: num.optional(),
         refl: s(80).optional(),
-      }),
+      })
+      .refine((sl) => sl.d[1] > sl.d[0], { message: 'd must be [low, high]' }),
     )
     .max(40)
     .optional(),
@@ -61,7 +62,7 @@ export const screeningsSchema = z.object({
     )
     .max(20)
     .optional(),
-  risks: z.array(z.object({ n: s(120), h: s(400), now: num, avg: num, tgt: num, mult: num })).max(20).optional(),
+  risks: z.array(z.object({ n: s(120), h: s(400), now: num, avg: num.positive(), tgt: num, mult: num.positive() })).max(20).optional(),
   riskNote: s().optional(),
   results: z
     .array(

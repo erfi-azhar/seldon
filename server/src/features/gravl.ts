@@ -1,11 +1,12 @@
 // Gravl → Health. While Gravl is connected over MCP, Terminus regularly reads your
 // recent workouts, food log and body measurements and files them into the Health
 // panels, so everything shows in one place. Gravl's tools answer in prose, so the
-// background brain turns each answer into rows; rows are imported once each.
+// background brain turns each answer into rows. Rows are imported once each (a day's
+// body reading is updated when Gravl's changes), and rows deleted here stay deleted.
 
 import { z } from 'zod';
 import { NoBrain, think, wrapUntrusted } from '../agent/think.ts';
-import { addDays, Invalid, localDate, type Store } from '../store.ts';
+import { addDays, dateInZone, Invalid, nowIso, type Store } from '../store.ts';
 import type { Workout } from '../../../shared/types.ts';
 import { logBody, logFood, logWorkout } from './health.ts';
 import { getIntegration, updateIntegration } from './integrations.ts';
@@ -51,7 +52,8 @@ const Rows = z.object({
   ),
 });
 
-export async function syncGravl(store: Store, today = localDate()): Promise<{ food: number; workouts: number; body: number }> {
+// Today is the person's day (their browser's zone), not the server's.
+export async function syncGravl(store: Store, today = dateInZone(nowIso(), store.zone())): Promise<{ food: number; workouts: number; body: number }> {
   const server = getIntegration(store, SERVER);
   if (server.settings.status !== 'connected') throw new Invalid('Connect Gravl first (Settings → Connections).');
 

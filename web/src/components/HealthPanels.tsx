@@ -15,6 +15,12 @@ const MACROS: { key: keyof Macros & ('protein' | 'carbs' | 'fat'); label: string
   { key: 'fat', label: 'Fat', hue: 255 },
 ];
 
+// An empty box means no value. Anything else must read as a number: sent as is, NaN
+// becomes null in JSON and would quietly clear a target or drop a reading.
+const numOrNull = (s: string) => (s.trim() === '' ? null : parseNumber(s));
+const notNumbers = (...boxes: string[]) => boxes.some((s) => s.trim() !== '' && Number.isNaN(parseNumber(s)));
+const NOT_A_NUMBER = 'Enter numbers only, like 2000 or 78.5.';
+
 function Ring({ value, max, size = 132, stroke = 12, hue, children }: { value: number; max: number | null; size?: number; stroke?: number; hue: number; children: ReactNode }) {
   const r = (size - stroke) / 2;
   const C = 2 * Math.PI * r;
@@ -42,7 +48,7 @@ function Ring({ value, max, size = 132, stroke = 12, hue, children }: { value: n
 function TargetsSheet({ targets, onClose }: { targets: NutritionTargets; onClose: () => void }) {
   const [t, setT] = useState({ kcal: targets.kcal?.toString() ?? '', protein: targets.protein?.toString() ?? '', carbs: targets.carbs?.toString() ?? '', fat: targets.fat?.toString() ?? '' });
   const save = useWrite(healthWrite.targets);
-  const num = (s: string) => (s.trim() === '' ? null : parseNumber(s));
+  const bad = notNumbers(t.kcal, t.protein, t.carbs, t.fat);
   return (
     <Modal
       title="Daily targets"
@@ -50,7 +56,7 @@ function TargetsSheet({ targets, onClose }: { targets: NutritionTargets; onClose
       footer={
         <>
           <span className="hint">Leave a box empty for no target.</span>
-          <button className="btn btn-primary btn-sm" onClick={() => save.mutate({ kcal: num(t.kcal), protein: num(t.protein), carbs: num(t.carbs), fat: num(t.fat) }, { onSuccess: onClose })}>
+          <button className="btn btn-primary btn-sm" disabled={bad || save.isPending} onClick={() => save.mutate({ kcal: numOrNull(t.kcal), protein: numOrNull(t.protein), carbs: numOrNull(t.carbs), fat: numOrNull(t.fat) }, { onSuccess: onClose })}>
             Save
           </button>
         </>
@@ -70,6 +76,7 @@ function TargetsSheet({ targets, onClose }: { targets: NutritionTargets; onClose
           <input className="input num" inputMode="numeric" value={t.fat} onChange={(e) => setT({ ...t, fat: e.target.value })} />
         </Field>
       </div>
+      {bad && <p className="error-text">{NOT_A_NUMBER}</p>}
       {save.error && <p className="error-text">{save.error.message}</p>}
     </Modal>
   );
@@ -144,7 +151,19 @@ export function NutritionCard({ h }: { h: HealthState }) {
         <button type="button" className="icon-btn" aria-label="Photo of a meal" title={`Photo of a meal — ${agentName} estimates it`} onClick={() => photo.current?.click()} disabled={busy}>
           <Camera size={17} />
         </button>
-        <input ref={photo} type="file" accept="image/*" capture="environment" hidden onChange={(e) => e.target.files?.[0] && describePhoto.mutate(e.target.files[0], { onSuccess: () => setText(''), onError: (err) => toast({ message: err.message }) })} />
+        <input
+          ref={photo}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            // Cleared so picking the same photo again (after a failure) fires another change.
+            e.target.value = '';
+            if (f) describePhoto.mutate(f, { onSuccess: () => setText(''), onError: (err) => toast({ message: err.message }) });
+          }}
+        />
         <button type="submit" className="btn btn-primary btn-sm" disabled={!text.trim() || busy}>
           {busy ? <Spinner /> : 'Log'}
         </button>
@@ -200,6 +219,7 @@ export function NutritionCard({ h }: { h: HealthState }) {
 function ManualFood({ onClose }: { onClose: () => void }) {
   const [f, setF] = useState({ name: '', amount: '', kcal: '', protein: '', carbs: '', fat: '' });
   const save = useWrite(() => healthWrite.post('/food', { items: [{ name: f.name, amount: f.amount, kcal: parseNumber(f.kcal), protein: parseNumber(f.protein || '0'), carbs: parseNumber(f.carbs || '0'), fat: parseNumber(f.fat || '0') }] }));
+  const bad = notNumbers(f.kcal, f.protein, f.carbs, f.fat);
   return (
     <Modal
       title="Add food"
@@ -207,7 +227,7 @@ function ManualFood({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <span />
-          <button className="btn btn-primary btn-sm" disabled={!f.name.trim() || f.kcal === '' || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+          <button className="btn btn-primary btn-sm" disabled={!f.name.trim() || f.kcal.trim() === '' || bad || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
             Add
           </button>
         </>
@@ -229,6 +249,7 @@ function ManualFood({ onClose }: { onClose: () => void }) {
           </label>
         ))}
       </div>
+      {bad && <p className="error-text">{NOT_A_NUMBER}</p>}
       {save.error && <p className="error-text">{save.error.message}</p>}
     </Modal>
   );
@@ -266,12 +287,13 @@ function WorkoutSheet({ onClose }: { onClose: () => void }) {
     healthWrite.post('/workouts', {
       name: w.name,
       type: w.type,
-      duration_min: w.duration ? parseNumber(w.duration) : null,
-      distance_km: w.distance ? parseNumber(w.distance) : null,
+      duration_min: numOrNull(w.duration),
+      distance_km: numOrNull(w.distance),
       exercises: parseExercises(w.exercises),
       notes: w.notes,
     }),
   );
+  const bad = notNumbers(w.duration, w.distance);
   return (
     <Modal
       title="Log a workout"
@@ -279,7 +301,7 @@ function WorkoutSheet({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <span />
-          <button className="btn btn-primary btn-sm" disabled={!w.name.trim() || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+          <button className="btn btn-primary btn-sm" disabled={!w.name.trim() || bad || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
             Log workout
           </button>
         </>
@@ -310,6 +332,7 @@ function WorkoutSheet({ onClose }: { onClose: () => void }) {
           <textarea className="textarea" value={w.exercises} onChange={(e) => setW({ ...w, exercises: e.target.value })} placeholder={'Bench press 3x8 70\nPull-ups 3x10'} />
         </Field>
       )}
+      {bad && <p className="error-text">{NOT_A_NUMBER}</p>}
       {save.error && <p className="error-text">{save.error.message}</p>}
     </Modal>
   );
@@ -370,8 +393,8 @@ export function TrainingCard({ h }: { h: HealthState }) {
 
 function BodySheet({ onClose }: { onClose: () => void }) {
   const [b, setB] = useState({ weight_kg: '', body_fat_pct: '', muscle_kg: '', visceral_fat: '' });
-  const n = (s: string) => (s.trim() === '' ? null : parseNumber(s));
-  const save = useWrite(() => healthWrite.post('/body', { weight_kg: n(b.weight_kg), body_fat_pct: n(b.body_fat_pct), muscle_kg: n(b.muscle_kg), visceral_fat: n(b.visceral_fat) }));
+  const save = useWrite(() => healthWrite.post('/body', { weight_kg: numOrNull(b.weight_kg), body_fat_pct: numOrNull(b.body_fat_pct), muscle_kg: numOrNull(b.muscle_kg), visceral_fat: numOrNull(b.visceral_fat) }));
+  const bad = notNumbers(b.weight_kg, b.body_fat_pct, b.muscle_kg, b.visceral_fat);
   return (
     <Modal
       title="Body composition"
@@ -379,7 +402,7 @@ function BodySheet({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <span className="hint">Weight also updates your Weight metric.</span>
-          <button className="btn btn-primary btn-sm" disabled={save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+          <button className="btn btn-primary btn-sm" disabled={bad || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
             Save reading
           </button>
         </>
@@ -399,6 +422,7 @@ function BodySheet({ onClose }: { onClose: () => void }) {
           <input className="input num" inputMode="decimal" value={b.visceral_fat} onChange={(e) => setB({ ...b, visceral_fat: e.target.value })} />
         </Field>
       </div>
+      {bad && <p className="error-text">{NOT_A_NUMBER}</p>}
       {save.error && <p className="error-text">{save.error.message}</p>}
     </Modal>
   );
@@ -446,7 +470,18 @@ export function BodyCard({ h }: { h: HealthState }) {
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding(true)}>
             <Plus size={13} /> Add
           </button>
-          <input ref={file} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && scan.mutate(e.target.files[0], { onSuccess: () => toast({ message: 'Reading added from the photo.' }), onError: (err) => toast({ message: err.message }) })} />
+          <input
+            ref={file}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              // Cleared so picking the same photo again (after a failure) fires another change.
+              e.target.value = '';
+              if (f) scan.mutate(f, { onSuccess: () => toast({ message: 'Reading added from the photo.' }), onError: (err) => toast({ message: err.message }) });
+            }}
+          />
         </div>
       </div>
       {!last ? (

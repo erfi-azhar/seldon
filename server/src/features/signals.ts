@@ -1,6 +1,7 @@
 // The signals inbox: one place where integrations put things that may need you.
 
 import { z } from 'zod';
+import { wrapUntrusted } from '../agent/think.ts';
 import { tool } from '../agent/tools.ts';
 import { read } from '../http.ts';
 import { Invalid, newId, nowIso, NotFound, type Store } from '../store.ts';
@@ -103,6 +104,12 @@ export function listSignals(store: Store, filter: { status?: 'open' | 'all'; sou
 export function setSignalStatus(store: Store, id: string, status: SignalStatus): Signal {
   getSignal(store, id);
   store.db.prepare('UPDATE signals SET status = ? WHERE id = ?').run(status, id);
+  // Handling a job alert means you have seen that role: it stops being "new" in Work.
+  const row = store.db.prepare('SELECT source, data FROM signals WHERE id = ?').get(id) as { source: string; data: string };
+  if (row.source === 'jobs' && status !== 'new') {
+    const postingId = (JSON.parse(row.data || '{}') as { postingId?: string }).postingId;
+    if (postingId) store.db.prepare("UPDATE job_postings SET status = 'seen' WHERE id = ? AND status = 'new'").run(postingId);
+  }
   return getSignal(store, id);
 }
 
@@ -122,18 +129,20 @@ registerFeature({
       'list_signals',
       "Read the user's inbox of signals: important emails, new job openings, trip alerts and other things integrations surfaced, each with suggested follow-ups. Call this when they ask what needs their attention, about their email, or when planning the day.",
       z.object({ source: z.string().optional().describe('Only one source, e.g. "gmail" or "jobs"') }),
-      ({ source }, { store }) => ({
-        data: listSignals(store, { source, limit: 30 }).map((s) => ({
-          source: s.source,
-          kind: s.kind,
-          title: s.title,
-          detail: s.body,
-          priority: ['low', 'normal', 'important', 'urgent'][s.priority],
-          when: s.occurredAt,
-          suggestions: s.actions.map((a) => a.label),
-        })),
-        summary: `Checked the inbox${source ? ` (${source})` : ''}`,
-      }),
+      ({ source }, { store }) => {
+        const signals = listSignals(store, { source, limit: 30 });
+        // Titles and details come from mail, job boards and bookings, or a model's reading of
+        // them: the chat agent sees them fenced as untrusted, with only our own fields outside.
+        const data = signals
+          .map((s, i) =>
+            [
+              `${i + 1}. ${JSON.stringify({ source: s.source, kind: s.kind, priority: ['low', 'normal', 'important', 'urgent'][s.priority], when: s.occurredAt, suggestions: s.actions.map((a) => a.label) })}`,
+              wrapUntrusted(`${s.source} signal`, `title: ${s.title}\ndetail: ${s.body}`, 4400),
+            ].join('\n'),
+          )
+          .join('\n\n');
+        return { data: data || 'No open signals.', summary: `Checked the inbox${source ? ` (${source})` : ''}` };
+      },
     ),
   ],
   routes: (app, { store }) => {
@@ -152,7 +161,10 @@ registerFeature({
       if (!action) throw new NotFound('Action');
       let message: string;
       if (action.type === 'task') {
-        const t = store.createTask({ title: action.title, dueDate: action.dueDate ?? null, sphereId: action.sphereId ?? signal.sphereId, notes: action.notes ?? (signal.url ? `From: ${signal.url}` : '') });
+        // The action keeps its own copy of the sphere, which outlives the sphere being deleted.
+        const sphereExists = (id: string | null | undefined) => !!id && !!store.db.prepare('SELECT 1 AS x FROM spheres WHERE id = ?').get(id);
+        const sphereId = [action.sphereId, signal.sphereId].find(sphereExists) ?? null;
+        const t = store.createTask({ title: action.title, dueDate: action.dueDate ?? null, sphereId, notes: action.notes ?? (signal.url ? `From: ${signal.url}` : '') });
         message = `Added task: ${t.title}`;
       } else if (action.type === 'link') {
         message = 'Opened';

@@ -8,7 +8,8 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { z } from 'zod';
-import { NoBrain, think, wrapUntrusted } from '../agent/think.ts';
+import { Declined, NoBrain, think, wrapUntrusted } from '../agent/think.ts';
+import { ProviderError } from '../agent/types.ts';
 import { read } from '../http.ts';
 import { Invalid, localDate, type Store } from '../store.ts';
 import type { SignalAction } from '../../../shared/types.ts';
@@ -23,21 +24,33 @@ const MAX_PER_RUN = 40;
 
 // ── Where mail comes from ───────────────────────────────────────────────────
 
+/** A message as Gmail gives it: who to answer can differ from who sent it. */
+export type GmailMessage = MailMessage & { replyTo?: string };
+
 export interface MailSource {
   /** Check the credentials work. */
   verify(): Promise<void>;
-  /** Inbox messages after `sinceUid`, or from the last `lookbackDays` on a first run. Newest last. */
-  fetchNew(sinceUid: number | null, lookbackDays: number, limit: number): Promise<{ messages: MailMessage[]; uidValidity: string; maxUid: number }>;
+  /**
+   * Inbox messages after `sinceUid`, or from the last `lookbackDays` on a first run: the oldest
+   * `limit` of them, oldest first. `maxUid` is where the next run carries on from.
+   */
+  fetchNew(sinceUid: number | null, lookbackDays: number, limit: number, signal?: AbortSignal): Promise<{ messages: GmailMessage[]; uidValidity: string; maxUid: number }>;
   /** Store an RFC 822 message in the Drafts folder. */
   saveDraft(raw: string): Promise<void>;
 }
 
-function imapSource(email: string, password: string): MailSource {
-  const open = async (): Promise<ImapFlow> => {
-    const client = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user: email, pass: password }, logger: false });
+type ImapOptions = ConstructorParameters<typeof ImapFlow>[0];
+
+export function imapSource(email: string, password: string, newClient: (opts: ImapOptions) => ImapFlow = (opts) => new ImapFlow(opts)): MailSource {
+  const open = async (signal?: AbortSignal): Promise<ImapFlow> => {
+    signal?.throwIfAborted();
+    const client = newClient({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user: email, pass: password }, logger: false });
+    // A stalled connection would otherwise hold the job past the scheduler's limit.
+    signal?.addEventListener('abort', () => client.close(), { once: true });
     try {
       await client.connect();
     } catch (err) {
+      signal?.throwIfAborted();
       const msg = err instanceof Error ? err.message : String(err);
       if (/auth|credential|login/i.test(msg)) throw new Invalid('Gmail did not accept that address and app password.');
       throw new Error(`Could not reach Gmail: ${msg}`);
@@ -49,8 +62,8 @@ function imapSource(email: string, password: string): MailSource {
       const client = await open();
       await client.logout();
     },
-    async fetchNew(sinceUid, lookbackDays, limit) {
-      const client = await open();
+    async fetchNew(sinceUid, lookbackDays, limit, signal) {
+      const client = await open(signal);
       try {
         const box = await client.mailboxOpen('INBOX', { readOnly: true });
         const uidValidity = String(box.uidValidity);
@@ -59,18 +72,23 @@ function imapSource(email: string, password: string): MailSource {
             ? await client.search({ uid: `${sinceUid + 1}:*` }, { uid: true })
             : await client.search({ since: new Date(Date.now() - lookbackDays * 86_400_000) }, { uid: true })) || []) as number[];
         const wanted = uids.filter((u) => sinceUid === null || u > sinceUid).sort((a, b) => a - b);
-        const maxUid = wanted.length ? wanted[wanted.length - 1]! : (sinceUid ?? 0);
-        const take = wanted.slice(-limit);
-        const messages: MailMessage[] = [];
+        // Take the oldest and carry on from the last one read, so a backlog drains over a few
+        // runs instead of being skipped. With nothing to read on a first run, start from the
+        // newest message in the inbox, not from UID 1.
+        const take = wanted.slice(0, limit);
+        const maxUid = take.length ? take[take.length - 1]! : (sinceUid ?? Number(box.uidNext) - 1);
+        const messages: GmailMessage[] = [];
         if (take.length) {
           for await (const m of client.fetch(take.join(','), { uid: true, envelope: true, labels: true, internalDate: true, source: { maxLength: 200_000 } }, { uid: true })) {
             const parsed = m.source ? await simpleParser(m.source) : null;
             const from = m.envelope?.from?.[0];
+            const replyTo = m.envelope?.replyTo?.[0]?.address;
             const labels = [...(m.labels ?? [])].map(String);
             messages.push({
               uid: m.uid,
               messageId: m.envelope?.messageId ?? `<uid-${m.uid}@${uidValidity}>`,
               from: { name: from?.name ?? '', address: from?.address ?? '' },
+              ...(replyTo ? { replyTo } : {}),
               to: (m.envelope?.to ?? []).map((t) => t.address).filter(Boolean).join(', '),
               subject: m.envelope?.subject ?? '(no subject)',
               date: new Date(m.internalDate ?? m.envelope?.date ?? Date.now()).toISOString(),
@@ -80,6 +98,7 @@ function imapSource(email: string, password: string): MailSource {
             });
           }
         }
+        signal?.throwIfAborted();
         return { messages, uidValidity, maxUid };
       } finally {
         await client.logout().catch(() => undefined);
@@ -139,12 +158,18 @@ function describe(m: MailMessage): string {
   ].join('\n');
 }
 
-async function triage(store: Store, messages: MailMessage[]): Promise<Map<number, Verdict>> {
+/** The model would not handle this mail (a refusal, an answer that fails the schema, a 400), as
+ * opposed to the model being out of reach, the key being wrong or the server busy. */
+function aboutTheMail(err: unknown, signal?: AbortSignal): boolean {
+  // A dropped connection also has no status, so only a Declined answer or a 4xx about the request counts.
+  return !signal?.aborted && (err instanceof Declined || (err instanceof ProviderError && (err.status === 400 || err.status === 413 || err.status === 422)));
+}
+
+async function triage(store: Store, messages: MailMessage[], signal?: AbortSignal): Promise<Map<number, Verdict>> {
   const profile = store.getProfile();
   const spheres = store.listSpheres().map((s) => s.name);
   const out = new Map<number, Verdict>();
-  for (let i = 0; i < messages.length; i += BATCH) {
-    const batch = messages.slice(i, i + BATCH);
+  const ask = async (batch: MailMessage[]): Promise<void> => {
     const result = await think({
       store,
       task: `Triage these emails for ${profile.userName || 'the user'}. Today is ${localDate()}.
@@ -153,9 +178,33 @@ For each email return: uid; important; priority 0-3 (3 = urgent today); category
 Reply as {"messages": [ ... one object per email ... ]}.`,
       input: batch.map((m) => wrapUntrusted('email', describe(m), 2600)).join('\n\n'),
       schema: Verdicts,
+      signal,
     });
     for (const v of result.messages) if (batch.some((m) => m.uid === v.uid)) out.set(v.uid, v);
+  };
+  let failure: unknown = null;
+  for (let i = 0; i < messages.length; i += BATCH) {
+    const batch = messages.slice(i, i + BATCH);
+    try {
+      await ask(batch);
+    } catch (err) {
+      if (!aboutTheMail(err, signal)) throw err;
+      // One email the model will not handle must not hold up the inbox: try each alone, and
+      // leave the ones that still fail to Gmail's own label (checkMail falls back per message).
+      if (batch.length === 1) failure = err;
+      else
+        for (const m of batch) {
+          try {
+            await ask([m]);
+          } catch (one) {
+            if (!aboutTheMail(one, signal)) throw one;
+            failure = one;
+          }
+        }
+    }
   }
+  // When nothing at all got through, the model is the likelier problem: try the run again later.
+  if (failure && out.size === 0) throw failure;
   return out;
 }
 
@@ -179,7 +228,7 @@ function gmailLink(email: string, messageId: string): string {
   return `https://mail.google.com/mail/u/${encodeURIComponent(email)}/#search/rfc822msgid%3A${encodeURIComponent(messageId.replace(/^<|>$/g, ''))}`;
 }
 
-export async function checkMail(store: Store): Promise<{ checked: number; surfaced: number }> {
+export async function checkMail(store: Store, signal?: AbortSignal): Promise<{ checked: number; surfaced: number }> {
   const rec = getIntegration(store, ID);
   const email = String(rec.settings.email ?? '');
   const password = rec.secrets.appPassword;
@@ -189,7 +238,7 @@ export async function checkMail(store: Store): Promise<{ checked: number; surfac
   const sameBox = rec.state.uidValidity !== undefined;
   const since = sameBox ? Number(rec.state.lastUid ?? 0) : null;
   const src = sourceFor(email, password);
-  const { messages, uidValidity, maxUid } = await src.fetchNew(since, lookback, MAX_PER_RUN);
+  const { messages, uidValidity, maxUid } = await src.fetchNew(since, lookback, MAX_PER_RUN, signal);
   // If Gmail renumbered the inbox, start over from the lookback window next time.
   const reset = sameBox && rec.state.uidValidity !== uidValidity;
 
@@ -197,13 +246,14 @@ export async function checkMail(store: Store): Promise<{ checked: number; surfac
   let verdicts: Map<number, Verdict>;
   let usedBrain = true;
   try {
-    verdicts = fresh.length ? await triage(store, fresh) : new Map();
+    verdicts = fresh.length ? await triage(store, fresh, signal) : new Map();
   } catch (err) {
     if (!(err instanceof NoBrain)) throw err;
     usedBrain = false;
     verdicts = new Map(fresh.map((m) => [m.uid, gmailOnly(m)]));
   }
 
+  signal?.throwIfAborted();
   const spheres = store.listSpheres();
   let surfaced = 0;
   for (const m of fresh) {
@@ -221,7 +271,7 @@ export async function checkMail(store: Store): Promise<{ checked: number; surfac
       actions.push({
         type: 'reply',
         label: 'Save reply as a Gmail draft',
-        to: m.from.address,
+        to: m.replyTo || m.from.address,
         subject: /^re:/i.test(m.subject) ? m.subject : `Re: ${m.subject}`,
         body: v.follow_up.reply,
         inReplyTo: m.messageId,
@@ -255,6 +305,8 @@ export async function checkMail(store: Store): Promise<{ checked: number; surfac
   }
 
   updateIntegration(store, ID, (r) => {
+    // The account was switched while this ran; this cursor belongs to the old inbox.
+    if (r.settings.email !== email) return;
     r.state.uidValidity = uidValidity;
     r.state.lastUid = reset ? undefined : maxUid;
     if (reset) delete r.state.uidValidity;
@@ -287,7 +339,7 @@ export function buildDraft(from: string, action: Extract<SignalAction, { type: '
 registerFeature({
   id: ID,
   integration: { configured: (rec) => !!rec.settings.email && !!rec.secrets.appPassword },
-  jobs: [{ id: ID, everyMs: 10 * 60_000, run: async (store) => void (await checkMail(store)) }],
+  jobs: [{ id: ID, everyMs: 10 * 60_000, run: async (store, signal) => void (await checkMail(store, signal)) }],
   actions: {
     reply: async (store, action) => {
       if (action.type !== 'reply') throw new Invalid('Not a reply');

@@ -90,7 +90,9 @@ export async function chat(req: ChatRequest): Promise<string> {
         emit({ type: 'tool_start', id: call.id, name: call.name, input: call.input });
         const before = agent.trail.length;
         const run = await tools.run(call.name, call.input, { store: agent, today: context.date, signal: req.signal });
-        const activityId = agent.trail.length > before ? agent.trail[agent.trail.length - 1]! : null;
+        // A tool can log several rows (one per food, a reading plus its weight); the chip's
+        // Undo has to reverse the whole call, not just the last of them.
+        const activityId = agent.group(agent.trail.slice(before), run.summary);
         results.push({ toolCallId: call.id, name: call.name, content: run.content, isError: run.isError, summary: run.summary, activityId });
         emit({
           type: 'tool_end',

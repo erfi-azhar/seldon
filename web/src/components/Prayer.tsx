@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Check, Clock, LocateFixed, MapPin, MoonStar, Pencil, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { PRAYERS, type FaithState, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
+import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
 import { cx, parseDay, plural, todayStr } from '../lib.ts';
 import { Field, Modal } from './ui.tsx';
@@ -32,6 +32,13 @@ export function untilLabel(iso: string, now: number): string {
   const mins = Math.max(0, Math.round((Date.parse(iso) - now) / 60_000));
   if (mins < 60) return `${mins}m`;
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+/** The day the current prayer belongs to: between midnight and Fajr it is yesterday's Isha. */
+export function currentDay(faith: FaithState): PrayerDay | undefined {
+  const cur = faith.current;
+  if (!cur || !faith.today) return undefined;
+  return cur.prayer === 'isha' && cur.endsAt === faith.today.times.fajr ? faith.week.at(-2) : faith.today;
 }
 
 /** Re-render every half minute so countdowns move. */
@@ -186,6 +193,8 @@ export function PrayerCard() {
   const travelling = faith.configured && tz !== deviceTz();
   const owedTotal = PRAYERS.reduce((n, p) => n + faith.owed[p], 0);
   const today = todayStr();
+  const curDay = currentDay(faith);
+  const lastNight = curDay && curDay !== faith.today ? curDay : undefined;
 
   return (
     <>
@@ -225,8 +234,16 @@ export function PrayerCard() {
               </p>
             )}
             <ul className="prayer-list">
+              {lastNight && faith.current && (
+                <li className="prayer-row is-current">
+                  <span className="prayer-name">{NAME.isha}</span>
+                  <span className="prayer-time num">{hhmm(lastNight.times.isha, tz)}</span>
+                  <span className="prayer-when">last night · ends in {untilLabel(faith.current.endsAt, now)}</span>
+                  <StatusButtons date={lastNight.date} prayer="isha" status={lastNight.log.isha} />
+                </li>
+              )}
               {PRAYERS.map((p) => {
-                const isCurrent = faith.current?.prayer === p && !(p === 'isha' && Date.parse(faith.today!.times.isha) > now);
+                const isCurrent = faith.current?.prayer === p && curDay === faith.today;
                 const isNext = faith.next?.prayer === p && Date.parse(faith.next.at) > now && Date.parse(faith.next.at) - now < 18 * 3_600_000 && faith.next.at === faith.today!.times[p];
                 const started = Date.parse(faith.today!.times[p]) <= now;
                 return (
@@ -336,7 +353,7 @@ export function NextPrayerPill() {
   if (!faith?.configured || !faith.today) return null;
   const tz = faith.settings.timezone;
   const cur = faith.current;
-  const unprayed = cur && !faith.today.log[cur.prayer];
+  const unprayed = cur && !currentDay(faith)?.log[cur.prayer];
   const label = cur && unprayed ? `${NAME[cur.prayer]} · ends in ${untilLabel(cur.endsAt, now)}` : faith.next ? `${NAME[faith.next.prayer]} at ${hhmm(faith.next.at, tz)} · in ${untilLabel(faith.next.at, now)}` : null;
   if (!label) return null;
   return (
