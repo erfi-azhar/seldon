@@ -377,7 +377,9 @@ function NoteForm({ note, sphereId, onClose }: { note: Note | null; sphereId?: s
               </button>
             )}
           </div>
-          <button className="btn btn-primary btn-sm" disabled={empty || save.isPending}
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={empty || save.isPending}
             onClick={() => {
               const payload = edits();
               if (Object.keys(payload).length === 0) onClose();

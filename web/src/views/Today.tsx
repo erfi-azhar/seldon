@@ -31,21 +31,54 @@ function SphereStrip({ overview }: { overview: Overview }) {
   );
 }
 
-// Text typed into a day's journal that the server has not confirmed yet. Outlives the
-// component, so leaving Today with a failed save doesn't throw the words away.
-const unsaved = new Map<string, string>();
+// Words typed into a day's journal that the server has not confirmed yet, kept in this
+// browser so a failed save, a reload or a closed tab doesn't lose them. `base` is the
+// entry they were typed over: if the server's entry has changed some other way since,
+// the leftover is dropped rather than written over it.
+interface Unsaved {
+  body: string;
+  base: string;
+}
+const unsavedKey = (date: string) => `terminus:journal:${date}`;
+
+function readUnsaved(date: string): Unsaved | null {
+  try {
+    const raw = localStorage.getItem(unsavedKey(date));
+    return raw ? (JSON.parse(raw) as Unsaved) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeUnsaved(date: string, value: Unsaved | null): void {
+  try {
+    if (value) localStorage.setItem(unsavedKey(date), JSON.stringify(value));
+    else localStorage.removeItem(unsavedKey(date));
+  } catch {
+    // Storage is off (private window): the words are kept only while the page is open.
+  }
+}
 
 function Journal({ date, initial }: { date: string; initial: string }) {
   const qc = useQueryClient();
-  const [text, setText] = useState(() => unsaved.get(date) ?? initial);
+  const [restored] = useState(() => {
+    const left = readUnsaved(date);
+    if (left && left.base === initial && left.body !== initial) return left.body;
+    if (left) writeUnsaved(date, null);
+    return null;
+  });
+  const [text, setText] = useState(restored ?? initial);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
-  const dirty = useRef(unsaved.has(date));
+  const dirty = useRef(restored !== null);
   const inFlight = useRef(false);
+  // The entry as the server last had it.
+  const server = useRef(initial);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef(text);
   latest.current = text;
   const confirmed = (body: string) => {
-    if (unsaved.get(date) === body) unsaved.delete(date);
+    server.current = body;
+    if (readUnsaved(date)?.body === body) writeUnsaved(date, null);
   };
   const save = useWrite(async (body: string) => {
     inFlight.current = true;
@@ -61,7 +94,9 @@ function Journal({ date, initial }: { date: string; initial: string }) {
   // Pick up changes made elsewhere (the agent writing an entry) unless mid-edit. While a
   // save is out, an overview fetched before it landed would bring back the older text.
   useEffect(() => {
-    if (!dirty.current && !inFlight.current) setText(initial);
+    if (dirty.current || inFlight.current) return;
+    server.current = initial;
+    setText(initial);
   }, [initial]);
 
   const flush = () => {
@@ -86,7 +121,8 @@ function Journal({ date, initial }: { date: string; initial: string }) {
   };
 
   // Leaving Today, hiding the tab or closing it: send what is left in a request that
-  // outlives the page (keepalive caps the body at 64 KB, so long entries go normally).
+  // outlives the page (keepalive caps the body at 64 KB, so long entries go normally). If
+  // it is lost on the way, the copy kept in this browser is saved next time.
   const sendNow = () => {
     clearTimeout(timer.current);
     if (!dirty.current) return;
@@ -114,7 +150,7 @@ function Journal({ date, initial }: { date: string; initial: string }) {
   };
 
   useEffect(() => {
-    // Words left over from a save that failed before: try them again.
+    // Words left over from a save that never landed: try them again.
     if (dirty.current) flush();
     const onHide = () => document.visibilityState === 'hidden' && sendNow();
     window.addEventListener('pagehide', sendNow);
@@ -139,7 +175,7 @@ function Journal({ date, initial }: { date: string; initial: string }) {
         aria-label="Today's journal"
         onChange={(e) => {
           setText(e.target.value);
-          unsaved.set(date, e.target.value);
+          writeUnsaved(date, { body: e.target.value, base: server.current });
           dirty.current = true;
           if (status !== 'failed') setStatus('idle');
           clearTimeout(timer.current);

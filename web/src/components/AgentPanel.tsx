@@ -202,8 +202,11 @@ export function AgentPanel({ chat, settings, onClose }: { chat: AgentChat; setti
                   <span className="faint" style={{ fontSize: 12 }}>
                     {timeAgo(c.updatedAt)}
                   </span>
-                  <button className="icon-btn icon-btn-sm" aria-label={`Delete conversation: ${c.title}`} onClick={() => {
-                      // Deleting the open conversation: let go of it, or every later message would go to it.
+                  <button
+                    className="icon-btn icon-btn-sm"
+                    aria-label={`Delete conversation: ${c.title}`}
+                    onClick={() => {
+                      // The open one: let go of it, or every later message would go to it.
                       if (c.id === chat.conversationId) chat.reset();
                       removeConversation.mutate(c.id);
                     }}

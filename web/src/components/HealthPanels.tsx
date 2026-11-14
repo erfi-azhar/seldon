@@ -4,7 +4,7 @@ import { Activity, Bike, Camera, Dumbbell, Footprints, Pencil, Plus, ScanLine, T
 import { useRef, useState, type ReactNode } from 'react';
 import type { HealthState, Macros, Meal, NutritionTargets, Workout } from '../../../shared/types.ts';
 import { healthWrite, postForm, useHealth, useWrite } from '../api.ts';
-import { cx, formatNumber, parseDay, shortDay } from '../lib.ts';
+import { cx, formatNumber, parseDay, parseNumber, shortDay } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { Field, Modal, Spinner } from './ui.tsx';
 
@@ -42,7 +42,7 @@ function Ring({ value, max, size = 132, stroke = 12, hue, children }: { value: n
 function TargetsSheet({ targets, onClose }: { targets: NutritionTargets; onClose: () => void }) {
   const [t, setT] = useState({ kcal: targets.kcal?.toString() ?? '', protein: targets.protein?.toString() ?? '', carbs: targets.carbs?.toString() ?? '', fat: targets.fat?.toString() ?? '' });
   const save = useWrite(healthWrite.targets);
-  const num = (s: string) => (s.trim() === '' ? null : Number(s));
+  const num = (s: string) => (s.trim() === '' ? null : parseNumber(s));
   return (
     <Modal
       title="Daily targets"
@@ -199,7 +199,7 @@ export function NutritionCard({ h }: { h: HealthState }) {
 
 function ManualFood({ onClose }: { onClose: () => void }) {
   const [f, setF] = useState({ name: '', amount: '', kcal: '', protein: '', carbs: '', fat: '' });
-  const save = useWrite(() => healthWrite.post('/food', { items: [{ name: f.name, amount: f.amount, kcal: Number(f.kcal), protein: Number(f.protein || 0), carbs: Number(f.carbs || 0), fat: Number(f.fat || 0) }] }));
+  const save = useWrite(() => healthWrite.post('/food', { items: [{ name: f.name, amount: f.amount, kcal: parseNumber(f.kcal), protein: parseNumber(f.protein || '0'), carbs: parseNumber(f.carbs || '0'), fat: parseNumber(f.fat || '0') }] }));
   return (
     <Modal
       title="Add food"
@@ -266,8 +266,8 @@ function WorkoutSheet({ onClose }: { onClose: () => void }) {
     healthWrite.post('/workouts', {
       name: w.name,
       type: w.type,
-      duration_min: w.duration ? Number(w.duration) : null,
-      distance_km: w.distance ? Number(w.distance) : null,
+      duration_min: w.duration ? parseNumber(w.duration) : null,
+      distance_km: w.distance ? parseNumber(w.distance) : null,
       exercises: parseExercises(w.exercises),
       notes: w.notes,
     }),
@@ -370,7 +370,7 @@ export function TrainingCard({ h }: { h: HealthState }) {
 
 function BodySheet({ onClose }: { onClose: () => void }) {
   const [b, setB] = useState({ weight_kg: '', body_fat_pct: '', muscle_kg: '', visceral_fat: '' });
-  const n = (s: string) => (s.trim() === '' ? null : Number(s));
+  const n = (s: string) => (s.trim() === '' ? null : parseNumber(s));
   const save = useWrite(() => healthWrite.post('/body', { weight_kg: n(b.weight_kg), body_fat_pct: n(b.body_fat_pct), muscle_kg: n(b.muscle_kg), visceral_fat: n(b.visceral_fat) }));
   return (
     <Modal

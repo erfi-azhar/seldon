@@ -7,7 +7,7 @@ import { BedDouble, Briefcase, CalendarDays, Camera, ChevronDown, Clock, Hotel, 
 import { useRef, useState, type ReactNode } from 'react';
 import type { ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
-import { cx, daysFrom, formatNumber, parseDay, plural, shortDay, todayStr } from '../lib.ts';
+import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { untilLabel, useNow } from './Prayer.tsx';
 import { Check, Field, Modal, Seg, Spinner } from './ui.tsx';
@@ -74,7 +74,7 @@ function LoyaltySheet({ account, onClose }: { account: LoyaltyAccount | null; on
   });
   const save = useWrite((b: object) => travelWrite.put('/loyalty', b));
   const remove = useWrite((id: string) => travelWrite.del(`/loyalty/${id}`));
-  const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(/,/g, '')));
+  const num = (s: string) => (s.trim() === '' ? null : parseNumber(s));
   const name = program === 'other' ? custom : program;
   const tiers = TIERS[program];
   const defaults: Record<string, string> = { KrisFlyer: 'elite miles to next tier', 'Marriott Bonvoy': 'nights this year' };

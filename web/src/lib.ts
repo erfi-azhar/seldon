@@ -71,6 +71,7 @@ export function formatNumber(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: Math.abs(n) < 10 ? 2 : 1 });
 }
 
+// This browser's decimal separator.
 const DECIMAL = (1.5).toLocaleString().replace(/\d/g, '') || '.';
 
 /**
@@ -94,7 +95,6 @@ export function parseNumber(raw: string): number {
   }
   const [int, frac, extra] = decimal ? s.split(decimal) : [s];
   if (extra !== undefined) return NaN;
-  if (frac !== undefined && /[.,]/.test(frac)) return NaN;
   // Anything left is grouping, and groups are three digits.
   const groups = int!.split(/[.,]/);
   if (groups.slice(1).some((g) => g.length !== 3)) return NaN;

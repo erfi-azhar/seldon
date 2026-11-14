@@ -51,12 +51,15 @@ async function fail(res: Response): Promise<never> {
   throw new ApiError(message, res.status, code);
 }
 
+const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`/api${path}`, {
       method,
-      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      // The server uses the browser's zone for "done today" and quiet days.
+      headers: { 'x-timezone': ZONE, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'same-origin',
     });
@@ -225,7 +228,7 @@ export const faithWrite = {
 export const useHealth = () => useQuery({ queryKey: ['health', todayStr()], queryFn: () => api<HealthState>('GET', withDate('/health')) });
 
 export async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`/api${withDate(path)}`, { method: 'POST', body: form, credentials: 'same-origin' });
+  const res = await fetch(`/api${withDate(path)}`, { method: 'POST', body: form, headers: { 'x-timezone': ZONE }, credentials: 'same-origin' });
   if (!res.ok) return fail(res);
   return (await res.json()) as T;
 }
