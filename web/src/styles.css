@@ -5349,6 +5349,29 @@ textarea.title-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.jobs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 20px 10px;
+}
+.jobs-filters .chip {
+  border: 1px solid transparent;
+}
+.jobs-filter-n {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.job.is-highlight {
+  box-shadow: inset 3px 0 0 var(--sphere-ink);
+  background: linear-gradient(90deg, var(--sphere-soft), transparent 60%);
+}
+.job-star {
+  display: inline-flex;
+  vertical-align: -1px;
+  margin-right: 5px;
+  color: var(--sphere-ink);
+}
 .jobs-companies {
   display: flex;
   flex-direction: column;
