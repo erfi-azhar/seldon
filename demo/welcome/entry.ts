@@ -86,6 +86,7 @@ function phase(p: Phase) {
   };
   setVaultSun(sun, clock);
   root.dataset.theme = p === 'dawn' || p === 'day' ? 'light' : 'dark';
+  root.dataset.phase = p;
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-phase-pick]')) b.setAttribute('aria-pressed', String(b.dataset.phasePick === p));
   try {
     localStorage.setItem('vault-phase', p);

@@ -33,6 +33,12 @@
     color-scheme: dark;
   }
 
+  /* Dusk: blue-grey, as in the app. */
+  :root[data-phase="dusk"] {
+    --bg: #121820; --ink: #eef1f5; --ink-2: #b6bfcb; --line: rgb(220 232 255 / 0.16); --field: rgb(230 240 255 / 0.06);
+    --panel: rgb(27 34 44 / 0.8); --button: #eef1f5; --button-ink: #121820;
+  }
+
   [hidden] { display: none !important; }
   html, body { height: 100%; }
   body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
