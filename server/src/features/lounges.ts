@@ -44,7 +44,9 @@ export function loungeAccess(seg: Segment, accounts: LoyaltyAccount[]): LoungeAc
   }
 
   for (const a of accounts.filter((x) => x.kind === 'lounge')) {
-    out.push({ access: `${a.program} lounges in your terminal`, basis: a.program });
+    if (/revolut/i.test(a.program)) out.push({ access: 'LoungeKey lounges, free for you (guests pay)', basis: a.program });
+    else if (/lounge ?key/i.test(a.program)) out.push({ access: 'LoungeKey lounges in your terminal', basis: a.program });
+    else out.push({ access: `${a.program} lounges in your terminal`, basis: a.program });
   }
 
   const seen = new Set<string>();

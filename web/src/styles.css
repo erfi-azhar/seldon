@@ -948,10 +948,6 @@ button.chip:hover {
   font-weight: 550;
 }
 
-.sphere-strip-card {
-  margin-bottom: 20px;
-  overflow: hidden;
-}
 .sphere-strip {
   display: flex;
   gap: 6px;
@@ -6822,6 +6818,21 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   font-weight: 600;
   color: var(--ink);
 }
+button.layover-pill {
+  cursor: pointer;
+  transition: box-shadow 0.15s, color 0.15s;
+}
+button.layover-pill:hover {
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.layover-lounge {
+  margin-left: 2px;
+  color: var(--ink-4);
+}
+button.layover-pill:hover .layover-lounge {
+  color: var(--ink-2);
+}
 .layover-gap.is-tight .layover-pill {
   color: oklch(0.55 0.15 40);
   box-shadow: inset 0 0 0 1px oklch(0.65 0.14 40 / 0.5);
@@ -7067,12 +7078,12 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
   scroll-padding-inline: 18px;
-  padding-inline: 18px;
-  padding-bottom: 6px;
+  padding: 10px 18px;
   scrollbar-width: thin;
 }
+/* The blur bands span the scroller's padding too, so their top and bottom fall on plain card. */
 .opt-grid-wrap {
-  margin-inline: -18px;
+  margin: -10px -18px -4px;
 }
 .opt-grid > .opt-card {
   scroll-snap-align: start;
@@ -7835,13 +7846,20 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 /* Flight options fold like the other trip cards, keeping a chip per option to peek at while folded. */
 .fold-card.trip-options.is-folded .fold-head {
-  padding-bottom: 10px;
+  padding-bottom: 2px;
+}
+.fold-card.trip-options > .blur-wrap {
+  margin-bottom: 8px;
+}
+/* Trip cards clip to their rounded corners, so nothing inside (a blur band) shows past the curve. */
+.fold-card {
+  overflow: clip;
 }
 .opt-peek {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 0 20px 16px;
+  padding: 8px 20px;
   scrollbar-width: none;
 }
 .opt-peek::-webkit-scrollbar {
@@ -8087,6 +8105,7 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   opacity: 0;
   transition: opacity 0.2s;
   --to: to right;
+  --along: to bottom;
 }
 .blur-edge.is-on {
   opacity: 1;
@@ -8100,6 +8119,7 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   left: 0;
   right: 0;
   height: 48px;
+  --along: to right;
 }
 .blur-edge.is-x.is-end {
   right: 0;
@@ -8121,8 +8141,11 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   inset: 0;
   -webkit-backdrop-filter: blur(var(--b));
   backdrop-filter: blur(var(--b));
-  -webkit-mask-image: linear-gradient(var(--to), var(--m));
-  mask-image: linear-gradient(var(--to), var(--m));
+  /* Graded towards the edge, and feathered along it so the band has no hard ends. */
+  -webkit-mask-image: linear-gradient(var(--to), var(--m)), linear-gradient(var(--along), transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(var(--to), var(--m)), linear-gradient(var(--along), transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
 .blur-edge i:nth-child(1) {
   --b: 0.5px;
@@ -8147,6 +8170,98 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 .blur-edge i:nth-child(6) {
   --b: 14px;
   --m: transparent 83%, #000 100%;
+}
+
+/* The lounges at a connection, opened from its layover pill. */
+.lounge-lede {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.lounge-lede b {
+  color: var(--ink);
+}
+.lounge-h {
+  margin: 16px 0 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lounge-rules,
+.lounge-list,
+.lounge-plan {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lounge-rules li,
+.lounge-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.lounge-rules li > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--good);
+}
+.lounge-list li > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+.lounge-rules span,
+.lounge-list span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13.5px;
+}
+.lounge-rules b,
+.lounge-list b {
+  font-weight: 600;
+}
+.lounge-rules small,
+.lounge-list small {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.lounge-none {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lounge-here {
+  margin-top: 4px;
+}
+.lounge-here-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lounge-here-head .lounge-h {
+  margin-bottom: 8px;
+}
+.lounge-plan {
+  gap: 6px;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lounge-foot {
+  margin: 18px 0 0;
+  font-size: 12px;
+  color: var(--ink-4);
 }
 
 /* Today's to-dos: work beside everything else, one column on a phone. */

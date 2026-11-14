@@ -663,6 +663,117 @@ function StayRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
   );
 }
 
+/**
+ * A connection, opened from its layover pill: the lounges you can use while you wait, from the
+ * fare and status on the flight you leave on and from lounge cards (Priority Pass, Revolut Ultra),
+ * then the specific lounges at the airport, which the agent looks up.
+ */
+function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip; from: Segment; to: Segment; loyalty: LoyaltyAccount[]; onClose: () => void }) {
+  const { agentName } = useApp();
+  const find = useWrite(() => travelWrite.post(`/segments/${to.id}/companion`));
+  const wait = minutesBetween(from.endUtc, to.startUtc);
+  const place = to.fromCity || to.fromName || to.fromCode;
+  const notes = trip.companion[to.id];
+  const flight = (s: Segment) => `${s.carrier} ${s.number}`.trim();
+  const kf = loyalty.find((a) => a.program === 'KrisFlyer');
+  const cards = loyalty.filter((a) => a.kind === 'lounge');
+  const fare = to.cabin || 'Economy';
+  const star = KRISFLYER_ELITE.has(to.carrier.toUpperCase()) && to.carrier.toUpperCase() !== 'TR';
+  const status = to.lounges.filter((l) => !cards.some((c) => c.program === l.basis));
+  const viaCard = to.lounges.filter((l) => cards.some((c) => c.program === l.basis));
+  // "Name — details · access" from the agent: the name stands out.
+  const split = (line: string) => {
+    const at = line.indexOf(' — ');
+    return at > 0 ? [line.slice(0, at), line.slice(at + 3)] : [line, ''];
+  };
+  return (
+    <Modal title={`Lounges in ${place}`} onClose={onClose}>
+      <p className="lounge-lede">
+        <b>{hm(wait)}</b> between {flight(from)}, landing {time(from.endLocal)}, and {flight(to)} to {to.toCity || to.toCode}, leaving {time(to.startLocal)}.
+        {wait < 60 && ' Tight: head straight for the gate.'}
+      </p>
+
+      <h3 className="lounge-h">Your fare and status on {flight(to)}</h3>
+      {status.length ? (
+        <ul className="lounge-rules">
+          {status.map((l) => (
+            <li key={l.access}>
+              <CheckIcon size={13} aria-hidden />
+              <span>
+                <b>{l.access}</b>
+                <small>{l.basis}</small>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="lounge-none">
+          Not with {fare} on {flight(to)}
+          {kf ? ` and KrisFlyer ${kf.tier}` : ''}. {star ? `Business on this flight, or KrisFlyer Elite Gold (Star Alliance Gold), would get you in.` : 'A Business fare would get you in.'}
+        </p>
+      )}
+
+      <h3 className="lounge-h">Lounge cards</h3>
+      {viaCard.length ? (
+        <ul className="lounge-rules">
+          {viaCard.map((l) => (
+            <li key={l.access}>
+              <CheckIcon size={13} aria-hidden />
+              <span>
+                <b>{l.access}</b>
+                <small>{l.basis}</small>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="lounge-none">No lounge card saved. Add Priority Pass or Revolut Ultra under Loyalty to see what it opens here.</p>
+      )}
+
+      <div className="lounge-here">
+        <div className="lounge-here-head">
+          <h3 className="lounge-h">At {to.fromCode || place}</h3>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={find.isPending} onClick={() => find.mutate(undefined)}>
+            {find.isPending ? <Spinner /> : <Sparkles size={13} />} {notes ? 'Look again' : `Find them with ${agentName}`}
+          </button>
+        </div>
+        {find.error && <p className="error-text">{find.error.message}</p>}
+        {notes ? (
+          <>
+            <ul className="lounge-list">
+              {notes.lounges.map((line) => {
+                const [name, rest] = split(line);
+                return (
+                  <li key={line}>
+                    <Sofa size={14} aria-hidden />
+                    <span>
+                      <b>{name}</b>
+                      {rest && <small>{rest}</small>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {notes.plan.length > 0 && (
+              <>
+                <h3 className="lounge-h">With the time</h3>
+                <ul className="lounge-plan">
+                  {notes.plan.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        ) : (
+          <p className="lounge-none">{find.isPending ? `${agentName} is looking up the lounges you can reach airside…` : `${agentName} can name the lounges at ${place} that these get you into, with terminals and what is worth knowing.`}</p>
+        )}
+      </div>
+      <p className="lounge-foot">The rules are the published ones in broad strokes; the lounge desk has the final word. Revolut Ultra passes are in the app under Lifestyle, then Lounges.</p>
+    </Modal>
+  );
+}
+
 const dow = (date: string) => parseDay(date).toLocaleDateString(undefined, { weekday: 'short' });
 
 /** "2pm late checkout" → "2pm": the late checkout a perk promises, if it names a time. */
@@ -862,6 +973,7 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
   const [editing, setEditing] = useState(false);
   const [booking, setBooking] = useState<Segment | 'new' | null>(null);
   const [item, setItem] = useState<{ item: ItineraryItem | null; date: string } | null>(null);
+  const [connection, setConnection] = useState<{ from: Segment; to: Segment } | null>(null);
   const draft = useWrite(() => travelWrite.post(`/trips/${trip.id}/draft`));
   const toggle = useWrite((i: ItineraryItem) => travelWrite.patch(`/itinerary/${i.id}`, { done: !i.done }));
   const days = Array.from({ length: daysFrom(trip.startDate, trip.endDate) + 1 }, (_, i) => {
@@ -891,11 +1003,12 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
         <FlightRow s={s} onEdit={() => setBooking(s)} />
         {wait > 0 && wait < 24 * 60 && (
           <div className={cx('layover-gap', wait < 60 && 'is-tight', wait >= 6 * 60 && 'is-long')}>
-            <span className="layover-pill">
+            <button type="button" className="layover-pill" onClick={() => setConnection({ from: s, to: next })} aria-haspopup="dialog">
               <Clock size={12} aria-hidden />
               <b>{hm(wait)}</b> layover in {s.toCity || s.toName || s.toCode}
               {wait < 60 ? ' · tight' : wait >= 6 * 60 ? ' · long' : ''}
-            </span>
+              <Sofa size={12} className="layover-lounge" aria-label="See lounges" />
+            </button>
           </div>
         )}
       </Fragment>
@@ -1033,6 +1146,7 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
       {editing && <TripSheet trip={trip} onClose={() => setEditing(false)} />}
       {booking && <BookingSheet trip={trip} segment={booking === 'new' ? null : booking} onClose={() => setBooking(null)} />}
       {item && <ItemSheet trip={trip} item={item.item} date={item.date} onClose={() => setItem(null)} />}
+      {connection && <LayoverSheet trip={trip} from={connection.from} to={connection.to} loyalty={state.loyalty} onClose={() => setConnection(null)} />}
     </div>
   );
 }
