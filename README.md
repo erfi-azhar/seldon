@@ -1,4 +1,4 @@
-# LifeOS
+# Terminus
 
 A place to steward your whole life on purpose — Health, Finances, Work, Side Projects,
 Travels, Faith, Family, and whatever else matters — with a personal agent that lives in it.
@@ -35,7 +35,7 @@ npm run seed:demo
 ```
 
 ```bash
-LIFEOS_DB=data/demo.db npm start
+TERMINUS_DB=data/demo.db npm start
 ```
 
 ## What's in this version
@@ -118,7 +118,7 @@ scripts/    seed-demo.ts
 A few decisions worth knowing about:
 
 - **One process, one file.** `npm start` serves the API and the built web app from one
-  port and keeps everything in `data/lifeos.db`. Backing up is copying that file.
+  port and keeps everything in `data/terminus.db`. Backing up is copying that file.
 - **The server owns the data; clients are thin.** Your laptop's browser and your phone's
   installed app both talk to the same server, so there is no sync engine to go wrong, and
   a native client later would reuse the whole API.
@@ -138,18 +138,20 @@ Set these in the environment before `npm start`.
 | --- | --- | --- |
 | `PORT` | `4321` | Port to listen on |
 | `HOST` | `127.0.0.1` | Address to bind. Anything other than loopback requires one of the next two |
-| `LIFEOS_PASSPHRASE` | — | Require signing in with this passphrase |
-| `LIFEOS_ALLOWED_HOSTS` | — | Comma-separated hostnames the app may be reached at without a passphrase (for a private network such as a tailnet) |
-| `LIFEOS_DB` | `data/lifeos.db` | Where the database lives |
+| `TERMINUS_PASSPHRASE` | — | Require signing in with this passphrase |
+| `TERMINUS_ALLOWED_HOSTS` | — | Comma-separated hostnames the app may be reached at without a passphrase (for a private network such as a tailnet) |
+| `TERMINUS_DB` | `data/terminus.db` | Where the database lives |
+
+The older `LIFEOS_*` names still work, and an existing `data/lifeos.db` keeps being used.
 | `ANTHROPIC_API_KEY` | — | Used for Anthropic if no key is saved in Settings |
 
 ### Using it from your phone
 
-By default LifeOS only answers on the machine it runs on. To reach it from another device,
+By default Terminus only answers on the machine it runs on. To reach it from another device,
 bind it to the network and protect it:
 
 ```bash
-HOST=0.0.0.0 LIFEOS_PASSPHRASE='something long' npm start
+HOST=0.0.0.0 TERMINUS_PASSPHRASE='something long' npm start
 ```
 
 Browsers only allow installing an app (and running its offline shell) over HTTPS, so put
@@ -161,7 +163,7 @@ already trust. Don't expose it to the open internet without both HTTPS and a pas
 - Local-only by default, and the server refuses to start on a public address unprotected.
 - With a passphrase: an HttpOnly, SameSite session cookie; only its hash is stored;
   repeated wrong attempts are throttled.
-- Other websites can't act on your LifeOS through your browser: state-changing requests
+- Other websites can't act on your Terminus through your browser: state-changing requests
   from another origin are rejected, and without a passphrase the server only answers to
   hostnames you've allowed (which blocks DNS rebinding).
 - Model output is rendered as sanitised Markdown; tool inputs are schema-validated before

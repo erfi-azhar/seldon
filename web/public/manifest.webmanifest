@@ -1,6 +1,6 @@
 {
-  "name": "LifeOS",
-  "short_name": "LifeOS",
+  "name": "Terminus",
+  "short_name": "Terminus",
   "description": "Your life, in spheres — with an agent that lives there.",
   "start_url": "/",
   "scope": "/",

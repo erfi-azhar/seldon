@@ -2,7 +2,7 @@
 // putting your own life in. It never touches your real database:
 //
 //   npm run seed:demo                     → writes data/demo.db
-//   LIFEOS_DB=data/demo.db npm start      → run LifeOS against it
+//   TERMINUS_DB=data/demo.db npm start      → run Terminus against it
 //
 // Everything is created through the same Store and agent loop the app uses, then
 // timestamps are shifted into the past so trends and "quiet" spheres look lived-in.
@@ -251,4 +251,4 @@ db.close();
 
 console.log(`Demo data written to ${path}`);
 console.log(Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(' · '));
-console.log(`\nRun it:  LIFEOS_DB=${path} npm start`);
+console.log(`\nRun it:  TERMINUS_DB=${path} npm start`);

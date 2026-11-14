@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 export type DB = DatabaseSync;
@@ -161,8 +161,18 @@ const MIGRATIONS: string[] = [
   `,
 ];
 
+/** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
+export function setting(name: string): string | undefined {
+  return process.env[`TERMINUS_${name}`] ?? process.env[`LIFEOS_${name}`];
+}
+
 export function defaultDbPath(): string {
-  return process.env.LIFEOS_DB ?? resolve('data/lifeos.db');
+  const configured = setting('DB');
+  if (configured) return configured;
+  // Installs from before the rename keep using their existing file.
+  const legacy = resolve('data/lifeos.db');
+  const current = resolve('data/terminus.db');
+  return existsSync(legacy) && !existsSync(current) ? legacy : current;
 }
 
 export function openDb(path: string = defaultDbPath()): DB {

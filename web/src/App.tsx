@@ -42,7 +42,7 @@ export function App() {
     return (
       <main className="stage">
         <div className="stage-inner" style={{ maxWidth: 420 }}>
-          <h1>Can't reach LifeOS</h1>
+          <h1>Can't reach Terminus</h1>
           <p className="lede">The server isn't answering. Check that it's running, then try again.</p>
           <div>
             <button className="btn btn-primary" onClick={() => void auth.refetch()}>
@@ -80,7 +80,7 @@ function Shell({ settings }: { settings: SettingsData }) {
     const sphereId = location.match(/^\/spheres\/([^/]+)/)?.[1];
     if (sphereId) return `The ${spheres?.find((s) => s.id === sphereId)?.name ?? 'a'} sphere`;
     if (location === '/') return 'Today';
-    return { '/spheres': 'All spheres', '/goals': 'Goals', '/library': 'Library', '/settings': 'Settings' }[location] ?? 'LifeOS';
+    return { '/spheres': 'All spheres', '/goals': 'Goals', '/library': 'Library', '/settings': 'Settings' }[location] ?? 'Terminus';
   }, [location, spheres]);
   const chat = useAgentChat(useCallback(() => where.current, []));
   const { send } = chat;
@@ -145,7 +145,7 @@ function Shell({ settings }: { settings: SettingsData }) {
                 <span>{agentName}</span>
               </button>
               <Link href="/" className="wordmark serif">
-                LifeOS
+                Terminus
               </Link>
             </div>
             <nav className="nav" aria-label="Main">

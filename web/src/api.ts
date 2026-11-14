@@ -29,7 +29,7 @@ export class ApiError extends Error {
 }
 
 /** Fired when the server says the session is gone, so the shell can show sign-in. */
-export const SIGNED_OUT = 'lifeos:signed-out';
+export const SIGNED_OUT = 'terminus:signed-out';
 
 async function fail(res: Response): Promise<never> {
   let message = `Request failed (${res.status})`;
@@ -55,7 +55,7 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
       credentials: 'same-origin',
     });
   } catch {
-    throw new ApiError('Could not reach your LifeOS server.', 0);
+    throw new ApiError('Could not reach your Terminus server.', 0);
   }
   if (!res.ok) return fail(res);
   return (await res.json()) as T;

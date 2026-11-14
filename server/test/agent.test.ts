@@ -154,7 +154,7 @@ test('openai-compatible: a tool round trip changes the data, and history is appe
   assert.equal(req1!.headers.authorization, 'Bearer k-123');
   assert.equal(req1!.body.messages[0].role, 'system');
   assert.match(req1!.body.messages[0].content, /You are Seldon/);
-  assert.match(req1!.body.messages[1].content, /<lifeos_snapshot/);
+  assert.match(req1!.body.messages[1].content, /<terminus_snapshot/);
   assert.match(req1!.body.messages[1].content, new RegExp(`\\[sphere ${sphereId}\\]`));
   assert.ok(req1!.body.tools.some((t: { function: { name: string } }) => t.function.name === 'create_task'));
   assert.deepEqual(req2!.body.messages.map((m: { role: string }) => m.role), ['system', 'user', 'assistant', 'tool']);
@@ -168,7 +168,7 @@ test('openai-compatible: a tool round trip changes the data, and history is appe
   assert.deepEqual(req3.body.messages.slice(0, 4), [...req2!.body.messages]);
   assert.equal(req3.body.messages.length, 6);
   assert.match(req3.body.messages[5].content, /^<now>/);
-  assert.doesNotMatch(req3.body.messages[5].content, /lifeos_snapshot/);
+  assert.doesNotMatch(req3.body.messages[5].content, /terminus_snapshot/);
 
   // And the person sees one reply per question, with the tool call folded in.
   const view = store.getConversation(first.id).messages;

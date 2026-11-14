@@ -10,7 +10,7 @@ type Theme = 'system' | 'light' | 'dark';
 
 function readTheme(): Theme {
   try {
-    const t = localStorage.getItem('lifeos.theme');
+    const t = localStorage.getItem('terminus.theme') ?? localStorage.getItem('lifeos.theme');
     return t === 'light' || t === 'dark' ? t : 'system';
   } catch {
     return 'system';
@@ -21,8 +21,9 @@ function applyTheme(theme: Theme): void {
   if (theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
   try {
-    if (theme === 'system') localStorage.removeItem('lifeos.theme');
-    else localStorage.setItem('lifeos.theme', theme);
+    localStorage.removeItem('lifeos.theme');
+    if (theme === 'system') localStorage.removeItem('terminus.theme');
+    else localStorage.setItem('terminus.theme', theme);
   } catch {
     // Storage can be unavailable (private mode); the theme still applies for this visit.
   }
@@ -52,13 +53,13 @@ export function Settings() {
     if (!file) return;
     try {
       const dump: unknown = JSON.parse(await file.text());
-      if (!window.confirm('Importing replaces everything currently in this LifeOS with the contents of the file. Continue?')) return;
+      if (!window.confirm('Importing replaces everything currently in this Terminus with the contents of the file. Continue?')) return;
       importData.mutate(dump, {
         onSuccess: () => toast({ message: 'Import complete.' }),
         onError: (err) => toast({ message: err.message }),
       });
     } catch {
-      toast({ message: 'That file could not be read as a LifeOS export.' });
+      toast({ message: 'That file could not be read as a Terminus export.' });
     } finally {
       if (fileInput.current) fileInput.current.value = '';
     }
@@ -181,7 +182,7 @@ export function Settings() {
       <section className="card settings-section">
         <header>
           <h2>Your data</h2>
-          <p>Everything lives in one file on the machine running LifeOS. Take a copy whenever you like — it's plain JSON, and API keys are never included.</p>
+          <p>Everything lives in one file on the machine running Terminus. Take a copy whenever you like — it's plain JSON, and API keys are never included.</p>
         </header>
         <div className="settings-body">
           <div className="row-wrap">

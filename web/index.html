@@ -3,21 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>LifeOS</title>
+    <title>Terminus</title>
     <meta name="description" content="Your life, in spheres — with an agent that lives there." />
     <meta name="theme-color" content="#eef0f4" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0b0c10" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="LifeOS" />
+    <meta name="apple-mobile-web-app-title" content="Terminus" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <script>
       // Apply the saved theme before first paint.
       try {
-        var t = localStorage.getItem('lifeos.theme');
+        var t = localStorage.getItem('terminus.theme') || localStorage.getItem('lifeos.theme');
         if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
       } catch (e) {}
     </script>

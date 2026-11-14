@@ -20,7 +20,7 @@ export interface AppOptions {
   allowedHosts?: string[];
 }
 
-const SESSION_COOKIE = 'lifeos_session';
+const SESSION_COOKIE = 'terminus_session';
 const SESSION_DAYS = 30;
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
@@ -199,7 +199,7 @@ export function createApp(opts: AppOptions): Hono {
     // Without a passphrase the only thing keeping other sites out is that this server
     // answers to a known name. Refusing unknown Host headers blocks DNS rebinding.
     if (!opts.passphrase && !anyHost && !allowedHosts.has(new URL(c.req.url).hostname.toLowerCase())) {
-      return c.json({ error: 'This host is not allowed. Set LIFEOS_ALLOWED_HOSTS or a passphrase.' }, 403);
+      return c.json({ error: 'This host is not allowed. Set TERMINUS_ALLOWED_HOSTS or a passphrase.' }, 403);
     }
     // Other websites must not be able to make this browser change anything here.
     if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
@@ -409,7 +409,7 @@ export function createApp(opts: AppOptions): Hono {
   });
 
   app.get('/api/export', (c) => {
-    c.header('content-disposition', `attachment; filename="lifeos-${localDate()}.json"`);
+    c.header('content-disposition', `attachment; filename="terminus-${localDate()}.json"`);
     return c.json(store.exportAll());
   });
   app.post('/api/import', async (c) => {

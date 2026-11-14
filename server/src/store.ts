@@ -1332,17 +1332,18 @@ export class Store {
   ] as const;
 
   /** Everything you own, as plain JSON. API keys and login sessions stay out. */
-  exportAll(): { format: 'lifeos'; version: 1; exportedAt: string; profile: Profile; tables: Record<string, Row[]> } {
+  exportAll(): { format: 'terminus'; version: 1; exportedAt: string; profile: Profile; tables: Record<string, Row[]> } {
     const tables: Record<string, Row[]> = {};
     for (const t of Store.DATA_TABLES) tables[t] = this.all(`SELECT * FROM ${t}`).map((r) => ({ ...r }));
-    return { format: 'lifeos', version: 1, exportedAt: nowIso(), profile: this.getProfile(), tables };
+    return { format: 'terminus', version: 1, exportedAt: nowIso(), profile: this.getProfile(), tables };
   }
 
   /** Replace all data with an export. All-or-nothing. */
   importAll(dump: unknown): void {
     const d = dump as { format?: string; version?: number; profile?: Profile; tables?: Record<string, Row[]> };
-    if (d?.format !== 'lifeos' || d.version !== 1 || typeof d.tables !== 'object' || d.tables === null) {
-      throw new Invalid('That file is not a LifeOS export');
+    // 'lifeos' is the format name from before the rename.
+    if ((d?.format !== 'terminus' && d?.format !== 'lifeos') || d.version !== 1 || typeof d.tables !== 'object' || d.tables === null) {
+      throw new Invalid('That file is not a Terminus export');
     }
     const tables = d.tables;
     this.tx(() => {

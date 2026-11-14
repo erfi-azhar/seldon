@@ -5,15 +5,15 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createApp } from './app.ts';
-import { defaultDbPath, openDb } from './db.ts';
+import { defaultDbPath, openDb, setting } from './db.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDir = resolve(here, '../../dist/web');
 
 const port = Number(process.env.PORT ?? 4321);
 const hostname = process.env.HOST ?? '127.0.0.1';
-const passphrase = process.env.LIFEOS_PASSPHRASE || undefined;
-const allowedHosts = (process.env.LIFEOS_ALLOWED_HOSTS ?? '')
+const passphrase = setting('PASSPHRASE') || undefined;
+const allowedHosts = (setting('ALLOWED_HOSTS') ?? '')
   .split(',')
   .map((h) => h.trim())
   .filter(Boolean);
@@ -23,10 +23,10 @@ if (!loopback && !passphrase && allowedHosts.length === 0) {
   console.error(
     [
       `Refusing to listen on ${hostname} without protection: anyone who can reach this`,
-      'machine could read and change everything in your LifeOS.',
+      'machine could read and change everything in your Terminus.',
       '',
-      '  Set LIFEOS_PASSPHRASE to require signing in (recommended), or',
-      '  set LIFEOS_ALLOWED_HOSTS=<hostname> if the network itself is private (e.g. a tailnet).',
+      '  Set TERMINUS_PASSPHRASE to require signing in (recommended), or',
+      '  set TERMINUS_ALLOWED_HOSTS=<hostname> if the network itself is private (e.g. a tailnet).',
     ].join('\n'),
   );
   process.exit(1);
@@ -53,7 +53,7 @@ if (existsSync(webDir)) {
 
 serve({ fetch: app.fetch, port, hostname }, (info) => {
   const shown = loopback ? 'localhost' : hostname;
-  console.log(`LifeOS is running at http://${shown}:${info.port}`);
+  console.log(`Terminus is running at http://${shown}:${info.port}`);
   console.log(`  data: ${dbPath}`);
   console.log(`  sign-in: ${passphrase ? 'passphrase required' : 'off (local only)'}`);
 });

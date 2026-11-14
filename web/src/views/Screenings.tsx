@@ -694,7 +694,7 @@ export function Screenings({ sphereId }: { sphereId: string }) {
         ))}
         <div className="row-wrap" style={{ justifyContent: 'center', marginTop: 10 }}>
           <ImportButton label="Replace with a new record" />
-          <button type="button" className="btn btn-danger" onClick={() => window.confirm('Remove the screening record from LifeOS?') && remove.mutate()}>
+          <button type="button" className="btn btn-danger" onClick={() => window.confirm('Remove the screening record from Terminus?') && remove.mutate()}>
             Remove
           </button>
         </div>

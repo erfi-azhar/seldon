@@ -27,7 +27,7 @@ export function SignIn() {
         }}
       >
         <AgentOrb size={54} />
-        <h1>LifeOS</h1>
+        <h1>Terminus</h1>
         <Field label="Passphrase">
           <input className="input" type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoFocus autoComplete="current-password" />
         </Field>
@@ -72,7 +72,7 @@ export function Onboarding({ settings }: { settings: Settings }) {
           <form className="stack" style={{ gap: 22 }} onSubmit={(e) => { e.preventDefault(); setStep(1); }}>
             <AgentOrb size={58} />
             <h1>A place for your whole life — and someone to help you tend it.</h1>
-            <p className="lede">LifeOS runs on your machine and keeps everything in one file you own. An agent lives here with you: it can read what you track, capture what you tell it, and help you see what needs attention.</p>
+            <p className="lede">Terminus runs on your machine and keeps everything in one file you own. An agent lives here with you: it can read what you track, capture what you tell it, and help you see what needs attention.</p>
             <div className="field-row">
               <Field label="What should it call you?">
                 <input className="input" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={80} autoFocus placeholder="Your first name" />
@@ -118,7 +118,7 @@ export function Onboarding({ settings }: { settings: Settings }) {
         {step === 2 && (
           <>
             <h1>Give {agentName.trim() || 'Seldon'} a mind.</h1>
-            <p className="lede">Pick the model it thinks with. A local one keeps every word on this machine; a hosted one is sharper but sends your conversations to that provider. You can change this later, or skip it and use LifeOS on its own.</p>
+            <p className="lede">Pick the model it thinks with. A local one keeps every word on this machine; a hosted one is sharper but sends your conversations to that provider. You can change this later, or skip it and use Terminus on its own.</p>
             <ModelSetup settings={live} />
             {finish.error && <p className="error-text">{finish.error.message}</p>}
             <div className="row">
@@ -126,7 +126,7 @@ export function Onboarding({ settings }: { settings: Settings }) {
                 Back
               </button>
               <button type="button" className="btn btn-primary" disabled={finish.isPending} onClick={() => finish.mutate()}>
-                {live.model.provider ? 'Open LifeOS' : 'Skip for now'} <ArrowRight size={15} />
+                {live.model.provider ? 'Open Terminus' : 'Skip for now'} <ArrowRight size={15} />
               </button>
             </div>
           </>

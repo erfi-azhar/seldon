@@ -1,7 +1,7 @@
-// LifeOS service worker: makes the app installable and lets the shell open without a
+// Terminus service worker: makes the app installable and lets the shell open without a
 // network. Your data is never cached here — /api always goes to your server.
 
-const CACHE = 'lifeos-shell-v1';
+const CACHE = 'terminus-shell-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

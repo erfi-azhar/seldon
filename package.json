@@ -1,9 +1,9 @@
 {
-  "name": "lifeos",
+  "name": "terminus",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A self-hosted LifeOS: your spheres, goals, habits and a personal agent — on your own machine.",
+  "description": "A self-hosted Terminus: your spheres, goals, habits and a personal agent — on your own machine.",
   "engines": {
     "node": ">=22.18"
   },

@@ -68,7 +68,7 @@ test('other websites cannot change anything', async () => {
 });
 
 test('extra hostnames can be allowed explicitly', async () => {
-  assert.equal((await app({ allowedHosts: ['lifeos.tailnet.ts.net'] }).call('GET', '/api/overview', undefined, {}, 'lifeos.tailnet.ts.net')).status, 200);
+  assert.equal((await app({ allowedHosts: ['terminus.tailnet.ts.net'] }).call('GET', '/api/overview', undefined, {}, 'terminus.tailnet.ts.net')).status, 200);
   assert.equal((await app({ allowedHosts: ['*'] }).call('GET', '/api/overview', undefined, {}, 'anything.example')).status, 200);
 });
 
@@ -86,7 +86,7 @@ test('with a passphrase, nothing is readable until you sign in', async () => {
   const session = cookie.split(';')[0]!;
 
   assert.equal((await call('GET', '/api/overview', undefined, { cookie: session }, 'my.server.example')).status, 200);
-  assert.equal((await call('GET', '/api/overview', undefined, { cookie: 'lifeos_session=forged' })).status, 401);
+  assert.equal((await call('GET', '/api/overview', undefined, { cookie: 'terminus_session=forged' })).status, 401);
 
   await call('POST', '/api/auth/logout', {}, { cookie: session });
   assert.equal((await call('GET', '/api/overview', undefined, { cookie: session })).status, 401);

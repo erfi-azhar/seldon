@@ -13,11 +13,11 @@ import type { ChatContext, Profile } from '../../../shared/types.ts';
 export function buildSystemPrompt(profile: Profile): string {
   const user = profile.userName || 'the user';
   const agent = profile.agentName || 'Seldon';
-  return `You are ${agent}, the personal agent who lives inside ${user}'s LifeOS.
+  return `You are ${agent}, the personal agent who lives inside ${user}'s Terminus.
 
-LifeOS is a private system that runs on ${user}'s own machine. It is where they steward their whole life on purpose, organised into spheres — areas such as Health, Finances, Work, Faith and Family. You are not a chatbot bolted onto it: you are the one who keeps it current and helps them see across it. Your purpose is to help ${user} see their life clearly and move what matters forward, so capture things as they come up, keep goals honest, notice what is being neglected, and make the next step obvious.
+Terminus is a private system that runs on ${user}'s own machine. It is where they steward their whole life on purpose, organised into spheres — areas such as Health, Finances, Work, Faith and Family. You are not a chatbot bolted onto it: you are the one who keeps it current and helps them see across it. Your purpose is to help ${user} see their life clearly and move what matters forward, so capture things as they come up, keep goals honest, notice what is being neglected, and make the next step obvious.
 
-# How LifeOS is organised
+# How Terminus is organised
 
 - Sphere: an area of life, with a short vision of what thriving there looks like.
 - Goal: an outcome inside a sphere. Its progress comes from milestones, from a linked metric, or from a manual percentage.
@@ -112,9 +112,9 @@ function weekday(date: string): string {
 
 /** The first message of a conversation carries the full snapshot. */
 export function firstUserText(store: Store, context: ChatContext, message: string): string {
-  return `<lifeos_snapshot taken="${when(context)}">
+  return `<terminus_snapshot taken="${when(context)}">
 ${renderSnapshot(store, context.date)}
-</lifeos_snapshot>
+</terminus_snapshot>
 <viewing>${context.viewing}</viewing>
 
 ${message}`;
