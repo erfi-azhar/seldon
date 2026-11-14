@@ -6793,6 +6793,44 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   gap: 10px;
   align-content: start;
 }
+/* Between two connecting flights: how long the wait is, on a dashed line joining the cards. */
+.layover-gap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: -4px 0;
+}
+.layover-gap::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  left: 50%;
+  border-left: 1.5px dashed var(--line-2);
+}
+.layover-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.layover-pill b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.layover-gap.is-tight .layover-pill {
+  color: oklch(0.55 0.15 40);
+  box-shadow: inset 0 0 0 1px oklch(0.65 0.14 40 / 0.5);
+}
+.layover-gap.is-long .layover-pill {
+  color: oklch(0.55 0.1 250);
+}
 .globe-card {
   display: flex;
   min-width: 0;
@@ -7572,21 +7610,63 @@ form.stage-center.is-opening > :not(.vault-anchor) {
     color: oklch(0.75 0.04 80);
   }
 }
-/* Flight options fold away; an added option's button takes its flights off again. */
-.opt-toggle {
+/* Flight options fold like the other trip cards, keeping a chip per option to peek at while folded. */
+.fold-card.trip-options.is-folded .fold-head {
+  padding-bottom: 10px;
+}
+.opt-peek {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 20px 16px;
+  scrollbar-width: none;
+}
+.opt-peek::-webkit-scrollbar {
+  display: none;
+}
+.opt-peek-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0;
-  color: inherit;
+  gap: 7px;
+  flex: none;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  white-space: nowrap;
   cursor: pointer;
 }
-.opt-toggle-chev {
-  color: var(--ink-3);
-  transition: transform 0.18s;
+.opt-peek-chip b {
+  font-weight: 600;
+  color: var(--ink);
 }
-.opt-toggle-chev.is-closed {
-  transform: rotate(-90deg);
+.opt-peek-chip:hover {
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.opt-peek-chip.is-added {
+  box-shadow: inset 0 0 0 1.5px oklch(0.6 0.12 250 / 0.6);
+}
+.opt-peek-check {
+  color: oklch(0.6 0.13 250);
+}
+.opt-peek-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-4);
+}
+.opt-peek-dot.is-premium {
+  background: oklch(0.62 0.12 300);
+}
+.opt-peek-dot.is-business {
+  background: oklch(0.72 0.12 80);
+}
+@media (max-width: 640px) {
+  .opt-bar-best {
+    display: none;
+  }
 }
 .opt-choose.is-added {
   color: var(--ink-2);
@@ -7607,6 +7687,103 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 .opt-choose.is-added:hover .opt-added-icon {
   display: none;
+}
+
+/* Trip-page cards fold to their header: title, a one-line summary while folded, then the chevron. */
+.fold-head {
+  gap: 8px;
+}
+.fold-card.is-folded .fold-head {
+  padding-bottom: 16px;
+}
+.fold-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.fold-toggle .card-title {
+  flex: none;
+  align-self: center;
+}
+.fold-peek {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.fold-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.fold-chev-btn {
+  flex: none;
+  color: var(--ink-3);
+}
+.fold-chev {
+  transition: transform 0.18s;
+}
+.fold-card.is-folded .fold-chev {
+  transform: rotate(-90deg);
+}
+.fold-card:not(.is-folded) .fold-peek {
+  display: none;
+}
+
+/* Plan days fold too: the date, and while folded a line of what the day holds. */
+.plan-date-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.plan-date-chev {
+  flex: none;
+  color: var(--ink-3);
+  transform: rotate(90deg);
+  transition: transform 0.18s;
+}
+.plan-day.is-folded .plan-date-chev {
+  transform: none;
+}
+.plan-date-peek {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: 4px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.plan-day.is-folded {
+  padding-bottom: 4px;
+}
+.plan-day .plan-empty,
+.plan-day > ul {
+  padding-left: 20px;
+}
+@media (max-width: 640px) {
+  .fold-head {
+    flex-wrap: wrap;
+  }
+  .fold-head .fold-actions {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 /* ── Times of day ─────────────────────────────────────────────────────────────

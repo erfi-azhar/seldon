@@ -4,7 +4,7 @@
 // do with it, or the day you are on when away.
 
 import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { Cabin, FlightOption, ItineraryItem, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
@@ -30,6 +30,12 @@ const hm = (mins: number) => (mins > 0 ? `${Math.floor(mins / 60)}h ${String(min
 const minutesBetween = (fromUtc: string, toUtc: string) => Math.round((Date.parse(toUtc) - Date.parse(fromUtc)) / 60_000);
 /** A hotel's everyday name: "The Mercury Garden Shenzhen Nanshan, A Tribute Portfolio Hotel" → before the comma. */
 const shortStay = (title: string) => title.split(',')[0]!.trim() || title;
+/** The airports a run of flights touches, in order: "SZX → SIN → FRA → GRU". */
+const routeLine = (flights: Segment[]) =>
+  flights
+    .flatMap((f, i) => (i > 0 && flights[i - 1]!.toCode === f.fromCode ? [f.toCode] : [f.fromCode, f.toCode]))
+    .filter(Boolean)
+    .join(' → ');
 const nightsOf = (s: Segment) => Math.max(0, daysFrom(dayOf(s.startLocal), dayOf(s.endLocal)));
 const city = (name: string, code: string) => name.replace(/ (International|Airport)$/, '') || code;
 
@@ -552,6 +558,7 @@ function globeLegs(flights: Segment[]): GlobeLeg[] {
       from: { code: s.fromCode, lat: s.fromGeo![0], lon: s.fromGeo![1] },
       to: { code: s.toCode, lat: s.toGeo![0], lon: s.toGeo![1] },
       minutes: Math.max(0, Math.round((Date.parse(s.endUtc) - Date.parse(s.startUtc)) / 60_000)) || undefined,
+      carrier: s.carrier,
     }));
 }
 
@@ -656,6 +663,50 @@ function StayRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
   );
 }
 
+/** A remembered preference on this device (folded cards, folded days), falling back to the visit when storage is blocked. */
+function useStored<T>(key: string, initial: () => T): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw !== null) return JSON.parse(raw) as T;
+    } catch {
+      /* storage blocked or unreadable */
+    }
+    return initial();
+  });
+  const set = (v: T) => {
+    setValue(v);
+    try {
+      localStorage.setItem(key, JSON.stringify(v));
+    } catch {
+      /* remembered for this visit only */
+    }
+  };
+  return [value, set];
+}
+
+/** A trip-page card that folds to its header: the title with a short summary, any actions, and a chevron. */
+function FoldCard({ id, icon, title, peek, extra, className, children }: { id: string; icon: ReactNode; title: string; peek?: ReactNode; extra?: ReactNode; className?: string; children: ReactNode }) {
+  const [open, setOpen] = useStored(`terminus.card.${id}`, () => true);
+  return (
+    <section className={cx('card trip-section fold-card', !open && 'is-folded', className)}>
+      <div className="card-head fold-head">
+        <button type="button" className="fold-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span className="card-title">
+            {icon} {title}
+          </span>
+          {peek && <span className="fold-peek">{peek}</span>}
+        </button>
+        {open && extra}
+        <button type="button" className="icon-btn icon-btn-sm fold-chev-btn" aria-label={open ? `Fold ${title}` : `Open ${title}`} aria-expanded={open} onClick={() => setOpen(!open)}>
+          <ChevronDown size={15} className="fold-chev" aria-hidden />
+        </button>
+      </div>
+      {open && <div className="trip-section-body">{children}</div>}
+    </section>
+  );
+}
+
 /**
  * Everything about a trip, as separate cards: flights (the globe beside them), flight options, the stay,
  * to-dos and the day-by-day plan. The page's head, with the trip's actions, comes first.
@@ -673,23 +724,34 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
     d.setDate(d.getDate() + i);
     return todayStr(d);
   });
-  const layovers = state.context.trip?.id === trip.id ? state.context.layovers : [];
   const past = trip.endDate < today;
   const flights = trip.segments.filter((s) => s.kind === 'flight');
   const others = trip.segments.filter((s) => s.kind !== 'flight');
   const legs = globeLegs(flights);
   const openTodos = trip.todos.filter((x) => !x.done).length;
+  // Each day folds on its own; days already past start folded. Choices are remembered per trip on this device.
+  const [dayFolds, setDayFolds] = useStored<Record<string, boolean>>(`terminus.plan.${trip.id}`, () => ({}));
+  const dayOpen = (d: string) => dayFolds[d] ?? !(d < today && !past);
+  const setDay = (d: string, open: boolean) => setDayFolds({ ...dayFolds, [d]: open });
+  const allOpen = days.every(dayOpen);
+  const setAllDays = (open: boolean) => setDayFolds(Object.fromEntries(days.map((d) => [d, open])));
   const row = (s: Segment) => {
-    const lay = layovers.find((l) => l.afterSegmentId === s.id);
+    if (s.kind !== 'flight') return <StayRow key={s.id} s={s} onEdit={() => setBooking(s)} />;
+    const next = flights[flights.indexOf(s) + 1];
+    const wait = next && s.toCode && s.toCode === next.fromCode ? minutesBetween(s.endUtc, next.startUtc) : 0;
     return (
-      <div key={s.id}>
-        {s.kind === 'flight' ? <FlightRow s={s} onEdit={() => setBooking(s)} /> : <StayRow s={s} onEdit={() => setBooking(s)} />}
-        {lay && (
-          <div className="layover">
-            <Clock size={12} /> {lay.hours} h connection in {lay.city}
+      <Fragment key={s.id}>
+        <FlightRow s={s} onEdit={() => setBooking(s)} />
+        {wait > 0 && wait < 24 * 60 && (
+          <div className={cx('layover-gap', wait < 60 && 'is-tight', wait >= 6 * 60 && 'is-long')}>
+            <span className="layover-pill">
+              <Clock size={12} aria-hidden />
+              <b>{hm(wait)}</b> layover in {s.toCity || s.toName || s.toCode}
+              {wait < 60 ? ' · tight' : wait >= 6 * 60 ? ' · long' : ''}
+            </span>
           </div>
         )}
-      </div>
+      </Fragment>
     );
   };
 
@@ -710,14 +772,7 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
         </div>
       </header>
 
-      <section className="card trip-section">
-        <div className="card-head">
-          <h2 className="card-title">
-            <Plane size={15} /> Flights
-          </h2>
-          {flights.length > 0 && <span className="trip-section-count">{plural(flights.length, 'flight')}</span>}
-        </div>
-        <div className="trip-section-body">
+      <FoldCard id={`${trip.id}.flights`} icon={<Plane size={15} />} title="Flights" peek={flights.length > 0 && `${plural(flights.length, 'flight')} · ${routeLine(flights)}`}>
           {flights.length === 0 ? (
             <p className="empty">{trip.options.length ? 'Nothing booked yet. Compare the options below.' : 'No flights yet. Add them, paste a confirmation, or let Gmail bring them in.'}</p>
           ) : legs.length ? (
@@ -730,23 +785,19 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
           ) : (
             <div className="seg-list">{flights.map(row)}</div>
           )}
-        </div>
-      </section>
+      </FoldCard>
 
       {trip.options.length > 0 && (
-        <section className="card trip-section">
           <FlightOptions trip={trip} />
-        </section>
       )}
 
       <div className="trip-section-pair">
-        <section className="card trip-section">
-          <div className="card-head">
-            <h2 className="card-title">
-              <BedDouble size={15} /> Stay
-            </h2>
-          </div>
-          <div className="trip-section-body">
+        <FoldCard
+          id={`${trip.id}.stay`}
+          icon={<BedDouble size={15} />}
+          title="Stay"
+          peek={others.length ? others.map((o) => shortStay(o.title || 'Hotel')).join(', ') : trip.stayOptions.length ? plural(trip.stayOptions.length, 'hotel option') : 'No hotel yet'}
+        >
             {others.length > 0 && <div className="seg-list">{others.map(row)}</div>}
             {trip.stayOptions.length > 0 ? (
               <StayOptions trip={trip} booked={others.some((s) => s.kind === 'stay')} />
@@ -760,67 +811,77 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
                 </p>
               )
             )}
-          </div>
-        </section>
+        </FoldCard>
 
-        <section className="card trip-section">
-          <div className="card-head">
-            <h2 className="card-title">
-              <ListChecks size={15} /> To-dos
-            </h2>
-            {openTodos > 0 && <span className="trip-section-count">{plural(openTodos, 'open', 'open')}</span>}
-          </div>
-          <div className="trip-section-body">
+        <FoldCard id={`${trip.id}.todos`} icon={<ListChecks size={15} />} title="To-dos" peek={openTodos > 0 ? plural(openTodos, 'open', 'open') : trip.todos.length ? 'All done' : 'None yet'}>
             <TripTodos trip={trip} past={past} />
-          </div>
-        </section>
+        </FoldCard>
       </div>
 
-      <section className="card trip-section">
-        <div className="card-head">
-          <h2 className="card-title">
-            <CalendarDays size={15} /> Plan
-          </h2>
-          {!past && (
-            <button type="button" className="btn btn-ghost btn-sm" disabled={draft.isPending} onClick={() => draft.mutate()}>
-              {draft.isPending ? <Spinner /> : <Wand2 size={13} />} {trip.itinerary.length ? 'Fill empty days' : `Draft with ${agentName}`}
-            </button>
-          )}
-        </div>
-        <div className="trip-section-body">
+      <FoldCard
+        id={`${trip.id}.plan`}
+        icon={<CalendarDays size={15} />}
+        title="Plan"
+        peek={`${plural(days.length, 'day')} · ${trip.itinerary.length ? plural(trip.itinerary.length, 'plan') : 'nothing planned yet'}`}
+        extra={
+          <span className="fold-actions">
+            {days.length > 1 && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAllDays(!allOpen)}>
+                {allOpen ? 'Fold all days' : 'Open all days'}
+              </button>
+            )}
+            {!past && (
+              <button type="button" className="btn btn-ghost btn-sm" disabled={draft.isPending} onClick={() => draft.mutate()}>
+                {draft.isPending ? <Spinner /> : <Wand2 size={13} />} {trip.itinerary.length ? 'Fill empty days' : `Draft with ${agentName}`}
+              </button>
+            )}
+          </span>
+        }
+      >
           {draft.error && <p className="error-text">{draft.error.message}</p>}
           <div className="plan-days">
             {days.map((d) => {
               const items = trip.itinerary.filter((i) => i.date === d);
+              const open = dayOpen(d);
+              const left = items.filter((i) => !i.done).length;
               return (
-                <div key={d} className={cx('plan-day', d === today && 'is-today')}>
+                <div key={d} className={cx('plan-day', d === today && 'is-today', !open && 'is-folded')}>
                   <div className="plan-date">
-                    <b>{weekday(d)}</b>
+                    <button type="button" className="plan-date-toggle" aria-expanded={open} onClick={() => setDay(d, !open)}>
+                      <ChevronRight size={14} className="plan-date-chev" aria-hidden />
+                      <b>{weekday(d)}</b>
+                      {!open && (
+                        <span className="plan-date-peek">
+                          {items.length === 0 ? 'Free' : `${plural(items.length, 'plan')}${left < items.length ? ` · ${left ? `${left} to go` : 'all done'}` : ''} · ${items.map((i) => i.title).join(', ')}`}
+                        </span>
+                      )}
+                    </button>
                     <button type="button" className="icon-btn icon-btn-sm" aria-label={`Add to ${weekday(d)}`} onClick={() => setItem({ item: null, date: d })}>
                       <Plus size={14} />
                     </button>
                   </div>
-                  {items.length === 0 && <p className="plan-empty">Free</p>}
-                  <ul>
-                    {items.map((i) => (
-                      <li key={i.id} className={cx('plan-item', `pk-${i.kind}`, i.done && 'is-done')}>
-                        <Check checked={i.done} onChange={() => toggle.mutate(i)} label={`Done: ${i.title}`} />
-                        <button type="button" className="plan-item-body" onClick={() => setItem({ item: i, date: d })}>
-                          <span className="plan-time num">{i.time ?? '·'}</span>
-                          <span className="grow">
-                            <span className="plan-title">{i.title}</span>
-                            {(i.place || i.notes) && <span className="plan-place">{[i.place, i.notes].filter(Boolean).join(' — ')}</span>}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  {open && items.length === 0 && <p className="plan-empty">Free</p>}
+                  {open && items.length > 0 && (
+                    <ul>
+                      {items.map((i) => (
+                        <li key={i.id} className={cx('plan-item', `pk-${i.kind}`, i.done && 'is-done')}>
+                          <Check checked={i.done} onChange={() => toggle.mutate(i)} label={`Done: ${i.title}`} />
+                          <button type="button" className="plan-item-body" onClick={() => setItem({ item: i, date: d })}>
+                            <span className="plan-time num">{i.time ?? '·'}</span>
+                            <span className="grow">
+                              <span className="plan-title">{i.title}</span>
+                              {(i.place || i.notes) && <span className="plan-place">{[i.place, i.notes].filter(Boolean).join(' — ')}</span>}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               );
             })}
           </div>
-        </div>
-      </section>
+      </FoldCard>
 
       {editing && <TripSheet trip={trip} onClose={() => setEditing(false)} />}
       {booking && <BookingSheet trip={trip} segment={booking === 'new' ? null : booking} onClose={() => setBooking(null)} />}
@@ -953,6 +1014,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
     }
   };
   const chosen = trip.options.filter((o) => o.chosenAt).length;
+  const best = [...trip.options].sort((a, b) => eliteMiles(b).mid - eliteMiles(a).mid)[0];
   // How far there is still to go for the next KrisFlyer tier, to show what each option does for it.
   const kf = t?.loyalty.find((a) => a.program === 'KrisFlyer');
   const toGo = kf && kf.progress !== null && kf.progressTarget ? Math.max(0, kf.progressTarget - kf.progress) : null;
@@ -960,16 +1022,38 @@ function FlightOptions({ trip }: { trip: Trip }) {
   // The recommended option first, then the ones that earn the most elite miles.
   const ordered = [...trip.options].sort((a, b) => Number(b.recommended) - Number(a.recommended) || eliteMiles(b).mid - eliteMiles(a).mid);
   return (
-    <div className="trip-options">
-      <div className="card-head">
-        <button type="button" className="card-title opt-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          <Route size={15} /> Flight options
-          <ChevronDown size={15} className={cx('opt-toggle-chev', !open && 'is-closed')} aria-hidden />
+    <section className={cx('card trip-section fold-card trip-options', !open && 'is-folded')}>
+      <div className="card-head fold-head">
+        <button type="button" className="fold-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span className="card-title">
+            <Route size={15} /> Flight options
+          </span>
+          <span className="fold-peek opt-fold-peek">
+            {plural(trip.options.length, 'option')} · {chosen ? `${chosen} added to the trip` : 'nothing booked yet'}
+            {best && <span className="opt-bar-best"> · most elite miles: {CABIN_NAME[mainCabin(best)]}, ≈ {roughly(eliteMiles(best).mid)}</span>}
+          </span>
         </button>
-        <span className="trip-section-count">
-          {plural(trip.options.length, 'option')} · {chosen ? `${chosen} added to the trip` : 'not booked'}
-        </span>
+        <button type="button" className="icon-btn icon-btn-sm fold-chev-btn" aria-label={open ? 'Fold flight options' : 'Open flight options'} aria-expanded={open} onClick={() => setOpen(!open)}>
+          <ChevronDown size={15} className="fold-chev" aria-hidden />
+        </button>
       </div>
+      {!open && (
+        <div className="opt-peek">
+          {ordered.map((o) => {
+            const last = o.legs[o.legs.length - 1]!;
+            return (
+              <button key={o.id} type="button" className={cx('opt-peek-chip', o.chosenAt && 'is-added')} onClick={() => setOpen(true)}>
+                <span className={cx('opt-peek-dot', `is-${mainCabin(o)}`)} aria-hidden />
+                <b>{CABIN_NAME[mainCabin(o)]}</b>
+                <span>
+                  lands {weekday(dayOf(last.endLocal))} {time(last.endLocal)} · ≈ {roughly(eliteMiles(o).mid)}
+                </span>
+                {o.chosenAt && <CheckIcon size={12} className="opt-peek-check" aria-label="added to the trip" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {open && (
         <div className="trip-section-body">
           <div className="opt-grid">
@@ -988,7 +1072,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
         </div>
       )}
       {(choose.error || unchoose.error) && <p className="error-text">{(choose.error ?? unchoose.error)!.message}</p>}
-    </div>
+    </section>
   );
 }
 
