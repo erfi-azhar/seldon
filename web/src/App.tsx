@@ -195,22 +195,29 @@ function Shell({ settings }: { settings: SettingsData }) {
         {agentOpen && <AgentPanel chat={chat} settings={settings} onClose={() => setAgentOpen(false)} />}
       </div>
 
-      <nav className="tabbar" aria-label="Main">
-        {TABS.slice(0, 2).map((t) => (
-          <Link key={t.href} href={t.href} className={cx(t.match(location) && 'active')}>
-            <t.icon size={21} strokeWidth={1.9} />
-            {t.label}
-          </Link>
-        ))}
-        <button type="button" className="tab-agent" onClick={() => setAgentOpen(true)} aria-label={`Talk to ${agentName}`}>
-          <AgentOrb size={46} thinking={chat.streaming} />
+      {!agentOpen && (
+        <button type="button" className="askbar" onClick={() => setAgentOpen(true)}>
+          <AgentOrb size={36} thinking={chat.streaming} />
+          Ask {agentName} anything
+          <kbd>⌘J</kbd>
         </button>
-        {TABS.slice(2).map((t) => (
-          <Link key={t.href} href={t.href} className={cx(t.match(location) && 'active')}>
-            <t.icon size={21} strokeWidth={1.9} />
-            {t.label}
-          </Link>
-        ))}
+      )}
+
+      <nav className="tabbar" aria-label="Main">
+        <button type="button" className="tabbar-round" onClick={() => setPaletteOpen(true)} aria-label="Search and commands">
+          <Search size={21} />
+        </button>
+        <div className="tabbar-pill">
+          {TABS.map((t) => (
+            <Link key={t.href} href={t.href} className={cx(t.match(location) && 'active')}>
+              <t.icon size={20} strokeWidth={1.9} />
+              {t.label}
+            </Link>
+          ))}
+        </div>
+        <button type="button" className="tabbar-round tab-agent" onClick={() => setAgentOpen(true)} aria-label={`Talk to ${agentName}`}>
+          <AgentOrb size={52} thinking={chat.streaming} />
+        </button>
       </nav>
 
       <Sheets sheet={sheet} onClose={() => setSheet(null)} />
