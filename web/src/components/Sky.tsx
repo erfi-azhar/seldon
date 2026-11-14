@@ -60,7 +60,7 @@ const CELL = 5;
 const CELL_PHONE = 3;
 const PHONE_WIDTH = 720;
 const SUN_R = 0.06;
-const MOON_R = 0.085;
+const MOON_R = 0.11;
 
 // ── Maths ─────────────────────────────────────────────────────────────────────
 
@@ -290,7 +290,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       const mdx = x - moon.x;
       const mdy = v - moon.y;
       const m2 = mdx * mdx + mdy * mdy;
-      if (moonShows) c = add(c, MOON_GLOW, Math.exp(-m2 / 0.02) * 0.3 * lit.fraction * pal.moon * pal.stars);
+      if (moonShows) c = add(c, MOON_GLOW, Math.exp(-m2 / 0.03) * 0.3 * lit.fraction * pal.moon * pal.stars);
 
       if (pal.stars > 0.01 && k < 0.95) {
         const hs = hash(i * 7 + 11, j * 13 + 5);
