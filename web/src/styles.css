@@ -302,6 +302,8 @@ ul {
   min-height: 100dvh;
 }
 .app-main {
+  /* The Today sky is placed against this. */
+  position: relative;
   min-width: 0;
   /* A backstop: nothing too wide inside may widen the page (on a phone that zooms the whole UI out). */
   overflow-x: clip;
@@ -874,6 +876,41 @@ button.chip:hover {
 }
 
 /* ── Today ──────────────────────────────────────────────────────────────── */
+
+/* The sky: a band across the top of the page, behind the floating top bar, that
+   dissolves into the page just above the date. Drawn by components/Sky.tsx. */
+.app-main {
+  --sky-h: clamp(220px, 24vw, 330px);
+}
+.sky {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--sky-h);
+  /* Behind the page, above the ambient field (body::before). */
+  z-index: -1;
+  pointer-events: none;
+}
+.sky canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.sky-tip {
+  position: absolute;
+  transform: translate(14px, -50%);
+  white-space: nowrap;
+}
+.page.page-today {
+  padding-top: calc(var(--sky-h) - 72px - 70px);
+}
+@media (max-width: 720px) {
+  .app-main {
+    --sky-h: 210px;
+  }
+  .page.page-today {
+    padding-top: calc(var(--sky-h) - 48px);
+  }
+}
 
 .hero {
   display: flex;
@@ -7439,4 +7476,58 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 .opt-choose.is-added:hover .opt-added-icon {
   display: none;
+
+
+/* ── Times of day ─────────────────────────────────────────────────────────────
+   With "Follow the sun", sun.ts sets data-phase beside data-theme: day and evening
+   are the plain light and dark themes; dawn warms the light one, dusk the dark one. */
+
+:root[data-phase='dawn'] {
+  --bg: #f5ede9;
+  --surface: #fffbf9;
+  --surface-2: #fbf4f1;
+  --sunken: #ece2de;
+  --ink: #221a24;
+  --ink-2: #5e5360;
+  --ink-3: #6d616e;
+  --ink-4: #8b7f8b;
+  --line: rgb(60 30 45 / 0.09);
+  --line-2: rgb(60 30 45 / 0.16);
+  --glass: linear-gradient(180deg, rgb(255 251 249 / 0.74), rgb(255 248 245 / 0.54));
+  --glass-strong: linear-gradient(180deg, rgb(255 252 250 / 0.9), rgb(252 246 243 / 0.8));
+  --glass-float: linear-gradient(180deg, rgb(255 250 248 / 0.6), rgb(255 247 244 / 0.36));
+  --tile: rgb(255 251 249 / 0.82);
+  --amb-1: oklch(0.9 0.06 20 / 0.75);
+  --amb-2: oklch(0.91 0.055 310 / 0.7);
+  --amb-3: oklch(0.94 0.06 65 / 0.75);
+  --amb-4: oklch(0.94 0.04 30 / 0.6);
+}
+
+:root[data-phase='dusk'] {
+  --bg: #17111b;
+  --surface: #221924;
+  --surface-2: #2a1f2c;
+  --sunken: #0f0a12;
+  --ink: #f7ede9;
+  --ink-2: #c9b2b7;
+  --ink-3: #b8a1a8;
+  --ink-4: #8d7881;
+  --line: rgb(255 225 225 / 0.08);
+  --line-2: rgb(255 225 225 / 0.16);
+  --glass: linear-gradient(180deg, rgb(74 50 68 / 0.6), rgb(40 27 42 / 0.5));
+  --glass-strong: linear-gradient(180deg, rgb(48 34 48 / 0.92), rgb(30 21 32 / 0.88));
+  --glass-edge: rgb(255 230 230 / 0.12);
+  --glass-float: linear-gradient(180deg, rgb(92 62 84 / 0.5), rgb(44 30 46 / 0.42));
+  --tile: rgb(255 235 235 / 0.055);
+  --amb-1: oklch(0.32 0.1 330 / 0.6);
+  --amb-2: oklch(0.34 0.09 40 / 0.5);
+  --amb-3: oklch(0.3 0.08 20 / 0.45);
+  --amb-4: oklch(0.28 0.07 290 / 0.45);
+  --primary: linear-gradient(180deg, #fff8f4, #ecdcd6);
+}
+
+/* A phase change while you watch: the whole page cross-fades. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 1.2s;
 }
