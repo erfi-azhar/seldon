@@ -10,12 +10,15 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LAND } from '../land.ts';
+import { planePaint, type PlanePaint } from './Tails.tsx';
 
 export interface GlobeLeg {
   from: { code: string; lat: number; lon: number };
   to: { code: string; lat: number; lon: number };
   /** Scheduled time in the air, for the caption. */
   minutes?: number;
+  /** The operating airline's code, to paint the plane in its livery. */
+  carrier?: string;
 }
 
 type V3 = [number, number, number];
@@ -306,32 +309,72 @@ export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: bo
     /** The route's points on screen, for a view. */
     const routePoints = (a: V3, b: V3, v: View) => Array.from({ length: 81 }, (_, i) => project(slerp(a, b, i / 80), v));
 
-    const plane = (x: number, y: number, deg: number, scale: number, lift: number) => {
-      const draw = (body: string, wing: string, dark: string) => {
-        ctx.fillStyle = wing;
-        ctx.fill(WINGS);
-        ctx.fill(TAIL);
-        ctx.fillStyle = dark;
-        ctx.fill(ENGINES);
-        ctx.fillStyle = body;
-        ctx.fill(BODY);
-      };
+    const plane = (x: number, y: number, deg: number, scale: number, lift: number, look: PlanePaint) => {
       // Its shadow falls further away the higher it flies.
       ctx.save();
       ctx.translate(x + 4 + 7 * lift, y + 6 + 9 * lift);
       ctx.rotate(deg);
       ctx.scale(scale, scale);
-      ctx.globalAlpha *= 0.16;
-      draw('#0a1e3c', '#0a1e3c', '#0a1e3c');
+      ctx.globalAlpha *= 0.18;
+      ctx.fillStyle = '#0a1e3c';
+      for (const part of [WINGS, STABS, ENGINES, BODY]) ctx.fill(part);
       ctx.restore();
+
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(deg);
       ctx.scale(scale, scale);
-      draw('#ffffff', '#ec4a26', '#c23a1c');
-      ctx.strokeStyle = 'rgba(20, 30, 50, 0.22)';
-      ctx.lineWidth = 0.6 / scale;
+      const edge = 'rgba(16, 24, 40, 0.35)';
+      ctx.lineWidth = 0.5 / scale;
+      ctx.lineJoin = 'round';
+      // Wings and tailplane: pale grey, a touch darker towards the trailing edge.
+      const wing = ctx.createLinearGradient(6, 0, -11, 0);
+      wing.addColorStop(0, '#eef1f4');
+      wing.addColorStop(1, '#b9c0c9');
+      ctx.fillStyle = wing;
+      ctx.fill(WINGS);
+      ctx.fill(STABS);
+      ctx.strokeStyle = edge;
+      ctx.stroke(WINGS);
+      ctx.stroke(STABS);
+      // Winglets in the tail colour, as most liveries have them.
+      ctx.fillStyle = look.fin;
+      ctx.fill(WINGLETS);
+      // Engines hang ahead of the wing, intakes dark.
+      ctx.fillStyle = look.engine;
+      ctx.fill(ENGINES);
+      ctx.stroke(ENGINES);
+      ctx.fillStyle = '#2a3140';
+      ctx.fill(INTAKES);
+      // The fuselage, rounded with light from one side.
+      const body = ctx.createLinearGradient(0, -2.4, 0, 2.4);
+      body.addColorStop(0, look.body);
+      body.addColorStop(0.35, look.body);
+      body.addColorStop(1, shade(look.body, 0.78));
+      ctx.fillStyle = body;
+      ctx.fill(BODY);
       ctx.stroke(BODY);
+      // The fin stands up from the spine; it is drawn leaning a little towards the top of the screen,
+      // as if seen from slightly off vertical, so the livery on it shows.
+      const side = Math.cos(deg) >= 0 ? -1 : 1;
+      const fin = new Path2D(`M-12.5 0 L-22.4 0 L-23.4 ${7.4 * side} L-20.4 ${7.4 * side} Z`);
+      ctx.fillStyle = look.fin;
+      ctx.fill(fin);
+      ctx.save();
+      ctx.clip(fin);
+      ctx.strokeStyle = look.accent;
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-15.5, 0);
+      ctx.quadraticCurveTo(-19.6, 2.6 * side, -21.2, 7.6 * side);
+      ctx.stroke();
+      ctx.restore();
+      ctx.strokeStyle = edge;
+      ctx.stroke(fin);
+      // Cockpit windows.
+      ctx.fillStyle = '#1c2533';
+      ctx.fill(COCKPIT);
       ctx.restore();
     };
 
@@ -428,7 +471,7 @@ export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: bo
         const lift = Math.sin(Math.PI * k);
         const size = Math.max(0.75, Math.min(1.15, view.R / 170));
         ctx.globalAlpha = fade;
-        plane(x, y, deg, size * (0.78 + 0.32 * lift), lift);
+        plane(x, y, deg, size * 0.92 * (0.78 + 0.32 * lift), lift, planePaint(p.leg.carrier));
         ctx.globalAlpha = 1;
       }
     };
@@ -497,8 +540,18 @@ export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: bo
   );
 }
 
-// A small airliner seen from above, nose to +x, about 40 units long.
-const BODY = new Path2D('M19 0 C19 2 16.5 2.7 14 2.7 L-14 2.5 L-19 1.1 L-19 -1.1 L-14 -2.5 L14 -2.7 C16.5 -2.7 19 -2 19 0 Z');
-const WINGS = new Path2D('M5 -2.2 L-5 -18 L-9.5 -18 L-4.5 -2.2 Z M5 2.2 L-5 18 L-9.5 18 L-4.5 2.2 Z');
-const TAIL = new Path2D('M-12.5 -2 L-17 -8.5 L-19.5 -8.5 L-16.8 -2 Z M-12.5 2 L-17 8.5 L-19.5 8.5 L-16.8 2 Z');
-const ENGINES = new Path2D('M0.5 -9.5 L-4.5 -9.5 L-4.5 -7.3 L0.5 -7.3 Z M0.5 7.3 L-4.5 7.3 L-4.5 9.5 L0.5 9.5 Z');
+// A twin-engined airliner seen from above, nose to +x, about 44 units long and 42 across.
+const BODY = new Path2D('M22 0 C22 1.5 20.4 2.3 17.5 2.3 L-11 2.3 C-15.5 2.1 -19.5 1.2 -22 0.45 L-22 -0.45 C-19.5 -1.2 -15.5 -2.1 -11 -2.3 L17.5 -2.3 C20.4 -2.3 22 -1.5 22 0 Z');
+const WINGS = new Path2D('M7 -2.1 L-8.2 -20 L-10.6 -20 L-5.6 -6.5 L-4.2 -2.1 Z M7 2.1 L-8.2 20 L-10.6 20 L-5.6 6.5 L-4.2 2.1 Z');
+const WINGLETS = new Path2D('M-8.2 -20 L-10.6 -20 L-11 -21.2 L-8.9 -21.2 Z M-8.2 20 L-10.6 20 L-11 21.2 L-8.9 21.2 Z');
+const STABS = new Path2D('M-13.5 -1.8 L-19.4 -8.6 L-21.2 -8.6 L-18.6 -1.3 Z M-13.5 1.8 L-19.4 8.6 L-21.2 8.6 L-18.6 1.3 Z');
+const ENGINES = new Path2D('M5.8 -9.3 Q6.3 -7.6 5.8 -5.9 L0.6 -6.2 Q0 -7.6 0.6 -9 Z M5.8 9.3 Q6.3 7.6 5.8 5.9 L0.6 6.2 Q0 7.6 0.6 9 Z');
+const INTAKES = new Path2D('M5.9 -9 L6.3 -9 L6.3 -6.2 L5.9 -6.2 Z M5.9 9 L6.3 9 L6.3 6.2 L5.9 6.2 Z');
+const COCKPIT = new Path2D('M19.3 -1.3 L20.6 -1 L20.6 1 L19.3 1.3 L19.6 0 Z');
+
+/** A colour darkened towards black by a factor (1 = unchanged), for the shaded side of the fuselage. */
+function shade(hex: string, k: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const c = (v: number) => Math.round(v * k);
+  return `rgb(${c((n >> 16) & 255)}, ${c((n >> 8) & 255)}, ${c(n & 255)})`;
+}

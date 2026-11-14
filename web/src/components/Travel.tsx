@@ -558,6 +558,7 @@ function globeLegs(flights: Segment[]): GlobeLeg[] {
       from: { code: s.fromCode, lat: s.fromGeo![0], lon: s.fromGeo![1] },
       to: { code: s.toCode, lat: s.toGeo![0], lon: s.toGeo![1] },
       minutes: Math.max(0, Math.round((Date.parse(s.endUtc) - Date.parse(s.startUtc)) / 60_000)) || undefined,
+      carrier: s.carrier,
     }));
 }
 
