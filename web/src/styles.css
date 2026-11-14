@@ -882,8 +882,10 @@ button.chip:hover {
    components/Sky.tsx. */
 .app {
   --sky-h: clamp(200px, 19vw, 270px);
-  /* Space between the bottom of the band (where the last, faintest dots are) and the day above the date. */
-  --sky-gap: 0px;
+  /* Where the hero starts relative to the bottom of the band. The last stretch of the
+     fade is too faint to see, so the visible gap is about a fifth of the band's height;
+     pulling the hero up by 4% of it trims that gap by a fifth. */
+  --sky-gap: calc(var(--sky-h) * -0.04);
 }
 .sky {
   position: absolute;
