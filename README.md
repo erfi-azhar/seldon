@@ -240,7 +240,13 @@ Connections need outbound network access: `imap.gmail.com:993` for Gmail; the jo
 APIs (`boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com`, `apply.workable.com`,
 `api.smartrecruiters.com`); any MCP servers you add; and whatever links you capture.
 
-### Using it from your phone
+### Hosting it
+
+To reach Terminus from anywhere, deploy it to Railway or Render: the repository has a
+`Dockerfile` and a Render Blueprint (`render.yaml`), and [docs/DEPLOY.md](docs/DEPLOY.md)
+walks through both, step by step — passphrase, persistent disk, HTTPS, moving your data.
+
+### Using it from your phone on your own network
 
 By default Terminus only answers on the machine it runs on. To reach it from another
 device, bind it to the network and protect it:

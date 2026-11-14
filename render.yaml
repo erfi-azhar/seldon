@@ -1,0 +1,20 @@
+# Render Blueprint: New → Blueprint, pick this repository. Persistent disks need a paid
+# instance; the free tier would lose your data on every deploy.
+services:
+  - type: web
+    name: terminus
+    runtime: docker
+    plan: 0.5c-512mb # the smallest paid instance; disks need one
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/auth/status
+    autoDeployTrigger: commit
+    disk:
+      name: terminus-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: TERMINUS_PASSPHRASE
+        sync: false # Render asks you for it when the Blueprint is created
+      - key: TZ
+        value: Asia/Singapore
