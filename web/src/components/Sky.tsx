@@ -6,7 +6,7 @@
 // and stars twinkle; a click sends a shooting star after dark, or a few birds by day.
 // When a trip is under two weeks away a small plane crosses now and then.
 //
-// It draws a coarse grid (a dot every 5px), slowly when nothing is moving, and not at
+// It draws a coarse grid (a dot every 5px, 3px on a phone), slowly when nothing is moving, and not at
 // all while hidden or scrolled away. With reduced motion it holds still.
 
 import { useEffect, useRef, useState } from 'react';
@@ -53,7 +53,10 @@ const BEACON: RGB = [255, 96, 84];
 const HZ = 0.66;
 /** The bottom of the band dissolves into the page over this fraction of its height. */
 const FADE = 0.42;
+/** Dot spacing in CSS pixels: finer on a phone, where the band is small. */
 const CELL = 5;
+const CELL_PHONE = 3;
+const PHONE_WIDTH = 720;
 const SUN_R = 0.06;
 const MOON_R = 0.085;
 
@@ -253,8 +256,11 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
 
-  const cols = Math.ceil(w / CELL);
-  const rows = Math.ceil(h / CELL);
+  const cell = w <= PHONE_WIDTH ? CELL_PHONE : CELL;
+  // The same number of stars for the area, however fine the grid.
+  const starChance = 0.03 * (cell / CELL) ** 2;
+  const cols = Math.ceil(w / cell);
+  const rows = Math.ceil(h / cell);
   const drift = seconds * 0.03;
   for (let j = 0; j < rows; j++) {
     const v = (j + 0.5) / rows;
@@ -284,8 +290,10 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
 
       if (pal.stars > 0.01 && k < 0.95) {
         const hs = hash(i * 7 + 11, j * 13 + 5);
-        if (hs > 1 - 0.03 * pal.stars) {
-          const twinkle = 0.6 + 0.4 * Math.sin(seconds * (1.2 + hs * 40) + hs * 300);
+        if (hs > 1 - starChance * pal.stars) {
+          // A slow, gentle swell: each star on its own 12–30 second cycle.
+          const own = hash(i + 5, j + 211);
+          const twinkle = 0.82 + 0.18 * Math.sin(seconds * (0.21 + 0.31 * own) + own * 40);
           c = mix(c, STAR, (0.45 + 0.55 * hash(i, j + 99)) * (1 - k) * Math.min(1, pal.stars + 0.3) * twinkle);
         }
       }
@@ -332,17 +340,17 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
         ink = 0;
       }
 
-      const cx = i * CELL + CELL / 2;
-      const cy = j * CELL + CELL / 2;
+      const cx = i * cell + cell / 2;
+      const cy = j * cell + cell / 2;
       if (ink > 0) {
         ctx.fillStyle = css(pal.ink, Math.min(1, fade * 1.5) * ink);
         ctx.beginPath();
-        ctx.arc(cx, cy, CELL * 0.44, 0, 6.2832);
+        ctx.arc(cx, cy, cell * 0.44, 0, 6.2832);
         ctx.fill();
         continue;
       }
       const b = B4[j & 3]![i & 3]!;
-      const r = CELL * 0.5 * clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22);
+      const r = cell * 0.5 * clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22);
       if (r < 0.3) continue;
       const dot = mul(c, 0.9 + 0.25 * b);
       ctx.fillStyle = toPage > 0 ? css(mix(dot, page, toPage), alpha) : css(dot);
