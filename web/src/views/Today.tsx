@@ -10,13 +10,15 @@ import { SignalsCard } from '../components/Signals.tsx';
 import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
-import { Loading } from '../components/ui.tsx';
+import { Loading, ScrollBlur, useScrollEdges } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
 
 function SphereStrip({ overview }: { overview: Overview }) {
+  const strip = useScrollEdges<HTMLElement>('x', [overview.spheres.length]);
   return (
-    <nav className="card sphere-strip" aria-label="Your spheres this week">
+    <div className="card sphere-strip-card blur-wrap">
+    <nav ref={strip.ref} onScroll={strip.onScroll} className="sphere-strip" aria-label="Your spheres this week">
       {overview.spheres.map((s) => {
         const quiet = s.stats.quietDays;
         const meta = quiet === null ? 'new' : quiet === 0 ? 'today' : quiet === 1 ? 'yesterday' : `${quiet}d quiet`;
@@ -29,6 +31,8 @@ function SphereStrip({ overview }: { overview: Overview }) {
         );
       })}
     </nav>
+    <ScrollBlur axis="x" edges={strip.edges} />
+    </div>
   );
 }
 

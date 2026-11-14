@@ -945,11 +945,14 @@ button.chip:hover {
   font-weight: 550;
 }
 
+.sphere-strip-card {
+  margin-bottom: 20px;
+  overflow: hidden;
+}
 .sphere-strip {
   display: flex;
   gap: 6px;
   padding: 12px 14px 10px;
-  margin-bottom: 20px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -6300,19 +6303,6 @@ textarea.title-input {
   outline-offset: -2px;
   border-radius: 10px;
 }
-.jobs-scroll.fade-end {
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
-}
-.jobs-scroll.fade-start {
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px);
-  mask-image: linear-gradient(to bottom, transparent, #000 32px);
-}
-.jobs-scroll.fade-start.fade-end {
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 40px), transparent);
-  mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 40px), transparent);
-}
-
 /* On a phone the header keeps its icons and the toolbar its filter; the words step aside. */
 @media (max-width: 560px) {
   .jobs-btn-label,
@@ -7069,12 +7059,12 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
   scroll-padding-inline: 18px;
-  margin-inline: -18px;
   padding-inline: 18px;
   padding-bottom: 6px;
   scrollbar-width: thin;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 28px), transparent 100%);
-  mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 28px), transparent 100%);
+}
+.opt-grid-wrap {
+  margin-inline: -18px;
 }
 .opt-grid > .opt-card {
   scroll-snap-align: start;
@@ -7849,4 +7839,79 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 1.2s;
+}
+
+/* Progressive blur where a scrolling box cuts its content off (see ScrollBlur): six layers of
+   backdrop blur, each stronger and in a narrower band nearer the edge. */
+.blur-wrap {
+  position: relative;
+  min-width: 0;
+}
+.blur-edge {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  --to: to right;
+}
+.blur-edge.is-on {
+  opacity: 1;
+}
+.blur-edge.is-x {
+  top: 0;
+  bottom: 0;
+  width: 40px;
+}
+.blur-edge.is-y {
+  left: 0;
+  right: 0;
+  height: 48px;
+}
+.blur-edge.is-x.is-end {
+  right: 0;
+}
+.blur-edge.is-x.is-start {
+  left: 0;
+  --to: to left;
+}
+.blur-edge.is-y.is-end {
+  bottom: 0;
+  --to: to bottom;
+}
+.blur-edge.is-y.is-start {
+  top: 0;
+  --to: to top;
+}
+.blur-edge i {
+  position: absolute;
+  inset: 0;
+  -webkit-backdrop-filter: blur(var(--b));
+  backdrop-filter: blur(var(--b));
+  -webkit-mask-image: linear-gradient(var(--to), var(--m));
+  mask-image: linear-gradient(var(--to), var(--m));
+}
+.blur-edge i:nth-child(1) {
+  --b: 0.5px;
+  --m: transparent 0%, #000 16%, #000 33%, transparent 50%;
+}
+.blur-edge i:nth-child(2) {
+  --b: 1px;
+  --m: transparent 16%, #000 33%, #000 50%, transparent 66%;
+}
+.blur-edge i:nth-child(3) {
+  --b: 2px;
+  --m: transparent 33%, #000 50%, #000 66%, transparent 83%;
+}
+.blur-edge i:nth-child(4) {
+  --b: 4px;
+  --m: transparent 50%, #000 66%, #000 83%, transparent 100%;
+}
+.blur-edge i:nth-child(5) {
+  --b: 8px;
+  --m: transparent 66%, #000 83%, #000 100%;
+}
+.blur-edge i:nth-child(6) {
+  --b: 14px;
+  --m: transparent 83%, #000 100%;
 }
