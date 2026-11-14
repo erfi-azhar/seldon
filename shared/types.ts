@@ -690,7 +690,7 @@ export interface TravelState {
 
 // ── Job alerts ──────────────────────────────────────────────────────────────
 
-export type JobBoardKind = 'greenhouse' | 'lever' | 'ashby' | 'workable' | 'smartrecruiters';
+export type JobBoardKind = 'greenhouse' | 'lever' | 'ashby' | 'workable' | 'smartrecruiters' | 'recruitee';
 
 export interface JobWatch {
   id: string;
@@ -717,6 +717,8 @@ export interface JobPosting {
   firstSeenAt: string;
   /** new: appeared since you started watching; saved / dismissed: your call; seen: there when you started. */
   status: 'new' | 'seen' | 'saved' | 'dismissed';
+  /** At a company, or with a word in its title or team, that you asked to highlight. */
+  highlighted: boolean;
 }
 
 export interface JobPreferences {
@@ -728,6 +730,8 @@ export interface JobPreferences {
   locations: string[];
   /** Remote roles count wherever they are. */
   remote: boolean;
+  /** Roles at these companies, or with these words in the title or team, come first. */
+  highlight: string[];
 }
 
 export interface JobsState {
