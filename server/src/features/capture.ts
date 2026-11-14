@@ -149,6 +149,43 @@ async function fromOembed(url: string): Promise<Extracted | null> {
   }
 }
 
+/**
+ * A TikTok video page carries the post in a JSON script (its embed no longer does):
+ * the caption, the author and a cover. Null when the page has no such data.
+ */
+function fromTikTokPage(html: string, url: string): Extracted | null {
+  const raw = html.match(/<script[^>]+id=["'](?:__UNIVERSAL_DATA_FOR_REHYDRATION__|SIGI_STATE)["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  if (!raw) return null;
+  type Item = { desc?: string; author?: { uniqueId?: string; nickname?: string } | string; nickname?: string; video?: { cover?: string; originCover?: string } };
+  let item: Item | undefined;
+  let detail: { itemInfo?: { itemStruct?: Item }; statusCode?: number; statusMsg?: string } | undefined;
+  try {
+    const data = JSON.parse(raw) as { __DEFAULT_SCOPE__?: Record<string, { itemInfo?: { itemStruct?: Item }; statusCode?: number; statusMsg?: string }>; ItemModule?: Record<string, Item> };
+    detail = data.__DEFAULT_SCOPE__?.['webapp.video-detail'];
+    item = detail?.itemInfo?.itemStruct ?? Object.values(data.ItemModule ?? {})[0];
+  } catch (err) {
+    why(`TikTok page data for ${url} did not parse: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+  if (!item?.desc && !item?.author) {
+    why(`TikTok page for ${url} had no video details (status ${detail?.statusCode ?? '-'} ${detail?.statusMsg ?? ''}); scopes: ${glimpse(raw.match(/"webapp\.[\w.-]+"/g)?.join(' ') ?? '-', 200)}`);
+    return null;
+  }
+  const author = typeof item.author === 'string' ? item.nickname || item.author : item.author?.nickname || item.author?.uniqueId || '';
+  const caption = item.desc?.trim() ?? '';
+  const cover = item.video?.cover || item.video?.originCover || '';
+  return {
+    kind: 'video',
+    title: author ? `${author} on TikTok` : 'TikTok',
+    description: '',
+    caption: caption.slice(0, 4000),
+    site: 'TikTok',
+    author,
+    text: caption,
+    imageUrl: cover ? new URL(cover, url).toString() : null,
+  };
+}
+
 /** A fetched file's name from its link, for a title. */
 function fileTitle(url: string, host: string): string {
   const last = new URL(url).pathname.split('/').pop() || '';
@@ -185,6 +222,8 @@ export async function extract(url: string): Promise<Extracted> {
   if (!/html|xml|text\/plain/.test(type)) return { kind: 'link', title: host, description: '', site: host, author: '', text: '', imageUrl: null };
 
   const html = res.body.toString('utf8');
+  const tiktok = fromTikTokPage(html, res.url);
+  if (tiktok) return tiktok;
   if (type === 'text/plain') return { kind: 'article', title: host, description: '', site: host, author: '', text: html.slice(0, 15_000), imageUrl: null };
   const title = meta(html, 'og:title', 'twitter:title') || decodeEntities(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim() || host;
   const ogType = meta(html, 'og:type');

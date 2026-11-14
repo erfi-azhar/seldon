@@ -156,6 +156,30 @@ test('a post keeps its own words when no brain can summarise it; short links are
   }
 });
 
+test('a TikTok whose embed is only a player is read from the data on its page', async () => {
+  allowPrivateAddressesForTests(true);
+  const data = { __DEFAULT_SCOPE__: { 'webapp.app-context': { language: 'en' }, 'webapp.video-detail': { statusCode: 0, itemInfo: { itemStruct: { desc: 'one-pan dinner #recipe', author: { uniqueId: 'sam', nickname: 'Sam Cooks' }, video: { cover: '/cover.png' } } } } } };
+  const page = (d: unknown) => `<html><head><title>TikTok - Make Your Day</title></head><body><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify(d)}</script></body></html>`;
+  const base = await site({
+    '/short': { type: 'text/html', body: '', status: 301, location: '/@sam/video/7' },
+    '/@sam/video/7': { type: 'text/html; charset=utf-8', body: page(data) },
+    '/@sam/video/8': { type: 'text/html; charset=utf-8', body: page({ __DEFAULT_SCOPE__: { 'webapp.video-detail': { statusCode: 10204, statusMsg: 'not found' } } }) },
+    '/oembed/7': { type: 'application/json', body: '{"version":"1.0","type":"video","html":"<iframe src=\\"https://www.tiktok.com/player/v1/7\\"></iframe>"}' },
+  });
+  useOembedProvidersForTests([{ test: new RegExp(`^${base}/@[^/]+/video/`), endpoint: () => `${base}/oembed/7`, kind: 'video', site: 'TikTok' }]);
+  try {
+    const x = await extract(`${base}/short`);
+    assert.equal(x.title, 'Sam Cooks on TikTok');
+    assert.equal(x.caption, 'one-pan dinner #recipe');
+    assert.equal(x.site, 'TikTok');
+    assert.equal(x.imageUrl, `${base}/cover.png`);
+    // Without the video's details, the page is read like any other.
+    assert.equal((await extract(`${base}/@sam/video/8`)).title, 'TikTok - Make Your Day');
+  } finally {
+    useOembedProvidersForTests(null);
+  }
+});
+
 test('helpers: entities and readable text', () => {
   assert.equal(decodeEntities('Caf&eacute; &amp; &#x1F600; &#8212;'), 'Caf&eacute; & 😀 —');
   assert.equal(readableText('<body><header>H</header><main><p>One</p><p>Two</p></main><aside>x</aside></body>'), 'One\n\nTwo');
