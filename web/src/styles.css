@@ -7759,6 +7759,17 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 .plan-day.is-folded .plan-date-chev {
   transform: none;
 }
+.plan-days {
+  grid-template-columns: minmax(0, 1fr);
+}
+.plan-day,
+.plan-date {
+  min-width: 0;
+}
+.plan-date-toggle b {
+  flex: none;
+  white-space: nowrap;
+}
 .plan-date-peek {
   min-width: 0;
   overflow: hidden;
