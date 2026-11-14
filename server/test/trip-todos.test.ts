@@ -239,3 +239,32 @@ test('hotel options: listed nearest first, one recommended, and choosing puts a 
   assert.equal((await call('DELETE', `/travel/stay-options/${westin.id}`)).status, 200);
   assert.equal(getTrip(store, trip.id).stayOptions.length, 3);
 });
+
+test('Bonvoy elite nights: counted on from the card, through earlier Marriott stays, to the next tier', async () => {
+  const { db, store } = setup();
+  const { upsertLoyalty, listTrips } = await import('../src/features/travel.ts');
+  upsertLoyalty(store, { program: 'Marriott Bonvoy', kind: 'hotel', tier: 'Gold Elite', progress: 48, progressTarget: 50, progressLabel: 'nights this year to Platinum Elite' });
+  db.prepare("UPDATE loyalty_accounts SET updated_at = '2026-11-14T06:54:13.535Z'").run();
+  const szx = createTrip(store, { title: 'Shenzhen', purpose: 'work', startDate: '2026-11-24', endDate: '2026-11-29' });
+  addSegment(store, szx.id, { kind: 'stay', title: 'The Mercury Garden Shenzhen Nanshan, A Tribute Portfolio Hotel', startLocal: '2026-11-24T15:00', endLocal: '2026-11-29T12:00' });
+  addSegment(store, szx.id, { kind: 'stay', title: 'Hotel Ibis', startLocal: '2026-11-20T15:00', endLocal: '2026-11-21T12:00' });
+  addSegment(store, szx.id, { kind: 'stay', title: 'Sheraton Singapore', startLocal: '2026-11-01T15:00', endLocal: '2026-11-03T12:00' });
+  const gru = createTrip(store, { title: 'São Paulo', purpose: 'work', startDate: '2026-11-29', endDate: '2026-12-12' });
+  addSegment(store, gru.id, { kind: 'stay', title: 'The Westin São Paulo', startLocal: '2026-11-30T15:00', endLocal: '2026-12-12T12:00' });
+  const nye = createTrip(store, { title: 'New Year', purpose: 'leisure', startDate: '2026-12-30', endDate: '2027-01-02' });
+  addSegment(store, nye.id, { kind: 'stay', title: 'W Bali', startLocal: '2026-12-30T15:00', endLocal: '2027-01-02T12:00' });
+
+  const stays = listTrips(store, '2026-10-01').flatMap((t) => t.segments).filter((s) => s.kind === 'stay');
+  const by = (title: string) => stays.find((s) => s.title.startsWith(title))!.eliteNights;
+  assert.equal(by('Hotel Ibis'), undefined, 'not a Marriott hotel');
+  assert.equal(by('Sheraton Singapore')!.counted, true, 'checked out before the count was recorded');
+  const szxN = by('The Mercury Garden')!;
+  assert.deepEqual([szxN.nights, szxN.before, szxN.after, szxN.reaches], [5, 48, 53, 'Platinum Elite']);
+  const w = by('The Westin')!;
+  assert.deepEqual([w.nights, w.before, w.after, w.year, w.reaches], [12, 53, 65, 2026, null]);
+  assert.deepEqual(w.next, { tier: 'Titanium Elite', at: 75 });
+  assert.deepEqual(w.recorded, { nights: 48, asOf: '2026-11-14' });
+  assert.deepEqual(w.earlier.map((x) => x.nights), [5]);
+  const bali = by('W Bali')!;
+  assert.deepEqual([bali.year, bali.before, bali.after, bali.recorded], [2027, 0, 3, null], 'a stay checking out next year starts that year afresh');
+});

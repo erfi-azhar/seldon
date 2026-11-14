@@ -1,8 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Sparkles } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { Link } from 'wouter';
-import type { Activity, Overview } from '../../../shared/types.ts';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import type { Activity, Overview, Task } from '../../../shared/types.ts';
 import { useOverview, useTravel, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, HabitRow, TaskRow } from '../components/rows.tsx';
@@ -10,29 +9,60 @@ import { SignalsCard } from '../components/Signals.tsx';
 import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
-import { Loading, ScrollBlur, useScrollEdges } from '../components/ui.tsx';
+import { Loading } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
 
-function SphereStrip({ overview }: { overview: Overview }) {
-  const strip = useScrollEdges<HTMLElement>('x', [overview.spheres.length]);
-  return (
-    <div className="card sphere-strip-card blur-wrap">
-    <nav ref={strip.ref} onScroll={strip.onScroll} className="sphere-strip" aria-label="Your spheres this week">
-      {overview.spheres.map((s) => {
-        const quiet = s.stats.quietDays;
-        const meta = quiet === null ? 'new' : quiet === 0 ? 'today' : quiet === 1 ? 'yesterday' : `${quiet}d quiet`;
-        return (
-          <Link key={s.id} href={`/spheres/${s.id}`} className="strip-item" title={`${s.name}: ${Math.round(s.stats.pulse * 100)}% pulse this week`}>
-            <Orb hue={s.hue} icon={s.icon} size={40} ring={s.stats.pulse} />
-            <span className="strip-name">{s.name}</span>
-            <span className={cx('strip-meta', quiet !== null && quiet >= 7 && 'quiet')}>{meta}</span>
-          </Link>
-        );
-      })}
-    </nav>
-    <ScrollBlur axis="x" edges={strip.edges} />
+/** Today's to-dos (due today or overdue, and done today), split into work and the rest. */
+function TodayTodos({ overview: o }: { overview: Overview }) {
+  const { spheres, agentName } = useApp();
+  const today = todayStr();
+  const work = spheres.find((s) => s.key === 'work') ?? spheres.find((s) => /^work$/i.test(s.name));
+  const isWork = (t: Task) => !!work && t.sphereId === work.id;
+  const open = o.tasks.due;
+  const done = o.tasks.doneToday;
+  const total = open.length + done.length;
+  const column = (label: string, tasks: { open: Task[]; done: Task[] }, add: ReactNode, showSphere: boolean) => (
+    <div className="todo-col">
+      <div className="todo-col-head">
+        <h3>{label}</h3>
+        <span className="hint">{tasks.open.length === 0 ? (tasks.done.length ? 'all done' : 'nothing due') : `${tasks.open.length} to do`}</span>
+      </div>
+      {tasks.open.length + tasks.done.length > 0 && (
+        <ul>
+          {tasks.open.map((t) => (
+            <TaskRow key={t.id} task={t} showSphere={showSphere} />
+          ))}
+          {tasks.done.map((t) => (
+            <TaskRow key={t.id} task={t} showSphere={showSphere} />
+          ))}
+        </ul>
+      )}
+      {add}
     </div>
+  );
+  return (
+    <section className="card today-todos">
+      <div className="card-head">
+        <h2 className="card-title">Today's to-dos</h2>
+        <span className="hint">{total === 0 ? `Nothing due. Add one, or ask ${agentName}.` : `${done.length} of ${total} done`}</span>
+      </div>
+      <div className={cx('todo-split', !work && 'single')}>
+        {work &&
+          column(
+            work.name,
+            { open: open.filter(isWork), done: done.filter(isWork) },
+            <AddTask sphereId={work.id} dueDate={today} placeholder={`Add a ${work.name.toLowerCase()} to-do for today…`} />,
+            false,
+          )}
+        {column(
+          work ? 'Everything else' : 'To do',
+          { open: open.filter((t) => !isWork(t)), done: done.filter((t) => !isWork(t)) },
+          <AddTask dueDate={today} placeholder="Add a to-do for today…" />,
+          true,
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -228,7 +258,7 @@ function useSkyTrip(): SkyTrip | null {
 export function Today() {
   const { data: o } = useOverview();
   const skyTrip = useSkyTrip();
-  const { agentName, openSheet, sphere } = useApp();
+  const { openSheet, sphere } = useApp();
   const [showAll, setShowAll] = useState(false);
   if (!o) return <Loading />;
 
@@ -236,7 +266,6 @@ export function Today() {
   const habitsOpen = o.habits.filter((h) => !h.doneToday && (h.cadence === 'daily' || h.weekCount < h.targetPerWeek)).length;
   const due = o.tasks.due.length;
   const anytime = showAll ? o.tasks.anytime : o.tasks.anytime.slice(0, 5);
-  const nothing = due + o.tasks.anytime.length + o.tasks.doneToday.length === 0;
   const horizon = o.goalsDue.length + o.tasks.upcoming.length > 0;
 
   return (
@@ -266,7 +295,7 @@ export function Today() {
         </div>
       </header>
 
-      {o.spheres.length > 0 && <SphereStrip overview={o} />}
+      <TodayTodos overview={o} />
 
       <div className="today-grid">
         <div className="col">
@@ -274,22 +303,13 @@ export function Today() {
           <SignalsCard />
           <section className="card">
             <div className="card-head">
-              <h2 className="card-title">On your plate</h2>
+              <h2 className="card-title">Anytime</h2>
+              <span className="hint">no date set</span>
             </div>
-            {nothing && <p className="empty">Nothing here. Add what's on your mind, or tell {agentName}.</p>}
-            {due > 0 && (
+            {o.tasks.anytime.length === 0 ? (
+              <p className="empty">Nothing waiting without a date.</p>
+            ) : (
               <>
-                <div className="list-label">Due</div>
-                <ul>
-                  {o.tasks.due.map((t) => (
-                    <TaskRow key={t.id} task={t} />
-                  ))}
-                </ul>
-              </>
-            )}
-            {o.tasks.anytime.length > 0 && (
-              <>
-                <div className="list-label">Anytime</div>
                 <ul>
                   {anytime.map((t) => (
                     <TaskRow key={t.id} task={t} />
@@ -300,16 +320,6 @@ export function Today() {
                     {showAll ? 'Show fewer' : `Show all ${o.tasks.anytime.length}`}
                   </button>
                 )}
-              </>
-            )}
-            {o.tasks.doneToday.length > 0 && (
-              <>
-                <div className="list-label">Done today</div>
-                <ul>
-                  {o.tasks.doneToday.map((t) => (
-                    <TaskRow key={t.id} task={t} />
-                  ))}
-                </ul>
               </>
             )}
             <AddTask />

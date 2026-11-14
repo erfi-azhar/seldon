@@ -15,10 +15,10 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
 import { addDays, daysBetween, Invalid, localDate, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { FlightOption, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { EliteNights, FlightOption, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { airport, validZone, zonedToUtc } from './airports.ts';
 import { getIntegration, updateIntegration } from './integrations.ts';
-import { loungeAccess, stayPerks } from './lounges.ts';
+import { BONVOY_TIERS, isMarriott, loungeAccess, stayPerks } from './lounges.ts';
 import type { MailMessage } from './mail-types.ts';
 import { registerFeature } from './registry.ts';
 import { addSignal } from './signals.ts';
@@ -69,7 +69,7 @@ const geo = (code: string): [number, number] | null => {
   return a ? [a.lat, a.lon] : null;
 };
 
-function segmentFromRow(r: Row, accounts: LoyaltyAccount[]): Segment {
+function segmentFromRow(r: Row, accounts: LoyaltyAccount[], stays?: MarriottStay[]): Segment {
   const s: Segment = {
     id: r.id,
     tripId: r.trip_id,
@@ -102,12 +102,66 @@ function segmentFromRow(r: Row, accounts: LoyaltyAccount[]): Segment {
   };
   s.lounges = loungeAccess(s, accounts);
   s.perks = stayPerks(s, accounts);
+  if (stays && s.kind === 'stay' && isMarriott(s.title, s.carrier) && s.endLocal) s.eliteNights = eliteNights({ id: s.id, title: s.title, start: s.startLocal, end: s.endLocal }, stays, accounts);
   return s;
+}
+
+// ── Bonvoy elite nights ─────────────────────────────────────────────────────
+
+interface MarriottStay {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+}
+
+/** Every stay at a Marriott-family hotel on any trip, in order: what elite nights are counted on from. */
+function marriottStays(store: Store): MarriottStay[] {
+  return (store.db.prepare("SELECT id, title, carrier, start_local, end_local FROM trip_segments WHERE kind = 'stay' AND end_local IS NOT NULL ORDER BY start_utc, id").all() as Row[])
+    .filter((r) => isMarriott(r.title, r.carrier))
+    .map((r) => ({ id: r.id, title: r.title, start: r.start_local, end: r.end_local }));
+}
+
+const nightsIn = (s: { start: string; end: string }) => Math.max(0, daysBetween(s.start.slice(0, 10), s.end.slice(0, 10)));
+
+/**
+ * The elite nights a stay earns and where they leave you: on from the nights last recorded on the Bonvoy card,
+ * plus the Marriott stays since then that check out earlier in the same year. A stay that checked out before the
+ * count was recorded is already in it. Nights count towards the year of check-out.
+ */
+export function eliteNights(stay: MarriottStay, all: MarriottStay[], accounts: LoyaltyAccount[]): EliteNights {
+  const nights = nightsIn(stay);
+  const year = Number(stay.end.slice(0, 4));
+  const card = accounts.find((a) => /bonvoy|marriott/i.test(a.program));
+  // Only a count of nights is something to count on from (not points, not a spend).
+  const rec = card && card.progress !== null && /night/i.test(card.progressLabel) ? { nights: card.progress, asOf: card.updatedAt.slice(0, 10) } : null;
+  const since = (s: MarriottStay) => !rec || s.end.slice(0, 10) >= rec.asOf;
+  const none = { before: null, after: null, recorded: null, earlier: [], reaches: null, next: null };
+  if (!rec) return { nights, year, counted: false, ...none };
+  if (!since(stay)) return { nights, year, counted: true, ...none };
+  const recorded = Number(rec.asOf.slice(0, 4)) === year ? rec : null;
+  const earlier = all
+    .filter((s) => s.id !== stay.id && since(s) && Number(s.end.slice(0, 4)) === year && (s.start < stay.start || (s.start === stay.start && s.id < stay.id)))
+    .map((s) => ({ title: s.title, nights: nightsIn(s) }))
+    .filter((s) => s.nights > 0);
+  const before = (recorded?.nights ?? 0) + earlier.reduce((n, s) => n + s.nights, 0);
+  const after = before + nights;
+  return {
+    nights,
+    year,
+    counted: false,
+    before,
+    after,
+    recorded,
+    earlier,
+    reaches: BONVOY_TIERS.filter((t) => t.at > before && t.at <= after).at(-1)?.tier ?? null,
+    next: BONVOY_TIERS.find((t) => t.at > after) ?? null,
+  };
 }
 
 const itemFromRow = (r: Row): ItineraryItem => ({ id: r.id, tripId: r.trip_id, date: r.date, time: r.time, title: r.title, place: r.place, notes: r.notes, kind: r.kind, done: !!r.done });
 
-function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store)): Trip {
+function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store), stays = marriottStays(store)): Trip {
   return {
     id: r.id,
     title: r.title,
@@ -117,7 +171,7 @@ function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store)): Trip 
     endDate: r.end_date,
     notes: r.notes,
     companion: JSON.parse(r.companion),
-    segments: (store.db.prepare('SELECT * FROM trip_segments WHERE trip_id = ? ORDER BY start_utc').all(r.id) as Row[]).map((x) => segmentFromRow(x, accounts)),
+    segments: (store.db.prepare('SELECT * FROM trip_segments WHERE trip_id = ? ORDER BY start_utc').all(r.id) as Row[]).map((x) => segmentFromRow(x, accounts, stays)),
     itinerary: (store.db.prepare("SELECT * FROM itinerary_items WHERE trip_id = ? ORDER BY date, COALESCE(time, '99:99'), created_at").all(r.id) as Row[]).map(itemFromRow),
     todos: store.listTasks({ tripId: r.id, status: 'all', limit: 100 }),
     options: (store.db.prepare('SELECT * FROM trip_options WHERE trip_id = ? ORDER BY recommended DESC, position, created_at').all(r.id) as Row[]).map(optionFromRow),
@@ -137,7 +191,8 @@ export function listTrips(store: Store, today: string): Trip[] {
   const accounts = listLoyalty(store);
   const current = store.db.prepare('SELECT * FROM trips WHERE end_date >= ? ORDER BY start_date').all(today) as Row[];
   const past = store.db.prepare('SELECT * FROM trips WHERE end_date < ? ORDER BY end_date DESC LIMIT 5').all(today) as Row[];
-  return [...current, ...past].map((r) => tripFromRow(store, r, accounts));
+  const stays = marriottStays(store);
+  return [...current, ...past].map((r) => tripFromRow(store, r, accounts, stays));
 }
 
 // ── Writes ──────────────────────────────────────────────────────────────────
@@ -1227,7 +1282,8 @@ async function imageFrom(form: FormData) {
 
 const compactTrip = (t: Trip) => ({
   ...t,
-  segments: t.segments.map((s) => ({ id: s.id, kind: s.kind, what: describeSegment(s), seat: s.seat || undefined, confirmation: s.confirmation || undefined, lounges: s.lounges.length ? s.lounges : undefined, perks: s.perks.length ? s.perks : undefined })),
+  segments: t.segments.map((s) => ({ id: s.id, kind: s.kind, what: describeSegment(s), seat: s.seat || undefined, confirmation: s.confirmation || undefined, lounges: s.lounges.length ? s.lounges : undefined, perks: s.perks.length ? s.perks : undefined,
+    bonvoyEliteNights: s.eliteNights ? (s.eliteNights.after !== null ? `+${s.eliteNights.nights}, ${s.eliteNights.before} → ${s.eliteNights.after} in ${s.eliteNights.year}${s.eliteNights.reaches ? `, reaches ${s.eliteNights.reaches}` : ''}${s.eliteNights.next ? `, ${s.eliteNights.next.at - s.eliteNights.after} more to ${s.eliteNights.next.tier}` : ''}` : `+${s.eliteNights.nights}${s.eliteNights.counted ? ' (already counted)' : ''}`) : undefined })),
   todos: t.todos.map((x) => ({ id: x.id, title: x.title, due: x.dueDate, done: x.done })),
 });
 

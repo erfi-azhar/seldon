@@ -6,7 +6,7 @@
 import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
-import type { Cabin, FlightOption, ItineraryItem, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { Cabin, EliteNights, FlightOption, ItineraryItem, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
 import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -774,6 +774,151 @@ function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip; from: 
   );
 }
 
+const dow = (date: string) => parseDay(date).toLocaleDateString(undefined, { weekday: 'short' });
+
+/** "2pm late checkout" → "2pm": the late checkout a perk promises, if it names a time. */
+const lateCheckout = (perks: string[]) => perks.map((p) => p.match(/^(\d{1,2}\s?[ap]m) late checkout/i)?.[1]).find(Boolean);
+
+/**
+ * A hotel stay on its trip: the name and whether it is booked, the three facts that decide a day (in, out,
+ * nights), the Bonvoy elite nights it earns and where they leave you, then what your status gets you there.
+ */
+function StayCard({ s, tier, onEdit }: { s: Segment; tier: string; onEdit: () => void }) {
+  const n = nightsOf(s);
+  const [name, ...rest] = (s.title || 'Hotel').split(',');
+  const brand = rest.join(',').trim().replace(/^an?\s+/i, '');
+  const planned = s.source === 'option' || /not booked/i.test(s.notes);
+  const late = lateCheckout(s.perks);
+  const perks = s.perks.filter((p) => !/late checkout/i.test(p) || !late);
+  const map = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([name, s.address].filter(Boolean).join(', '))}`;
+  return (
+    <article className="stay-card">
+      <header className="stay-card-head">
+        <span className="stay-card-icon" aria-hidden>
+          <BedDouble size={16} />
+        </span>
+        <div className="stay-card-title">
+          <h3>{name!.trim()}</h3>
+          {(brand || s.eliteNights) && <p>{brand || 'Marriott Bonvoy'}</p>}
+        </div>
+        {planned ? (
+          <span className="stay-status is-planned" title="Added from the hotel options; book it, then add the confirmation">
+            Planned
+          </span>
+        ) : (
+          s.confirmation && <span className="stay-status">#{s.confirmation}</span>
+        )}
+        <button type="button" className="icon-btn icon-btn-sm" onClick={onEdit} aria-label={`Edit the stay at ${name}`} title="Edit">
+          <Pencil size={14} />
+        </button>
+      </header>
+
+      <dl className="opt-stats stay-card-stats">
+        <div>
+          <dt>Check-in</dt>
+          <dd>{shortDay(dayOf(s.startLocal))}</dd>
+          <dd className="opt-stat-sub">
+            {dow(dayOf(s.startLocal))} · {time(s.startLocal)}
+          </dd>
+        </div>
+        <div>
+          <dt>Check-out</dt>
+          <dd>{shortDay(dayOf(s.endLocal))}</dd>
+          <dd className="opt-stat-sub" title={late ? `Late checkout to ${late} with your status (standard ${time(s.endLocal)})` : undefined}>
+            {dow(dayOf(s.endLocal))} · {late ? `${late} late` : time(s.endLocal)}
+          </dd>
+        </div>
+        <div>
+          <dt>Nights</dt>
+          <dd>{n}</dd>
+          <dd className="opt-stat-sub">{planned ? 'planned' : 'booked'}</dd>
+        </div>
+      </dl>
+
+      {s.eliteNights && <BonvoyNights e={s.eliteNights} />}
+
+      {perks.length > 0 && (
+        <div className="stay-card-perks">
+          <span className="stay-card-label">{tier ? `${tier} benefits` : 'Your benefits'}</span>
+          <ul>
+            {perks.map((p) => (
+              <li key={p}>
+                <CheckIcon size={13} aria-hidden /> {p}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {s.address && (
+        <a className="stay-card-address" href={map} target="_blank" rel="noreferrer">
+          <MapPin size={13} aria-hidden /> <span>{s.address}</span>
+        </a>
+      )}
+    </article>
+  );
+}
+
+/** Bonvoy tiers by elite nights in a year (as the server counts them). */
+const BONVOY_TIERS = [
+  { tier: 'Silver Elite', at: 10 },
+  { tier: 'Gold Elite', at: 25 },
+  { tier: 'Platinum Elite', at: 50 },
+  { tier: 'Titanium Elite', at: 75 },
+  { tier: 'Ambassador Elite', at: 100 },
+];
+
+/** The Bonvoy elite nights a stay earns: a bar of the year's nights, this stay's share in colour, up to the next tier. */
+function BonvoyNights({ e }: { e: EliteNights }) {
+  if (e.after === null || e.before === null) {
+    return (
+      <div className="stay-bonvoy">
+        <div className="stay-bonvoy-head">
+          <span className="stay-card-label">Bonvoy elite nights</span>
+          <b className="stay-bonvoy-add">+{e.nights}</b>
+        </div>
+        <p className="stay-bonvoy-note">{e.counted ? 'Already in the nights on your Bonvoy card.' : 'Add your nights this year to the Bonvoy card to see where this leaves you.'}</p>
+      </div>
+    );
+  }
+  const scale = Math.max(e.next?.at ?? e.after, e.after, 1);
+  const pct = (v: number) => `${Math.min(100, (v / scale) * 100)}%`;
+  const ticks = BONVOY_TIERS.filter((t) => t.at < scale);
+  const passed = BONVOY_TIERS.filter((t) => t.at <= e.before!).at(-1)?.tier;
+  const from = [e.recorded && `${e.recorded.nights} on your Bonvoy card (${shortDay(e.recorded.asOf)})`, ...e.earlier.map((x) => `${x.nights} at ${shortStay(x.title)}`)].filter(Boolean);
+  return (
+    <div className="stay-bonvoy">
+      <div className="stay-bonvoy-head">
+        <span className="stay-card-label">Bonvoy elite nights</span>
+        <b className="stay-bonvoy-add">+{e.nights}</b>
+      </div>
+      <div
+        className="stay-bonvoy-bar"
+        role="img"
+        aria-label={`${e.before} nights before this stay, ${e.nights} from it: ${e.after} in ${e.year}${e.next ? `, ${e.next.at - e.after} short of ${e.next.tier}` : ''}`}
+      >
+        <span className="is-before" style={{ width: pct(e.before) }} />
+        <span className="is-stay" style={{ left: pct(e.before), width: `calc(${pct(e.after)} - ${pct(e.before)})` }} />
+        {ticks.map((t) => (
+          <i key={t.at} style={{ left: pct(t.at) }} title={`${t.tier}: ${t.at} nights`} />
+        ))}
+      </div>
+      <div className="stay-bonvoy-foot">
+        <span>
+          {e.before} → <b>{e.after}</b> nights in {e.year}
+        </span>
+        <span>{e.next ? `${e.next.at - e.after} more to ${e.next.tier}` : 'Top tier by nights'}</span>
+      </div>
+      {(e.reaches || passed) && (
+        <p className="stay-bonvoy-tier">
+          <Star size={12} aria-hidden /> {e.reaches ? `Reaches ${e.reaches} on this stay` : `${passed} reached before this stay`}
+        </p>
+      )}
+      {from.length > 0 && <p className="stay-bonvoy-note">Counted on from {from.join(' and ')}.</p>}
+    </div>
+  );
+}
+
 /** A remembered preference on this device (folded cards, folded days), falling back to the visit when storage is blocked. */
 function useStored<T>(key: string, initial: () => T): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -841,6 +986,7 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
   const others = trip.segments.filter((s) => s.kind !== 'flight');
   const legs = globeLegs(flights);
   const openTodos = trip.todos.filter((x) => !x.done).length;
+  const bonvoyTier = state.loyalty.find((a) => /bonvoy|marriott/i.test(a.program))?.tier ?? '';
   // Each day folds on its own; days already past start folded. Choices are remembered per trip on this device.
   const [dayFolds, setDayFolds] = useStored<Record<string, boolean>>(`terminus.plan.${trip.id}`, () => ({}));
   const dayOpen = (d: string) => dayFolds[d] ?? !(d < today && !past);
@@ -848,6 +994,7 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
   const allOpen = days.every(dayOpen);
   const setAllDays = (open: boolean) => setDayFolds(Object.fromEntries(days.map((d) => [d, open])));
   const row = (s: Segment) => {
+    if (s.kind === 'stay') return <StayCard key={s.id} s={s} tier={bonvoyTier} onEdit={() => setBooking(s)} />;
     if (s.kind !== 'flight') return <StayRow key={s.id} s={s} onEdit={() => setBooking(s)} />;
     const next = flights[flights.indexOf(s) + 1];
     const wait = next && s.toCode && s.toCode === next.fromCode ? minutesBetween(s.endUtc, next.startUtc) : 0;

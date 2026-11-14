@@ -31,17 +31,19 @@ interface Palette {
   ink: RGB;
   /** How plainly the moon shows. */
   moon: number;
+  /** How fast the clouds drift, as a share of the daytime speed. */
+  wind: number;
 }
 
 const PALETTES: Record<Phase, Palette> = {
   dawn: { top: [40, 42, 96], mid: [178, 108, 146], low: [248, 190, 146], glow: [255, 160, 120], core: [255, 230, 196], glowSize: 0.34, glowStrength: 0.6,
-    cloud: [255, 200, 186], cloudShade: [130, 86, 128], clouds: 0.5, stars: 0.3, ink: [52, 36, 66], moon: 0.7 },
+    cloud: [255, 200, 186], cloudShade: [130, 86, 128], clouds: 0.5, stars: 0.3, ink: [52, 36, 66], moon: 0.7, wind: 1 },
   day: { top: [54, 120, 212], mid: [122, 182, 238], low: [214, 236, 252], glow: [255, 250, 228], core: [255, 255, 246], glowSize: 0.22, glowStrength: 0.45,
-    cloud: [255, 255, 255], cloudShade: [186, 208, 236], clouds: 0.62, stars: 0, ink: [36, 54, 86], moon: 0.4 },
+    cloud: [255, 255, 255], cloudShade: [186, 208, 236], clouds: 0.62, stars: 0, ink: [36, 54, 86], moon: 0.4, wind: 1 },
   dusk: { top: [36, 28, 78], mid: [146, 64, 112], low: [252, 142, 82], glow: [255, 112, 62], core: [255, 206, 146], glowSize: 0.42, glowStrength: 0.8,
-    cloud: [255, 150, 112], cloudShade: [92, 42, 84], clouds: 0.46, stars: 0.4, ink: [36, 20, 46], moon: 0.85 },
+    cloud: [255, 150, 112], cloudShade: [92, 42, 84], clouds: 0.46, stars: 0.4, ink: [36, 20, 46], moon: 0.85, wind: 0.8 },
   evening: { top: [4, 6, 16], mid: [12, 20, 48], low: [30, 46, 90], glow: [140, 160, 224], core: [236, 232, 214], glowSize: 0.13, glowStrength: 0.3,
-    cloud: [72, 82, 124], cloudShade: [20, 26, 52], clouds: 0.28, stars: 1, ink: [226, 230, 242], moon: 1 },
+    cloud: [108, 120, 162], cloudShade: [30, 36, 68], clouds: 0.75, stars: 1, ink: [226, 230, 242], moon: 1, wind: 0.5 },
 };
 
 const STAR: RGB = [255, 250, 238];
@@ -57,8 +59,8 @@ const FADE = 0.42;
 const CELL = 5;
 const CELL_PHONE = 3;
 const PHONE_WIDTH = 720;
-const SUN_R = 0.06;
-const MOON_R = 0.085;
+const SUN_R = 0.08;
+const MOON_R = 0.11;
 
 // ── Maths ─────────────────────────────────────────────────────────────────────
 
@@ -203,6 +205,8 @@ function pageColor(): RGB {
 }
 
 interface Scene {
+  /** How far the clouds have drifted, added to a little each frame at the phase's wind. */
+  drift: number;
   sun: SunState;
   effects: Effect[];
   plane: { x: number; y: number } | null;
@@ -261,7 +265,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   const starChance = 0.03 * (cell / CELL) ** 2;
   const cols = Math.ceil(w / cell);
   const rows = Math.ceil(h / cell);
-  const drift = seconds * 0.03;
+  const drift = scene.drift;
   for (let j = 0; j < rows; j++) {
     const v = (j + 0.5) / rows;
     const k = v / HZ;
@@ -286,14 +290,17 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       const mdx = x - moon.x;
       const mdy = v - moon.y;
       const m2 = mdx * mdx + mdy * mdy;
-      if (moonShows) c = add(c, MOON_GLOW, Math.exp(-m2 / 0.02) * 0.3 * lit.fraction * pal.moon * pal.stars);
+      if (moonShows) c = add(c, MOON_GLOW, Math.exp(-m2 / 0.03) * 0.3 * lit.fraction * pal.moon * pal.stars);
 
       if (pal.stars > 0.01 && k < 0.95) {
         const hs = hash(i * 7 + 11, j * 13 + 5);
         if (hs > 1 - starChance * pal.stars) {
-          // A slow, gentle swell: each star on its own 12–30 second cycle.
+          // A soft swell and fade, each star on its own 3–6 second cycle and to its own
+          // depth: plainly twinkling, never blinking.
           const own = hash(i + 5, j + 211);
-          const twinkle = 0.82 + 0.18 * Math.sin(seconds * (0.21 + 0.31 * own) + own * 40);
+          const depth = 0.45 + 0.45 * hash(i + 9, j + 57);
+          const swell = 0.5 + 0.5 * Math.sin(seconds * (1 + 1.1 * own) + own * 40);
+          const twinkle = 1 - depth * (1 - swell);
           c = mix(c, STAR, (0.45 + 0.55 * hash(i, j + 99)) * (1 - k) * Math.min(1, pal.stars + 0.3) * twinkle);
         }
       }
@@ -301,7 +308,12 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       if (pal.clouds > 0.01 && band > 0) {
         const n = fbm(x * 2.1 + drift, v * 6.5 + drift * 0.15);
         const cover = smooth(0.52, 0.74, n * band + 0.16) * pal.clouds;
-        if (cover > 0.01) c = mix(c, mix(pal.cloudShade, pal.cloud, smooth(0.45, 0.85, n)), cover);
+        if (cover > 0.01) {
+          let cloud = mix(pal.cloudShade, pal.cloud, smooth(0.45, 0.85, n));
+          // At night, clouds near the moon catch its light.
+          if (moonShows) cloud = add(cloud, MOON_GLOW, Math.exp(-m2 / 0.12) * 0.45 * lit.fraction * pal.stars);
+          c = mix(c, cloud, cover);
+        }
       }
 
       if (sun.y < HZ + SUN_R) {
@@ -374,7 +386,7 @@ export function Sky({ trip }: { trip: SkyTrip | null }) {
   const sun = useSun();
   const [, navigate] = useLocation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const scene = useRef<Scene>({ sun, effects: [], plane: null });
+  const scene = useRef<Scene>({ sun, effects: [], plane: null, drift: 0 });
   scene.current.sun = sun;
   const tripRef = useRef(trip);
   tripRef.current = trip;
@@ -388,6 +400,7 @@ export function Sky({ trip }: { trip: SkyTrip | null }) {
     const seconds = () => (performance.now() - start) / 1000;
     let raf = 0;
     let last = -Infinity;
+    let lastSec = 0;
     let onScreen = true;
 
     const frame = (t: number) => {
@@ -401,6 +414,10 @@ export function Sky({ trip }: { trip: SkyTrip | null }) {
       const busy = sc.effects.length > 0 || p !== null;
       if (t - last < (busy ? 33 : 90)) return;
       last = t;
+      // Step the clouds on by the time since the last frame (capped, so a tab coming back
+      // from the background doesn't jump them), at the wind of the moment.
+      sc.drift += Math.min(0.25, sec - lastSec) * 0.03 * blendPalette(sc.sun.blend).wind;
+      lastSec = sec;
       draw(canvas, sc, sec);
     };
     const run = () => {
