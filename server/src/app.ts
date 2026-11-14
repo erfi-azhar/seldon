@@ -8,6 +8,9 @@ import { z } from 'zod';
 import { chat, listModels, providerFor } from './agent/index.ts';
 import { ProviderError } from './agent/types.ts';
 import type { DB } from './db.ts';
+import { read, today } from './http.ts';
+import { installFeatures } from './features/index.ts';
+import { Scheduler } from './jobs.ts';
 import { Invalid, localDate, NotFound, nowIso, Store } from './store.ts';
 import { CATALOG_BY_KEY } from '../../shared/catalog.ts';
 import type { AgentEvent, Screenings } from '../../shared/types.ts';
@@ -18,6 +21,8 @@ export interface AppOptions {
   passphrase?: string;
   /** Extra hostnames the app may be reached at ("*" for any). Loopback is always allowed. */
   allowedHosts?: string[];
+  /** Runs integrations in the background. Created (but not started) when omitted. */
+  scheduler?: Scheduler;
 }
 
 const SESSION_COOKIE = 'terminus_session';
@@ -168,23 +173,12 @@ const S = {
   }),
 };
 
-async function read<T extends z.ZodType>(c: Context, schema: T): Promise<z.infer<T>> {
-  const json: unknown = await c.req.json().catch(() => null);
-  const parsed = schema.safeParse(json);
-  if (!parsed.success) throw new Invalid(z.prettifyError(parsed.error));
-  return parsed.data;
-}
-
-const today = (c: Context): string => {
-  const d = c.req.query('date');
-  return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : localDate();
-};
-
 // ── App ─────────────────────────────────────────────────────────────────────
 
 export function createApp(opts: AppOptions): Hono {
   const store = new Store(opts.db);
   const app = new Hono();
+  const scheduler = opts.scheduler ?? new Scheduler(store);
   const anyHost = opts.allowedHosts?.includes('*') ?? false;
   const allowedHosts = new Set([...LOOPBACK, ...(opts.allowedHosts ?? []).map((h) => h.toLowerCase())]);
   const failedLogins: number[] = [];
@@ -494,6 +488,8 @@ export function createApp(opts: AppOptions): Hono {
       await queue;
     });
   });
+
+  installFeatures(app, { store, scheduler });
 
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 

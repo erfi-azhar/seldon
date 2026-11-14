@@ -162,6 +162,37 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE conversations ADD COLUMN connection_id TEXT;
   `,
+  `
+  CREATE TABLE signals (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    sphere_id TEXT REFERENCES spheres(id) ON DELETE SET NULL,
+    priority INTEGER NOT NULL DEFAULT 1,
+    actions TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'new',
+    data TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    occurred_at TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX signals_once ON signals(source, external_id);
+  CREATE INDEX signals_open ON signals(status, priority, occurred_at);
+
+  CREATE TABLE integrations (
+    id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    settings TEXT NOT NULL DEFAULT '{}',
+    secrets TEXT NOT NULL DEFAULT '{}',
+    state TEXT NOT NULL DEFAULT '{}',
+    last_run_at TEXT,
+    last_ok_at TEXT,
+    last_error TEXT
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

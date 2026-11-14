@@ -377,3 +377,46 @@ export interface Screenings {
   notes?: [string, string][];
   footer?: string[];
 }
+
+// ── Signals ─────────────────────────────────────────────────────────────────
+// Things from outside that may need you: an important email, a new job opening, a
+// trip about to start. Each can carry suggested next steps.
+
+export type SignalAction =
+  | { type: 'task'; label: string; title: string; dueDate?: string | null; sphereId?: string | null; notes?: string }
+  | { type: 'reply'; label: string; to: string; subject: string; body: string; inReplyTo?: string | null }
+  | { type: 'link'; label: string; url: string };
+
+export type SignalStatus = 'new' | 'seen' | 'done' | 'dismissed';
+
+export interface Signal {
+  id: string;
+  source: string;
+  kind: string;
+  title: string;
+  body: string;
+  url: string;
+  sphereId: string | null;
+  /** 0 low · 1 normal · 2 important · 3 urgent. */
+  priority: number;
+  actions: SignalAction[];
+  status: SignalStatus;
+  createdAt: string;
+  /** When the thing itself happened (email received, job posted). */
+  occurredAt: string;
+  data: Record<string, unknown>;
+}
+
+// ── Integrations ────────────────────────────────────────────────────────────
+
+export interface IntegrationStatus {
+  id: string;
+  enabled: boolean;
+  configured: boolean;
+  /** Non-secret settings, safe to show. */
+  settings: Record<string, unknown>;
+  lastRunAt: string | null;
+  lastOkAt: string | null;
+  lastError: string | null;
+  running: boolean;
+}

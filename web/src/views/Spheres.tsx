@@ -5,6 +5,7 @@ import { CATALOG_BY_KEY } from '../../../shared/catalog.ts';
 import { useSphere, useSpheres, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, MetricCard, TaskRow } from '../components/rows.tsx';
+import { SignalsCard } from '../components/Signals.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
 import { cx, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -155,6 +156,7 @@ export function SphereDetail({ id }: { id: string }) {
 
       <div className="detail-grid">
         <div className="col">
+          <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
           <section className="card">
             <div className="card-head">
               <h2 className="card-title">Goals</h2>

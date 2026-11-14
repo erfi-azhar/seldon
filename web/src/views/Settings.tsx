@@ -2,6 +2,7 @@ import { Download, Plus, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { api, useAuth, useMemories, useSettings, useSpheres, useWrite, write } from '../api.ts';
 import { BrainsSection } from '../components/Brains.tsx';
+import { GmailConnection } from '../components/Connections.tsx';
 import { Orb } from '../components/Orb.tsx';
 import { Field, Loading, Seg } from '../components/ui.tsx';
 import { useApp } from '../state.tsx';
@@ -94,6 +95,16 @@ export function Settings() {
         </header>
         <div className="settings-body">
           <BrainsSection settings={settings} />
+        </div>
+      </section>
+
+      <section className="card settings-section" id="connections">
+        <header>
+          <h2>Connections</h2>
+          <p>Services {agentName} watches for you. What they surface lands in Needs you on Today.</p>
+        </header>
+        <div className="settings-body">
+          <GmailConnection />
         </div>
       </section>
 

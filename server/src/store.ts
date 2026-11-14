@@ -91,7 +91,7 @@ export function prettyDay(date: string): string {
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
-function newId(): string {
+export function newId(): string {
   // 10 lowercase base-36 characters: short enough for a model to copy reliably.
   return BigInt(`0x${randomBytes(8).toString('hex')}`).toString(36).padStart(10, '0').slice(-10);
 }
@@ -100,6 +100,21 @@ function newId(): string {
 export function formatValue(value: number, unit: string): string {
   const n = Number.isInteger(value) ? value.toLocaleString('en-US') : String(Math.round(value * 100) / 100);
   return unit ? `${n} ${unit}` : n;
+}
+
+/**
+ * Feature modules register how to reverse their own logged actions, keyed
+ * "verb:entity_type". Runs inside the undo transaction.
+ */
+const UNDO_HANDLERS = new Map<string, (db: DB, entityId: string) => void>();
+export function registerUndo(key: string, handler: (db: DB, entityId: string) => void): void {
+  UNDO_HANDLERS.set(key, handler);
+}
+
+/** Tables owned by feature modules, included in export and import (secrets excluded). */
+const FEATURE_TABLES: string[] = [];
+export function registerDataTable(table: string): void {
+  if (!FEATURE_TABLES.includes(table)) FEATURE_TABLES.push(table);
 }
 
 const UNDOABLE = new Set([
@@ -199,6 +214,11 @@ export class Store {
       this.db.exec('ROLLBACK');
       throw err;
     }
+  }
+
+  /** Log an action from a feature module, attributed to this handle's actor. */
+  record(verb: string, entityType: string, entityId: string, sphereId: string | null, summary: string): number {
+    return this.log(verb, entityType, entityId, sphereId, summary);
   }
 
   private log(verb: string, entityType: string, entityId: string, sphereId: string | null, summary: string): number {
@@ -1049,7 +1069,7 @@ export class Store {
       sphereId: r.sphere_id,
       summary: r.summary,
       undone: !!r.undone,
-      undoable: !r.undone && UNDOABLE.has(`${r.verb}:${r.entity_type}`),
+      undoable: !r.undone && (UNDOABLE.has(`${r.verb}:${r.entity_type}`) || UNDO_HANDLERS.has(`${r.verb}:${r.entity_type}`)),
     };
   }
 
@@ -1106,6 +1126,8 @@ export class Store {
         case 'completed:milestone':
           this.run('UPDATE milestones SET done = 0, done_at = NULL WHERE id = ?', a.entityId);
           break;
+        default:
+          UNDO_HANDLERS.get(`${a.verb}:${a.entityType}`)?.(this.db, a.entityId);
       }
       // Anything logged against the same entity goes with it (e.g. a goal's "created" row).
       this.run('UPDATE activity SET undone = 1 WHERE id = ? OR (entity_type = ? AND entity_id = ? AND id >= ?)', a.id, a.entityType, a.entityId, a.id);
@@ -1461,7 +1483,11 @@ export class Store {
 
   // ── Export / import ───────────────────────────────────────────────────────
 
-  private static readonly DATA_TABLES = [
+  private static dataTables(): string[] {
+    return [...Store.CORE_TABLES, ...FEATURE_TABLES];
+  }
+
+  private static readonly CORE_TABLES = [
     'spheres',
     'metrics',
     'metric_entries',
@@ -1481,7 +1507,7 @@ export class Store {
   /** Everything you own, as plain JSON. API keys and login sessions stay out. */
   exportAll(): { format: 'terminus'; version: 1; exportedAt: string; profile: Profile; tables: Record<string, Row[]> } {
     const tables: Record<string, Row[]> = {};
-    for (const t of Store.DATA_TABLES) tables[t] = this.all(`SELECT * FROM ${t}`).map((r) => ({ ...r }));
+    for (const t of Store.dataTables()) tables[t] = this.all(`SELECT * FROM ${t}`).map((r) => ({ ...r }));
     return { format: 'terminus', version: 1, exportedAt: nowIso(), profile: this.getProfile(), tables };
   }
 
@@ -1494,8 +1520,8 @@ export class Store {
     }
     const tables = d.tables;
     this.tx(() => {
-      for (const t of [...Store.DATA_TABLES].reverse()) this.run(`DELETE FROM ${t}`);
-      for (const t of Store.DATA_TABLES) {
+      for (const t of [...Store.dataTables()].reverse()) this.run(`DELETE FROM ${t}`);
+      for (const t of Store.dataTables()) {
         const columns = new Set(this.all(`PRAGMA table_info(${t})`).map((c) => c.name as string));
         for (const row of tables[t] ?? []) {
           const keys = Object.keys(row).filter((k) => columns.has(k));

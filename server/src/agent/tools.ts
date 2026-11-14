@@ -12,6 +12,7 @@ export interface ToolContext {
   /** A Store handle that attributes writes to the agent. */
   store: Store;
   today: string;
+  signal?: AbortSignal;
 }
 
 export interface ToolOutput {
@@ -21,18 +22,18 @@ export interface ToolOutput {
   summary: string;
 }
 
-interface ToolDef {
+export interface ToolDef {
   name: string;
   description: string;
   input: z.ZodType;
-  run: (input: never, ctx: ToolContext) => ToolOutput;
+  run: (input: never, ctx: ToolContext) => ToolOutput | Promise<ToolOutput>;
 }
 
-function tool<S extends z.ZodType>(
+export function tool<S extends z.ZodType>(
   name: string,
   description: string,
   input: S,
-  run: (input: z.infer<S>, ctx: ToolContext) => ToolOutput,
+  run: (input: z.infer<S>, ctx: ToolContext) => ToolOutput | Promise<ToolOutput>,
 ): ToolDef {
   return { name, description, input, run: run as ToolDef['run'] };
 }
@@ -385,12 +386,29 @@ const TOOLS: ToolDef[] = [
   ),
 ];
 
-const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
+/** Feature modules add their own tools at startup. Order is kept stable. */
+export function registerTools(defs: ToolDef[]): void {
+  for (const d of defs) if (!TOOLS.some((t) => t.name === d.name)) TOOLS.push(d);
+}
 
-export const TOOL_SPECS: ToolSpec[] = TOOLS.map((t) => {
+function specOf(t: ToolDef): ToolSpec {
   const { $schema: _dialect, ...schema } = z.toJSONSchema(t.input) as Record<string, unknown>;
   return { name: t.name, description: t.description, schema };
-});
+}
+
+/** A tool that lives elsewhere (a connected MCP server), described by JSON Schema. */
+export interface ExternalTool {
+  name: string;
+  description: string;
+  schema: Record<string, unknown>;
+  run: (input: unknown, ctx: ToolContext) => Promise<ToolOutput>;
+}
+
+type ToolSource = (store: Store) => Promise<ExternalTool[]>;
+const SOURCES: ToolSource[] = [];
+export function registerToolSource(source: ToolSource): void {
+  SOURCES.push(source);
+}
 
 export interface ToolRun {
   content: string;
@@ -398,9 +416,39 @@ export interface ToolRun {
   summary: string;
 }
 
-/** Validate and run one tool call. Never throws: failures come back as an error result the model can read. */
-export function runTool(name: string, input: unknown, ctx: ToolContext): ToolRun {
-  const def = BY_NAME.get(name);
+export interface Toolbox {
+  specs: ToolSpec[];
+  run: (name: string, input: unknown, ctx: ToolContext) => Promise<ToolRun>;
+}
+
+/** Everything the agent can use right now: built-in and feature tools, then connected servers'. */
+export async function toolbox(store: Store): Promise<Toolbox> {
+  const external = (await Promise.all(SOURCES.map((src) => src(store).catch(() => [] as ExternalTool[])))).flat();
+  external.sort((a, b) => a.name.localeCompare(b.name));
+  const byName = new Map(external.map((t) => [t.name, t]));
+  return {
+    specs: [...TOOLS.map(specOf), ...external.map((t) => ({ name: t.name, description: t.description, schema: t.schema }))],
+    run: async (name, input, ctx) => {
+      const ext = byName.get(name);
+      if (!ext) return runTool(name, input, ctx);
+      try {
+        const out = await ext.run(input, ctx);
+        return { content: typeof out.data === 'string' ? out.data : JSON.stringify(out.data), isError: false, summary: out.summary };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { content: `Error: ${message}`, isError: true, summary: `Couldn't run ${name.replaceAll('_', ' ')}: ${message}` };
+      }
+    },
+  };
+}
+
+export function toolSpecs(): ToolSpec[] {
+  return TOOLS.map(specOf);
+}
+
+/** Validate and run one built-in tool. Never throws: failures come back as an error result the model can read. */
+export async function runTool(name: string, input: unknown, ctx: ToolContext): Promise<ToolRun> {
+  const def = TOOLS.find((t) => t.name === name);
   if (!def) return { content: `Unknown tool "${name}".`, isError: true, summary: `Tried an unknown tool: ${name}` };
 
   const parsed = def.input.safeParse(input);
@@ -415,7 +463,7 @@ export function runTool(name: string, input: unknown, ctx: ToolContext): ToolRun
   }
 
   try {
-    const out = def.run(parsed.data as never, ctx);
+    const out = await def.run(parsed.data as never, ctx);
     return {
       content: typeof out.data === 'string' ? out.data : JSON.stringify(out.data),
       isError: false,

@@ -5,6 +5,7 @@ import type { Activity, Overview } from '../../../shared/types.ts';
 import { useOverview, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, HabitRow, TaskRow } from '../components/rows.tsx';
+import { SignalsCard } from '../components/Signals.tsx';
 import { Loading } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -140,6 +141,7 @@ export function Today() {
 
       <div className="today-grid">
         <div className="col">
+          <SignalsCard />
           <section className="card">
             <div className="card-head">
               <h2 className="card-title">On your plate</h2>

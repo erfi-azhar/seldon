@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createApp } from './app.ts';
+import { Scheduler } from './jobs.ts';
+import { Store } from './store.ts';
 import { defaultDbPath, openDb, setting } from './db.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -33,7 +35,11 @@ if (!loopback && !passphrase && allowedHosts.length === 0) {
 }
 
 const dbPath = defaultDbPath();
-const app = createApp({ db: openDb(dbPath), passphrase, allowedHosts });
+const db = openDb(dbPath);
+const scheduler = new Scheduler(new Store(db));
+const app = createApp({ db, passphrase, allowedHosts, scheduler });
+// Background work (mail, job alerts, app sync) only runs for the real server, never in tests.
+scheduler.start();
 
 if (existsSync(webDir)) {
   // Hashed assets never change; everything else is revalidated so updates show up.

@@ -13,6 +13,7 @@ import { chat } from '../server/src/agent/index.ts';
 import type { Provider, ProviderResponse } from '../server/src/agent/types.ts';
 import { openDb } from '../server/src/db.ts';
 import { addDays, localDate, Store } from '../server/src/store.ts';
+import { addSignal } from '../server/src/features/signals.ts';
 
 const path = resolve(process.argv[2] ?? 'data/demo.db');
 for (const suffix of ['', '-wal', '-shm']) rmSync(path + suffix, { force: true });
@@ -236,6 +237,30 @@ await chat({
   message: 'Morning run done, 5.2 km. Weighed in at 78.6. And remind me to book the dentist next week.',
   context: { date: today, time: '07:42', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, viewing: 'Today' },
   emit: () => undefined,
+});
+
+// ── A few signals, as if Gmail had been watching ───────────────────────────
+const ago = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+addSignal(store, {
+  source: 'gmail', kind: 'reply', externalId: '<demo-1@example.com>', priority: 2, sphereId: sphere.work!, occurredAt: ago(2),
+  title: 'Dana Lim: Offsite — can you confirm the 4th?',
+  body: 'Dana needs you to confirm the 4 December offsite by Friday so she can book the venue.',
+  actions: [
+    { type: 'reply', label: 'Save reply as a Gmail draft', to: 'dana@example.com', subject: 'Re: Offsite — can you confirm the 4th?', body: "Hi Dana,\n\nThe 4th works for me — please go ahead and book.\n\nThanks!", inReplyTo: '<demo-1@example.com>' },
+    { type: 'task', label: 'Add as a task', title: 'Reply to Dana about the offsite', dueDate: addDays(today, 6), sphereId: sphere.work! },
+  ],
+});
+addSignal(store, {
+  source: 'gmail', kind: 'deadline', externalId: '<demo-2@example.com>', priority: 2, sphereId: sphere.finances!, occurredAt: ago(20),
+  title: 'IRAS: Your income tax bill is ready',
+  body: 'Your 2026 tax bill is $4,180, payable by 13 December. GIRO instalments are available.',
+  actions: [{ type: 'task', label: 'Add as a task', title: 'Pay income tax or set up GIRO', dueDate: addDays(today, 29), sphereId: sphere.finances! }],
+});
+addSignal(store, {
+  source: 'gmail', kind: 'family', externalId: '<demo-3@example.com>', priority: 1, sphereId: sphere.family!, occurredAt: ago(30),
+  title: "Mum: Lunch on Sunday?",
+  body: 'Mum asks whether you can all come for lunch this Sunday at 12:30.',
+  actions: [{ type: 'reply', label: 'Save reply as a Gmail draft', to: 'mum@example.com', subject: 'Re: Lunch on Sunday?', body: 'Hi Mum, we would love to — see you at 12:30!', inReplyTo: '<demo-3@example.com>' }],
 });
 
 at(0, () => store.putJournal(today, 'Ran before anyone else was up. 5.2 km and it felt easy for the first time.'), 7);

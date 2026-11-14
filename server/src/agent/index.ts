@@ -5,7 +5,7 @@ import type { AgentEvent, ChatContext } from '../../../shared/types.ts';
 import { buildSystemPrompt, firstUserText, laterUserText } from './prompt.ts';
 import { anthropicProvider, listAnthropicModels } from './providers/anthropic.ts';
 import { listOpenAiModels, openAiProvider } from './providers/openai.ts';
-import { runTool, TOOL_SPECS } from './tools.ts';
+import { toolbox } from './tools.ts';
 import { ProviderError, type Provider, type ToolResult, type Turn } from './types.ts';
 
 /** Model/tool rounds allowed for one message before the agent has to stop and report. */
@@ -57,11 +57,12 @@ export async function chat(req: ChatRequest): Promise<string> {
   emit({ type: 'meta', conversationId });
 
   try {
+    const tools = await toolbox(store);
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const res = await provider.complete({
         system,
         turns,
-        tools: TOOL_SPECS,
+        tools: tools.specs,
         signal: req.signal,
         onText: (delta) => emit({ type: 'text', delta }),
       });
@@ -82,13 +83,13 @@ export async function chat(req: ChatRequest): Promise<string> {
         break;
       }
 
-      // Tools are synchronous database work, so the assistant turn and its results are
-      // stored together: the history never holds a tool call without its result.
+      // The assistant turn and its results are stored together once every tool has
+      // finished: the history never holds a tool call without its result.
       const results: ToolResult[] = [];
       for (const call of res.toolCalls) {
         emit({ type: 'tool_start', id: call.id, name: call.name, input: call.input });
         const before = agent.trail.length;
-        const run = runTool(call.name, call.input, { store: agent, today: context.date });
+        const run = await tools.run(call.name, call.input, { store: agent, today: context.date, signal: req.signal });
         const activityId = agent.trail.length > before ? agent.trail[agent.trail.length - 1]! : null;
         results.push({ toolCallId: call.id, name: call.name, content: run.content, isError: run.isError, summary: run.summary, activityId });
         emit({

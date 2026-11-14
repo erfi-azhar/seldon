@@ -5,6 +5,7 @@ import type {
   Conversation,
   ConversationSummary,
   Goal,
+  IntegrationStatus,
   Memory,
   Metric,
   Note,
@@ -12,6 +13,7 @@ import type {
   Overview,
   SearchHit,
   Settings,
+  Signal,
   SphereDetail,
   SphereWithStats,
   Task,
@@ -184,3 +186,21 @@ export async function streamChat(
     }
   }
 }
+
+// ── Signals & integrations ──────────────────────────────────────────────────
+
+export const useSignals = (filter: { sphereId?: string; source?: string } = {}) =>
+  useQuery({
+    queryKey: ['signals', filter],
+    queryFn: () => {
+      const p = new URLSearchParams();
+      if (filter.sphereId) p.set('sphereId', filter.sphereId);
+      if (filter.source) p.set('source', filter.source);
+      return api<Signal[]>('GET', `/signals?${p}`);
+    },
+    // Background jobs add signals while the app is open.
+    refetchInterval: 60_000,
+  });
+
+export const useIntegration = (id: string) =>
+  useQuery({ queryKey: ['integration', id], queryFn: () => api<IntegrationStatus>('GET', `/integrations/${id}`), refetchInterval: (q) => (q.state.data?.running ? 3_000 : 30_000) });

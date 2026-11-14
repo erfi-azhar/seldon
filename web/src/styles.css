@@ -3953,3 +3953,80 @@ body::before {
   background-color: var(--tile);
   background-position: right 9px center;
 }
+
+/* ── Signals ────────────────────────────────────────────────────────────── */
+
+.signal {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 14px 11px 20px;
+}
+.signal + .signal {
+  border-top: 1px solid var(--line);
+}
+.signal-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-top: 1px;
+  border-radius: 10px;
+  flex: none;
+  color: var(--sphere-ink, var(--ink-2));
+  background: var(--sphere-soft, var(--sunken));
+}
+.signal-hot .signal-icon {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--sphere, var(--bad));
+}
+.signal-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.signal-top b {
+  font-weight: 600;
+}
+.signal-top time {
+  font-size: 12px;
+  flex: none;
+}
+.signal-body {
+  margin-top: 2px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.chip-act {
+  background: var(--glass-press);
+  color: var(--ink);
+}
+.chip-act:hover {
+  background: color-mix(in oklab, var(--ink) 12%, transparent);
+}
+.conn-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: var(--tile);
+  border: 1px solid var(--line);
+  box-shadow: var(--tile-shadow);
+}
+.conn-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.conn-head b {
+  font-weight: 600;
+}
+.steps-list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  list-style: decimal;
+}
