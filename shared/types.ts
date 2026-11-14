@@ -635,6 +635,9 @@ export interface Segment {
   address: string;
   notes: string;
   source: string;
+  /** Flights: the cities at each end, when the airports are known. */
+  fromCity?: string;
+  toCity?: string;
   /** Flights: lounges your fare and status get you into. */
   lounges: LoungeAccess[];
   /** Stays: what your hotel status gets you there. */

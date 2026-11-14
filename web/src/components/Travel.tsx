@@ -538,39 +538,76 @@ function LoungeList({ seg, notes }: { seg: Segment; notes?: string[] }) {
   );
 }
 
+/** Airline names for the codes a Singapore-based traveller meets most; others show their code. */
+const AIRLINES: Record<string, string> = {
+  SQ: 'Singapore Airlines', TR: 'Scoot', MH: 'Malaysia Airlines', AK: 'AirAsia', OD: 'Batik Air', GA: 'Garuda Indonesia', TG: 'Thai Airways',
+  VN: 'Vietnam Airlines', PR: 'Philippine Airlines', CX: 'Cathay Pacific', BR: 'EVA Air', CI: 'China Airlines', CZ: 'China Southern', MU: 'China Eastern',
+  CA: 'Air China', NH: 'ANA', JL: 'Japan Airlines', KE: 'Korean Air', OZ: 'Asiana', AI: 'Air India', '6E': 'IndiGo', UL: 'SriLankan Airlines',
+  EK: 'Emirates', QR: 'Qatar Airways', EY: 'Etihad', SV: 'Saudia', TK: 'Turkish Airlines', LH: 'Lufthansa', LX: 'Swiss', OS: 'Austrian',
+  BA: 'British Airways', AF: 'Air France', KL: 'KLM', ET: 'Ethiopian Airlines', QF: 'Qantas', NZ: 'Air New Zealand', UA: 'United', AA: 'American Airlines',
+  DL: 'Delta', AC: 'Air Canada', LA: 'LATAM', G3: 'GOL', AD: 'Azul', TP: 'TAP Air Portugal', IB: 'Iberia',
+};
+
+/** A flight as a card: the airline, the two times with the journey between them, then seat and booking reference. */
 function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
+  const today = todayStr();
+  const day = dayOf(s.startLocal);
+  const plus = daysFrom(day, dayOf(s.endLocal));
+  const until = daysFrom(today, day);
+  const badge = until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day);
+  const code = s.carrier.toUpperCase();
+  const airline = AIRLINES[code] ?? (s.carrier || 'Flight');
+  const place = (c: string, city: string | undefined, name: string) => [c, city || name].filter(Boolean).join(' · ') || '—';
+  const details = [s.cabin, s.seat && `Seat ${s.seat}`].filter(Boolean).join(' · ');
   return (
-    <button type="button" className="seg-row seg-flight" onClick={onEdit}>
-      <span className="seg-icon">
-        <Plane size={15} />
+    <button type="button" className={cx('flight-card', until < 0 && 'is-past')} onClick={onEdit} aria-label={`${airline} ${s.carrier} ${s.number}, ${s.fromCode} to ${s.toCode}, ${weekday(day)} at ${time(s.startLocal)}. Edit`}>
+      <span className="fc-head">
+        <span className="fc-logo" aria-hidden>
+          {code || <Plane size={15} />}
+        </span>
+        <span className="fc-airline">
+          <b>{airline}</b>
+          <span>{`${s.carrier} ${s.number}`.trim()}</span>
+        </span>
+        <span className={cx('fc-badge', until < 0 ? 'is-past' : until <= 1 ? 'is-soon' : '')}>{badge}</span>
       </span>
-      <div className="grow">
-        <div className="seg-route">
-          <span>
-            <b className="num">{s.fromCode || '—'}</b> <span className="num">{time(s.startLocal)}</span>
+      <span className="fc-route">
+        <span className="fc-end">
+          <b className="fc-time">{time(s.startLocal)}</b>
+          <span className="fc-place">{place(s.fromCode, s.fromCity, s.fromName)}</span>
+        </span>
+        <span className="fc-mid">
+          <span className="fc-dur">{duration(s)}</span>
+          <span className="fc-track" aria-hidden>
+            <i className="fc-dot" />
+            <i className="fc-rule" />
+            <Plane size={13} />
+            <i className="fc-rule" />
+            <i className="fc-dot" />
           </span>
-          <span className="seg-line">
-            <i />
-            <em>{duration(s)}</em>
-            <i />
+          <span className="fc-stops">Nonstop</span>
+        </span>
+        <span className="fc-end is-arrival">
+          <b className="fc-time">
+            {time(s.endLocal)}
+            {plus > 0 && <sup>+{plus}</sup>}
+          </b>
+          <span className="fc-place">{place(s.toCode, s.toCity, s.toName)}</span>
+        </span>
+      </span>
+      <span className="fc-foot">
+        <span className="fc-details">{details || (until >= 0 ? 'Add your cabin and seat' : weekday(day))}</span>
+        {s.confirmation && (
+          <span className="fc-ref">
+            <b>{s.confirmation}</b> ref
           </span>
-          <span>
-            <b className="num">{s.toCode || '—'}</b> <span className="num">{time(s.endLocal)}</span>
-            {dayOf(s.endLocal) !== dayOf(s.startLocal) && <sup>+{daysFrom(dayOf(s.startLocal), dayOf(s.endLocal))}</sup>}
-          </span>
-        </div>
-        <div className="seg-meta">
-          {weekday(dayOf(s.startLocal))} · {s.carrier} {s.number}
-          {s.cabin && ` · ${s.cabin}`}
-          {s.seat && ` · seat ${s.seat}`}
-          {s.confirmation && <span className="faint num"> · {s.confirmation}</span>}
-        </div>
-        {s.lounges[0] && (
-          <div className="seg-perk">
-            <Sofa size={12} /> {s.lounges[0].access}
-          </div>
         )}
-      </div>
+      </span>
+      {s.lounges[0] && (
+        <span className="fc-lounge">
+          <Sofa size={12} /> {s.lounges[0].access}
+        </span>
+      )}
     </button>
   );
 }

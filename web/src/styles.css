@@ -5043,7 +5043,7 @@ textarea.title-input {
 }
 .seg-list {
   display: grid;
-  gap: 6px;
+  gap: 10px;
 }
 .seg-row {
   display: flex;
@@ -5102,6 +5102,216 @@ textarea.title-input {
 .seg-line em {
   font-style: normal;
   white-space: nowrap;
+}
+/* A flight as a card, in the manner of a flight search result. */
+.flight-card {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 18px 14px;
+  border-radius: 18px;
+  text-align: left;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(16 18 30 / 0.04), 0 10px 24px -18px rgb(16 18 30 / 0.25);
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.flight-card:hover {
+  box-shadow: 0 0 0 1px var(--line-2), 0 1px 2px rgb(16 18 30 / 0.05), 0 14px 28px -18px rgb(16 18 30 / 0.3);
+}
+.flight-card.is-past {
+  opacity: 0.7;
+}
+.fc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.fc-logo {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: oklch(0.42 0.12 250);
+  background: oklch(0.95 0.03 250);
+  box-shadow: inset 0 0 0 1px oklch(0.5 0.08 250 / 0.12);
+}
+.fc-airline {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+.fc-airline b {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-airline span {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.fc-badge {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 550;
+  color: oklch(0.45 0.12 250);
+  background: oklch(0.95 0.03 250);
+}
+.fc-badge.is-soon {
+  color: oklch(0.45 0.12 155);
+  background: oklch(0.95 0.04 155);
+}
+.fc-badge.is-past {
+  color: var(--ink-3);
+  background: var(--surface-2);
+}
+.fc-route {
+  display: grid;
+  grid-template-columns: auto minmax(60px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+.fc-end {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.fc-end.is-arrival {
+  text-align: right;
+}
+.fc-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.fc-time sup {
+  margin-left: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  vertical-align: super;
+}
+.fc-place {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.fc-mid {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.fc-dur {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.fc-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  color: var(--ink-3);
+}
+.fc-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--line-2);
+}
+.fc-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--ink-4);
+  flex: none;
+}
+.fc-stops {
+  font-size: 12px;
+  font-weight: 550;
+  color: oklch(0.52 0.12 245);
+}
+.fc-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.fc-ref {
+  flex: none;
+  font-size: 12.5px;
+}
+.fc-ref b {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.fc-lounge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: -4px;
+  font-size: 12px;
+  color: oklch(0.5 0.1 75);
+}
+:root[data-theme='dark'] .fc-logo,
+:root[data-theme='dark'] .fc-badge {
+  color: oklch(0.85 0.08 250);
+  background: oklch(0.3 0.06 250);
+}
+:root[data-theme='dark'] .fc-badge.is-soon {
+  color: oklch(0.85 0.1 155);
+  background: oklch(0.3 0.06 155);
+}
+:root[data-theme='dark'] .fc-stops {
+  color: oklch(0.78 0.1 245);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .fc-logo,
+  :root:not([data-theme='light']) .fc-badge {
+    color: oklch(0.85 0.08 250);
+    background: oklch(0.3 0.06 250);
+  }
+  :root:not([data-theme='light']) .fc-badge.is-soon {
+    color: oklch(0.85 0.1 155);
+    background: oklch(0.3 0.06 155);
+  }
+  :root:not([data-theme='light']) .fc-stops {
+    color: oklch(0.78 0.1 245);
+  }
+}
+@media (max-width: 480px) {
+  .flight-card {
+    padding: 14px 14px 12px;
+  }
+  .fc-time {
+    font-size: 22px;
+  }
+  .fc-route {
+    gap: 10px;
+  }
+  .fc-place {
+    max-width: 100px;
+  }
 }
 .seg-title {
   font-weight: 550;

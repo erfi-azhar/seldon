@@ -88,6 +88,8 @@ function segmentFromRow(r: Row, accounts: LoyaltyAccount[]): Segment {
     address: r.address,
     notes: r.notes,
     source: r.source,
+    fromCity: airport(r.from_code)?.city ?? '',
+    toCity: airport(r.to_code)?.city ?? '',
     lounges: [],
     perks: [],
   };
