@@ -150,3 +150,42 @@ test('option legs carry their distance in miles, and choosing skips a flight alr
   assert.deepEqual(t.segments.map((s) => `${s.carrier}${s.number}`), ['SQ326', 'LH506'], 'SQ857 stays on the Shenzhen trip');
   assert.equal(getTrip(store, szx.id).segments.length, 1);
 });
+
+test('hotel options: listed nearest first, one recommended, and choosing puts a planned stay on the trip once', async () => {
+  const { db, store } = setup();
+  const app = createApp({ db });
+  const call = async (method: string, path: string, body?: unknown) => {
+    const res = await app.request(`http://localhost/api${path}?date=${DAY}`, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    return { status: res.status, json: (await res.json()) as any };
+  };
+  const trip = createTrip(store, { title: 'São Paulo', purpose: 'work', startDate: '2026-11-29', endDate: '2026-12-12' });
+  addSegment(store, trip.id, { kind: 'flight', carrier: 'LH', number: '506', fromCode: 'FRA', toCode: 'GRU', startLocal: '2026-11-28T21:55', endLocal: '2026-11-29T06:00' });
+  const add = (body: object) => call('POST', `/travel/trips/${trip.id}/stay-options`, body);
+  assert.equal((await add({ name: 'JW Marriott São Paulo', brand: 'Marriott', distanceKm: 4.5, distanceFrom: 'the office' })).status, 201);
+  await add({ name: 'The Westin São Paulo', brand: 'Marriott', distanceKm: 1.3, distanceFrom: 'the office', gettingThere: '15–18 min walk', recommended: true, notes: ['Where the team stayed'] });
+  await add({ name: 'Somewhere unmeasured' });
+  const last = await add({ name: 'W São Paulo', brand: 'Marriott', distanceKm: 1, distanceFrom: 'the office', recommended: true });
+  assert.equal((await add({ name: '' })).status, 400);
+
+  let t = (last.json as TravelState).trips.find((x) => x.id === trip.id)!;
+  assert.deepEqual(t.stayOptions.map((o) => o.name), ['W São Paulo', 'The Westin São Paulo', 'JW Marriott São Paulo', 'Somewhere unmeasured'], 'nearest first, unmeasured last');
+  assert.deepEqual(t.stayOptions.filter((o) => o.recommended).map((o) => o.name), ['W São Paulo'], 'only the newest recommendation stands');
+  assert.match(renderSnapshot(store, DAY), /Hotel option \[\w+\] W São Paulo \(recommended\): 1 km to the office/);
+
+  const westin = t.stayOptions[1]!;
+  t = ((await call('POST', `/travel/stay-options/${westin.id}/choose`)).json as TravelState).trips.find((x) => x.id === trip.id)!;
+  const stay = t.segments.find((s) => s.kind === 'stay')!;
+  assert.equal(stay.title, 'The Westin São Paulo');
+  assert.equal(stay.startLocal, '2026-11-29T15:00');
+  assert.equal(stay.endLocal, '2026-12-12T12:00');
+  assert.equal(stay.startTz, 'America/Sao_Paulo', 'the zone comes from the flight that lands there');
+  assert.match(stay.notes, /not booked yet/);
+  assert.ok(t.stayOptions.find((o) => o.id === westin.id)!.chosenAt);
+  await call('POST', `/travel/stay-options/${westin.id}/choose`);
+  assert.equal(getTrip(store, trip.id).segments.filter((s) => s.kind === 'stay').length, 1, 'choosing again adds nothing twice');
+
+  const edited = (await call('PATCH', `/travel/stay-options/${westin.id}`, { distanceKm: 0.8 })).json as TravelState;
+  assert.equal(edited.trips.find((x) => x.id === trip.id)!.stayOptions[0]!.name, 'The Westin São Paulo', 'a new distance re-sorts');
+  assert.equal((await call('DELETE', `/travel/stay-options/${westin.id}`)).status, 200);
+  assert.equal(getTrip(store, trip.id).stayOptions.length, 3);
+});

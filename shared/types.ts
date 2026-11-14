@@ -673,6 +673,8 @@ export interface Trip {
   todos: Task[];
   /** Flight routings to weigh before booking. */
   options: FlightOption[];
+  /** Hotels to weigh before booking, nearest first. */
+  stayOptions: StayOption[];
   /** Seldon's airport and layover notes, keyed by flight segment id. */
   companion: Record<string, { lounges: string[]; plan: string[]; generatedAt: string }>;
 }
@@ -709,6 +711,30 @@ export interface FlightOption {
   notes: string[];
   recommended: boolean;
   /** When its flights were added to the trip as planned flights. */
+  chosenAt: string | null;
+  createdAt: string;
+}
+
+/** A place to stay, before it is booked: where it is, how far from where the days are spent, and what speaks for it. */
+export interface StayOption {
+  id: string;
+  tripId: string;
+  name: string;
+  /** The chain or programme ("Marriott"), for status perks. */
+  brand: string;
+  address: string;
+  /** The neighbourhood ("Itaim Bibi"). */
+  area: string;
+  /** Straight-line or walking distance to `distanceFrom`, in kilometres, when known. */
+  distanceKm: number | null;
+  /** What the distance is measured to ("the office"). */
+  distanceFrom: string;
+  /** How long it takes to get there ("12–15 min walk"). */
+  gettingThere: string;
+  summary: string;
+  notes: string[];
+  recommended: boolean;
+  /** When it was added to the trip as a planned stay. */
   chosenAt: string | null;
   createdAt: string;
 }
