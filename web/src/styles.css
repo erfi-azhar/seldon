@@ -5360,43 +5360,40 @@ textarea.title-input {
   gap: 6px;
 }
 
-/* ── The welcome stage: sky, particle canvas, light ─────────────────────── */
+/* ── The welcome stage: monochrome, with holographic light ─────────────── */
 
 :root {
-  /* Daylight: a dark shard against a pale sky, as at noon on the plain. */
-  --vault-sky: linear-gradient(180deg, #9fc3e4 0%, #c9dcec 46%, #e9e3d8 78%, #d9d0c2 100%);
-  --vault-ink: #1d2230;
-  --vault-glow: rgb(255 251 240 / 0.97);
-  --vault-glow-edge: rgb(255 251 240 / 0);
-  --vault-seam: #e2952c;
-  --vault-hill: #cfc6b6;
-  --vault-hill-deep: #e6dfd3;
+  /* Light: graphite particles on a pale, cool grey, colour only where light catches. */
+  --vault-sky: radial-gradient(120% 90% at 50% 30%, #fbfbfc 0%, #ececee 52%, #d9dadd 100%);
+  --vault-ink: #23252b;
+  --vault-glow: rgb(255 255 255 / 0.97);
+  --vault-glow-edge: rgb(255 255 255 / 0);
+  --vault-holo-s: 78;
+  --vault-holo-l: 52;
   --vault-blend: normal;
-  --vault-flash: radial-gradient(circle at 50% 46%, rgb(255 244 220) 0%, rgb(255 226 170 / 0.92) 38%, rgb(255 210 150 / 0.8) 100%);
+  --vault-flash:
+    conic-gradient(from 210deg at 50% 46%, rgb(160 220 255 / 0.28), rgb(255 170 230 / 0.24), rgb(255 236 170 / 0.24), rgb(170 255 220 / 0.24), rgb(160 220 255 / 0.28)),
+    radial-gradient(circle at 50% 46%, rgb(255 255 255) 0%, rgb(250 250 252 / 0.96) 45%, rgb(240 241 245 / 0.92) 100%);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    /* Dusk: the sun just under the ridge. */
-    --vault-sky: linear-gradient(180deg, #0f1726 0%, #1d2a3b 38%, #4a4552 64%, #b77d5c 84%, #e0a06a 100%);
-    --vault-ink: #e9eeff;
-    --vault-glow: rgb(255 210 140 / 0.9);
-  --vault-glow-edge: rgb(255 210 140 / 0);
-  --vault-seam: #ffc66e;
-    --vault-glow-edge: rgb(255 210 140 / 0);
-    --vault-seam: #ffc66e;
-    --vault-hill: #121822;
-    --vault-hill-deep: #0a0d13;
+    /* Dark: silver particles in near-black space. */
+    --vault-sky: radial-gradient(120% 90% at 50% 30%, #1b1c20 0%, #0d0e11 55%, #050506 100%);
+    --vault-ink: #e8eaef;
+    --vault-glow: rgb(255 255 255 / 0.92);
+    --vault-glow-edge: rgb(255 255 255 / 0);
+    --vault-holo-s: 92;
+    --vault-holo-l: 74;
     --vault-blend: lighter;
   }
 }
 :root[data-theme='dark'] {
-  --vault-sky: linear-gradient(180deg, #0f1726 0%, #1d2a3b 38%, #4a4552 64%, #b77d5c 84%, #e0a06a 100%);
-  --vault-ink: #e9eeff;
-  --vault-glow: rgb(255 210 140 / 0.9);
-  --vault-glow-edge: rgb(255 210 140 / 0);
-  --vault-seam: #ffc66e;
-  --vault-hill: #121822;
-  --vault-hill-deep: #0a0d13;
+  --vault-sky: radial-gradient(120% 90% at 50% 30%, #1b1c20 0%, #0d0e11 55%, #050506 100%);
+  --vault-ink: #e8eaef;
+  --vault-glow: rgb(255 255 255 / 0.92);
+  --vault-glow-edge: rgb(255 255 255 / 0);
+  --vault-holo-s: 92;
+  --vault-holo-l: 74;
   --vault-blend: lighter;
 }
 
@@ -5438,13 +5435,13 @@ textarea.title-input {
   flex: none;
 }
 .vault-anchor-signin {
-  height: min(44vh, 400px);
+  height: min(54vh, 520px);
 }
 .vault-anchor-open {
-  height: min(36vh, 330px);
+  height: min(44vh, 420px);
 }
 .vault-anchor-figure {
-  height: min(26vh, 230px);
+  height: min(30vh, 270px);
 }
 .stage-center {
   text-align: center;
