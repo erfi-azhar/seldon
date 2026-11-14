@@ -16,7 +16,8 @@ function client(cfg: ModelConfig, apiBase: string = API): Anthropic {
 }
 
 /** Tool-call ids from other providers are replayed here; Anthropic only accepts [A-Za-z0-9_-]. */
-const safeId = (id: string): string => id.replace(/[^a-zA-Z0-9_-]/g, '_');
+const safeId = (id: string): string => id.replace(/[^a-zA-Z0-9_-]/g, '_') || 'call';
+const safeName = (name: string): string => name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64) || 'tool';
 
 const isThinking = (block: { type: string }): boolean => block.type === 'thinking' || block.type === 'redacted_thinking';
 
@@ -52,9 +53,12 @@ function toMessages(turns: Turn[], stripThinking: boolean): Anthropic.Beta.BetaM
       if (content && stripThinking) content = content.filter((b) => !isThinking(b));
       if (!content || content.length === 0) {
         content = [];
-        if (turn.text) content.push({ type: 'text', text: turn.text });
+        // Anthropic rejects whitespace-only text, tool names outside [A-Za-z0-9_-]{1,64}
+        // and tool input that is not an object; turns from other models may have any of these.
+        if (turn.text.trim()) content.push({ type: 'text', text: turn.text });
         for (const call of turn.toolCalls) {
-          content.push({ type: 'tool_use', id: safeId(call.id), name: call.name, input: call.input ?? {} });
+          const input = call.input && typeof call.input === 'object' && !Array.isArray(call.input) ? call.input : { value: call.input ?? null };
+          content.push({ type: 'tool_use', id: safeId(call.id), name: safeName(call.name), input });
         }
       }
       if (content.length === 0) content.push({ type: 'text', text: '(no reply)' });
@@ -142,7 +146,6 @@ export function anthropicProvider(cfg: ModelConfig, apiBase: string = API): Prov
           { signal: req.signal },
         );
         stream.on('text', (delta) => {
-          if (!streamed && jsonRetries > 0) req.onText('\n\n');
           streamed = true;
           req.onText(delta);
         });
@@ -160,12 +163,12 @@ export function anthropicProvider(cfg: ModelConfig, apiBase: string = API): Prov
             continue;
           }
           if (err instanceof Anthropic.APIError) throw explain(err);
-          // Not an API error: a tool input that could not be parsed as JSON at all.
-          if (jsonRetries++ < 2) {
-            streamed = false;
-            continue;
-          }
-          throw new ProviderError('The model kept producing tool input that could not be read. Try again.');
+          const unreadableInput = err instanceof Error && /Unable to parse tool parameter JSON/.test(err.message);
+          if (!unreadableInput) throw new ProviderError('The connection to Anthropic was interrupted. Try again.');
+          // A tool input that could not be parsed as JSON at all. Ask again, unless text has
+          // already reached the screen: a repeat would show it twice.
+          if (!streamed && jsonRetries++ < 2) continue;
+          throw new ProviderError('The model produced tool input that could not be read. Try again.');
         }
 
         if (message.stop_reason === 'refusal') {

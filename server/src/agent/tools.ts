@@ -41,6 +41,7 @@ export function tool<S extends z.ZodType>(
 const date = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+  .refine((s) => new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s, 'Not a real calendar date')
   .describe('A calendar date, YYYY-MM-DD');
 const id = (what: string) => z.string().min(1).describe(`The id of the ${what}, copied from the snapshot or a read tool`);
 
@@ -251,8 +252,10 @@ const TOOLS: ToolDef[] = [
       times_per_week: z.number().int().min(1).max(6).optional(),
     }),
     (i, { store, today }) => {
-      const h = store.createHabit({ sphereId: i.sphere_id, name: i.name, cadence: i.cadence, targetPerWeek: i.times_per_week });
-      return { data: habitView(store.getHabit(h.id, today)), summary: `New habit: ${h.name}` };
+      // "3 times a week" without a cadence means weekly, not daily.
+      const cadence = i.cadence ?? (i.times_per_week ? 'weekly' : 'daily');
+      const h = store.createHabit({ sphereId: i.sphere_id, name: i.name, cadence, targetPerWeek: cadence === 'weekly' ? i.times_per_week : undefined });
+      return { data: habitView(store.getHabit(h.id, today)), summary: `New habit: ${h.name} (${cadence === 'weekly' ? `${h.targetPerWeek}× a week` : 'daily'})` };
     },
   ),
 

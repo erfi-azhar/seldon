@@ -370,6 +370,10 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX job_postings_open ON job_postings(closed_at, matched);
   `,
+  // What an action replaced, so undoing it can put that back instead of deleting.
+  `
+  ALTER TABLE activity ADD COLUMN undo_data TEXT;
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

@@ -72,6 +72,16 @@ export function localDate(d: Date = new Date()): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+/** YYYY-MM-DD of an instant in an IANA zone (the server's own zone when none is given). */
+export function dateInZone(iso: string, zone: string | null): string {
+  if (!zone) return localDate(new Date(iso));
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+  } catch {
+    return localDate(new Date(iso));
+  }
+}
+
 export function addDays(date: string, n: number): string {
   const d = new Date(`${date}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
@@ -221,9 +231,9 @@ export class Store {
     return this.log(verb, entityType, entityId, sphereId, summary);
   }
 
-  private log(verb: string, entityType: string, entityId: string, sphereId: string | null, summary: string): number {
+  private log(verb: string, entityType: string, entityId: string, sphereId: string | null, summary: string, undoData: unknown = null): number {
     const r = this.run(
-      'INSERT INTO activity (ts, actor, verb, entity_type, entity_id, sphere_id, summary) VALUES (?,?,?,?,?,?,?)',
+      'INSERT INTO activity (ts, actor, verb, entity_type, entity_id, sphere_id, summary, undo_data) VALUES (?,?,?,?,?,?,?,?)',
       nowIso(),
       this.actor,
       verb,
@@ -231,6 +241,7 @@ export class Store {
       entityId,
       sphereId,
       summary,
+      undoData === null ? null : JSON.stringify(undoData),
     );
     const id = Number(r.lastInsertRowid);
     this.trail.push(id);
@@ -265,7 +276,7 @@ export class Store {
     const habitRate = habits.length
       ? habits.reduce((s, h) => s + Math.min(h.weekCount, h.targetPerWeek) / h.targetPerWeek, 0) / habits.length
       : null;
-    const quietDays = lastActivityAt ? Math.max(0, daysBetween(lastActivityAt, today)) : null;
+    const quietDays = lastActivityAt ? Math.max(0, daysBetween(dateInZone(lastActivityAt, this.zone()), today)) : null;
     const recency = quietDays === null ? 0 : clamp01(1 - quietDays / 14);
     const pulse = habitRate === null ? recency : 0.6 * habitRate + 0.4 * recency;
 
@@ -369,9 +380,10 @@ export class Store {
     } else if (r.metric_id && r.target_value !== null) {
       progressSource = 'metric';
       const latest = this.latestMetricValue(r.metric_id);
-      const start = (r.start_value as number | null) ?? 0;
-      const span = (r.target_value as number) - start;
-      if (latest !== null && span !== 0) progress = clamp01((latest - start) / span);
+      // With no baseline (the metric was empty when linked), the first reading becomes it.
+      const start = (r.start_value as number | null) ?? ((this.get('SELECT value FROM metric_entries WHERE metric_id = ? ORDER BY date, created_at LIMIT 1', r.metric_id)?.value as number | undefined) ?? null);
+      const span = start === null ? 0 : (r.target_value as number) - start;
+      if (latest !== null && start !== null && span !== 0) progress = clamp01((latest - start) / span);
     } else if (milestones.length > 0) {
       progressSource = 'milestones';
       progress = milestones.filter((m) => m.done).length / milestones.length;
@@ -444,9 +456,9 @@ export class Store {
     const id = newId();
     const now = nowIso();
     let startValue = input.startValue ?? null;
-    if (input.metricId) {
+    if (input.metricId != null) {
       const metric = this.getMetric(input.metricId);
-      if (startValue === null) startValue = metric.latest ?? 0;
+      if (startValue === null) startValue = metric.latest ?? null;
     }
     this.tx(() => {
       this.run(
@@ -488,11 +500,11 @@ export class Store {
     },
   ): Goal {
     const before = this.getGoal(id);
-    if (patch.sphereId) this.getSphere(patch.sphereId);
+    if (patch.sphereId != null) this.getSphere(patch.sphereId);
     let startValue = patch.startValue;
-    if (patch.metricId && patch.metricId !== before.metricId) {
+    if (patch.metricId != null && patch.metricId !== before.metricId) {
       const metric = this.getMetric(patch.metricId);
-      if (startValue === undefined || startValue === null) startValue = metric.latest ?? 0;
+      if (startValue === undefined || startValue === null) startValue = metric.latest ?? null;
     }
     const statusChanged = patch.status !== undefined && patch.status !== before.status;
     this.patch('goals', id, {
@@ -610,8 +622,11 @@ export class Store {
     const title = input.title.trim();
     if (!title) throw new Invalid('A task needs a title');
     let sphereId = input.sphereId ?? null;
-    if (input.goalId) sphereId = sphereId ?? this.getGoal(input.goalId).sphereId;
-    if (sphereId) this.getSphere(sphereId);
+    if (input.goalId != null) {
+      const goal = this.getGoal(input.goalId);
+      sphereId = sphereId ?? goal.sphereId;
+    }
+    if (sphereId != null) this.getSphere(sphereId);
     const id = newId();
     this.run(
       'INSERT INTO tasks (id, title, notes, sphere_id, goal_id, due_date, created_at) VALUES (?,?,?,?,?,?,?)',
@@ -632,8 +647,8 @@ export class Store {
     patch: { title?: string; notes?: string; sphereId?: string | null; goalId?: string | null; dueDate?: string | null; done?: boolean },
   ): Task {
     const before = this.getTask(id);
-    if (patch.sphereId) this.getSphere(patch.sphereId);
-    if (patch.goalId) this.getGoal(patch.goalId);
+    if (patch.sphereId != null) this.getSphere(patch.sphereId);
+    if (patch.goalId != null) this.getGoal(patch.goalId);
     this.patch('tasks', id, {
       title: patch.title?.trim() || undefined,
       notes: patch.notes,
@@ -857,7 +872,7 @@ export class Store {
     const metric = this.getMetric(metricId);
     if (!Number.isFinite(input.value)) throw new Invalid('A metric entry needs a number');
     const date = input.date ?? localDate();
-    const existing = this.get('SELECT id FROM metric_entries WHERE metric_id = ? AND date = ?', metricId, date);
+    const existing = this.get('SELECT id, value, note FROM metric_entries WHERE metric_id = ? AND date = ?', metricId, date);
     let id: string;
     if (existing) {
       id = existing.id;
@@ -874,7 +889,9 @@ export class Store {
         nowIso(),
       );
     }
-    this.log('logged', 'metric_entry', id, metric.sphereId, `Logged ${metric.name}: ${formatValue(input.value, metric.unit)}`);
+    // Re-logging a day replaces its value; undo puts the old one back rather than deleting the day.
+    const replaced = existing ? { value: existing.value as number, note: existing.note as string } : null;
+    this.log('logged', 'metric_entry', id, metric.sphereId, `Logged ${metric.name}: ${formatValue(input.value, metric.unit)}`, replaced);
     return this.entryFromRow(this.get('SELECT * FROM metric_entries WHERE id = ?', id)!);
   }
 
@@ -942,7 +959,7 @@ export class Store {
     const title = (input.title ?? '').trim();
     const body = input.body ?? '';
     if (!title && !body.trim() && !url) throw new Invalid('A note needs a title, some text or a link');
-    if (input.sphereId) this.getSphere(input.sphereId);
+    if (input.sphereId != null) this.getSphere(input.sphereId);
     const id = newId();
     const now = nowIso();
     this.run(
@@ -962,7 +979,7 @@ export class Store {
 
   updateNote(id: string, patch: { title?: string; body?: string; url?: string; sphereId?: string | null; pinned?: boolean }): Note {
     this.getNote(id);
-    if (patch.sphereId) this.getSphere(patch.sphereId);
+    if (patch.sphereId != null) this.getSphere(patch.sphereId);
     this.patch('notes', id, {
       title: patch.title,
       body: patch.body,
@@ -1093,21 +1110,33 @@ export class Store {
   }
 
   /** Reverse one logged action. Returns false when it cannot (or can no longer) be undone. */
+  /** Mark the activity of records that no longer exist as undone. */
+  private retire(entityType: string, ids: string[]): void {
+    for (const id of ids) this.run('UPDATE activity SET undone = 1 WHERE entity_type = ? AND entity_id = ?', entityType, id);
+  }
+
   undo(activityId: number): boolean {
     const a = this.getActivity(activityId);
     if (!a || !a.undoable) return false;
     this.tx(() => {
       switch (`${a.verb}:${a.entityType}`) {
         case 'created:goal':
+          // What happened to its steps goes with it, so the feed does not offer to undo those too.
+          this.retire('milestone', this.all('SELECT id FROM milestones WHERE goal_id = ?', a.entityId).map((r) => r.id as string));
+          this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'goal' AND entity_id = ?", a.entityId);
           this.run('DELETE FROM goals WHERE id = ?', a.entityId);
           break;
         case 'created:task':
           this.run('DELETE FROM tasks WHERE id = ?', a.entityId);
           break;
         case 'created:habit':
+          this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'habit_log' AND entity_id LIKE ? ESCAPE '\\'", `${likeEscape(a.entityId)}|%`);
+          this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'habit' AND entity_id = ?", a.entityId);
           this.run('DELETE FROM habits WHERE id = ?', a.entityId);
           break;
         case 'created:metric':
+          this.retire('metric_entry', this.all('SELECT id FROM metric_entries WHERE metric_id = ?', a.entityId).map((r) => r.id as string));
+          this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'metric' AND entity_id = ?", a.entityId);
           this.run('DELETE FROM metrics WHERE id = ?', a.entityId);
           break;
         case 'created:note':
@@ -1119,9 +1148,13 @@ export class Store {
         case 'created:memory':
           this.run('DELETE FROM memories WHERE id = ?', a.entityId);
           break;
-        case 'logged:metric_entry':
-          this.run('DELETE FROM metric_entries WHERE id = ?', a.entityId);
+        case 'logged:metric_entry': {
+          const raw = this.get('SELECT undo_data FROM activity WHERE id = ?', activityId)?.undo_data as string | null | undefined;
+          const prev = raw ? (JSON.parse(raw) as { value: number; note: string }) : null;
+          if (prev) this.run('UPDATE metric_entries SET value = ?, note = ? WHERE id = ?', prev.value, prev.note, a.entityId);
+          else this.run('DELETE FROM metric_entries WHERE id = ?', a.entityId);
           break;
+        }
         case 'checked:habit_log': {
           const [habitId, date] = a.entityId.split('|');
           this.run('DELETE FROM habit_logs WHERE habit_id = ? AND date = ?', habitId!, date!);
@@ -1169,7 +1202,14 @@ export class Store {
         like,
       ),
     );
-    return hits.slice(0, limit);
+    // Take from each kind in turn, so a query that matches many goals still finds notes.
+    const groups = new Map<SearchHit['type'], SearchHit[]>();
+    for (const h of hits) groups.set(h.type, [...(groups.get(h.type) ?? []), h]);
+    const out: SearchHit[] = [];
+    while (out.length < limit && [...groups.values()].some((g) => g.length)) {
+      for (const g of groups.values()) if (g.length && out.length < limit) out.push(g.shift()!);
+    }
+    return out;
   }
 
   // ── Composite reads ───────────────────────────────────────────────────────
@@ -1177,9 +1217,12 @@ export class Store {
   overview(date: string = localDate()): Overview {
     const open = this.listTasks({ status: 'open' });
     const weekAhead = addDays(date, 7);
-    const doneToday = this.all('SELECT * FROM tasks WHERE done = 1 AND done_at >= ? ORDER BY done_at DESC LIMIT 20', `${addDays(date, -1)}T12:00:00.000Z`)
+    // Any zone is within ±14h of UTC, so a two-day window always holds the local day.
+    const zone = this.zone();
+    const doneToday = this.all('SELECT * FROM tasks WHERE done = 1 AND done_at >= ? ORDER BY done_at DESC LIMIT 60', `${addDays(date, -1)}T00:00:00.000Z`)
       .map((r) => this.taskFromRow(r))
-      .filter((t) => t.doneAt !== null && daysBetween(localDate(new Date(t.doneAt)), date) === 0);
+      .filter((t) => t.doneAt !== null && dateInZone(t.doneAt, zone) === date)
+      .slice(0, 20);
     const soon = addDays(date, 30);
     return {
       date,
@@ -1218,6 +1261,22 @@ export class Store {
   }
   private writeSetting(key: string, value: unknown): void {
     this.run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, JSON.stringify(value));
+  }
+
+  /** The person's time zone, as their browser last reported it; null means the server's. */
+  zone(): string | null {
+    const r = this.get("SELECT value FROM settings WHERE key = 'timezone'");
+    return r ? (JSON.parse(r.value) as string) : null;
+  }
+
+  setZone(tz: string): void {
+    if (tz === this.zone()) return;
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: tz });
+    } catch {
+      return;
+    }
+    this.writeSetting('timezone', tz);
   }
 
   getProfile(): Profile {
@@ -1526,6 +1585,9 @@ export class Store {
       throw new Invalid('That file is not a Terminus export');
     }
     const tables = d.tables;
+    // A damaged or hand-edited file must not wipe everything and report success.
+    for (const [t, rows] of Object.entries(tables)) if (!Array.isArray(rows)) throw new Invalid(`That export is damaged (${t} is not a list)`);
+    if (!Array.isArray(tables.spheres) || tables.spheres.length === 0) throw new Invalid('That export has no spheres in it, so nothing was changed');
     this.tx(() => {
       for (const t of [...Store.dataTables()].reverse()) this.run(`DELETE FROM ${t}`);
       for (const t of Store.dataTables()) {
@@ -1533,10 +1595,11 @@ export class Store {
         for (const row of tables[t] ?? []) {
           const keys = Object.keys(row).filter((k) => columns.has(k));
           if (keys.length === 0) continue;
-          this.run(
-            `INSERT INTO ${t} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`,
-            ...keys.map((k) => toSql(row[k])),
-          );
+          try {
+            this.run(`INSERT INTO ${t} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`, ...keys.map((k) => toSql(row[k])));
+          } catch (err) {
+            throw new Invalid(`That export could not be read (${t}: ${err instanceof Error ? err.message : String(err)}). Nothing was changed.`);
+          }
         }
       }
       if (d.profile) this.writeSetting('profile', { ...DEFAULT_PROFILE, ...d.profile });
@@ -1551,8 +1614,10 @@ function toSql(v: unknown): SqlValue {
   return JSON.stringify(v);
 }
 
+const likeEscape = (s: string): string => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
 function likePattern(q: string): string {
-  return `%${q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return `%${likeEscape(q.trim())}%`;
 }
 
 function snippet(text: string, q: string): string {

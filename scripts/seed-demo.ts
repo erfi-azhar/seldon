@@ -7,7 +7,8 @@
 // Everything is created through the same Store and agent loop the app uses, then
 // timestamps are shifted into the past so trends and "quiet" spheres look lived-in.
 
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { resolve } from 'node:path';
 import { chat } from '../server/src/agent/index.ts';
 import type { Provider, ProviderResponse } from '../server/src/agent/types.ts';
@@ -21,10 +22,26 @@ import { setPreferences } from '../server/src/features/job-alerts.ts';
 import { updateIntegration } from '../server/src/features/integrations.ts';
 import { deflateSync } from 'node:zlib';
 
-const path = resolve(process.argv[2] ?? 'data/demo.db');
+const path = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 'data/demo.db');
+// Only ever replace a previous demo database, never a real one.
+if (existsSync(path)) {
+  let demo = false;
+  try {
+    const old = new DatabaseSync(path, { readOnly: true });
+    demo = !!old.prepare("SELECT 1 AS x FROM settings WHERE key = 'demo'").get();
+    old.close();
+  } catch {
+    demo = false;
+  }
+  if (!demo && !process.argv.includes('--force')) {
+    console.error(`${path} exists and is not a demo database, so it was left alone. Pick another path (or add --force if you are sure).`);
+    process.exit(1);
+  }
+}
 for (const suffix of ['', '-wal', '-shm']) rmSync(path + suffix, { force: true });
 
 const db = openDb(path);
+db.prepare("INSERT INTO settings (key, value) VALUES ('demo', 'true')").run();
 const store = new Store(db);
 const today = localDate();
 const day = (ago: number): string => addDays(today, -ago);

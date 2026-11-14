@@ -120,8 +120,11 @@ export function openAiProvider(cfg: ModelConfig): Provider {
       let text = '';
       let finish: string | null = null;
       const partial = new Map<number, { id: string; name: string; args: string }>();
+      let last = -1;
 
-      const handle = (chunk: StreamChunk): void => {
+      const handle = (chunk: StreamChunk & { error?: { message?: string } | string }): void => {
+        // Some servers report a failure mid-stream as an event rather than a status code.
+        if (chunk.error) throw new ProviderError(`The model server reported an error: ${typeof chunk.error === 'string' ? chunk.error : (chunk.error.message ?? 'unknown')}`);
         const choice = chunk.choices?.[0];
         if (!choice) return;
         if (choice.finish_reason) finish = choice.finish_reason;
@@ -132,35 +135,56 @@ export function openAiProvider(cfg: ModelConfig): Provider {
           req.onText(delta.content);
         }
         for (const call of delta.tool_calls ?? []) {
-          // Servers that send a whole call in one chunk often omit `index`.
-          const index = call.index ?? partial.size;
+          let index: number;
+          if (call.index !== undefined) {
+            index = call.index;
+            // Some servers number every parallel call 0; a different id means a new call.
+            const cur = partial.get(index);
+            if (cur && call.id && cur.id && call.id !== cur.id) index = Math.max(...partial.keys(), index) + 1;
+            else if (cur && call.id && call.id !== cur.id && [...partial.values()].some((p) => p.id === call.id)) index = [...partial.entries()].find(([, p]) => p.id === call.id)![0];
+          } else if (!call.id && !call.function?.name && last >= 0) {
+            // A continuation without an index belongs to the call being streamed.
+            index = last;
+          } else {
+            // Servers that send a whole call in one chunk often omit `index`.
+            index = partial.size ? Math.max(...partial.keys()) + 1 : 0;
+          }
           const slot = partial.get(index) ?? { id: '', name: '', args: '' };
           if (call.id) slot.id = call.id;
-          if (call.function?.name) slot.name += call.function.name;
+          if (call.function?.name) slot.name = slot.name && !slot.args ? slot.name + call.function.name : slot.name || call.function.name;
           if (call.function?.arguments) slot.args += call.function.arguments;
           partial.set(index, slot);
+          last = index;
         }
       };
 
       // Server-sent events: "data: {json}" lines, blank-line separated, ending with [DONE].
+      const line = (raw: string): void => {
+        const l = raw.trim();
+        if (!l.startsWith('data:')) return;
+        const data = l.slice(5).trim();
+        if (!data || data === '[DONE]') return;
+        let parsed: StreamChunk;
+        try {
+          parsed = JSON.parse(data) as StreamChunk;
+        } catch {
+          return; // a malformed keep-alive or comment line
+        }
+        handle(parsed);
+      };
       const decoder = new TextDecoder();
       let buffer = '';
       for await (const bytes of res.body) {
         buffer += decoder.decode(bytes as Uint8Array, { stream: true });
         let newline: number;
         while ((newline = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.slice(0, newline).trim();
+          line(buffer.slice(0, newline));
           buffer = buffer.slice(newline + 1);
-          if (!line.startsWith('data:')) continue;
-          const data = line.slice(5).trim();
-          if (!data || data === '[DONE]') continue;
-          try {
-            handle(JSON.parse(data) as StreamChunk);
-          } catch {
-            // A malformed keep-alive or comment line; skip it.
-          }
         }
       }
+      // The last event may arrive without a trailing newline.
+      buffer += decoder.decode();
+      if (buffer.trim()) line(buffer);
 
       const toolCalls: ToolCall[] = [...partial.entries()]
         .sort(([a], [b]) => a - b)
@@ -183,6 +207,7 @@ export function openAiProvider(cfg: ModelConfig): Provider {
           stopped: { reason: 'max_tokens', message: 'The reply was cut off before it finished, so nothing was changed.' },
         };
       }
+      if (!text && toolCalls.length === 0 && !finish) throw new ProviderError('The model server ended the reply without saying anything. Try again.');
       return { text, toolCalls };
     },
   };

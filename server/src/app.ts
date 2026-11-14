@@ -12,6 +12,7 @@ import { read, today } from './http.ts';
 import { installFeatures } from './features/index.ts';
 import { hasCaptureToken } from './features/capture.ts';
 import { Scheduler } from './jobs.ts';
+import { screeningsSchema } from './screenings-schema.ts';
 import { Invalid, localDate, NotFound, nowIso, Store } from './store.ts';
 import { CATALOG_BY_KEY } from '../../shared/catalog.ts';
 import type { AgentEvent, Screenings } from '../../shared/types.ts';
@@ -42,6 +43,9 @@ const status = z.enum(['active', 'paused', 'done', 'dropped']);
 const direction = z.enum(['up', 'down', 'none']);
 const cadence = z.enum(['daily', 'weekly']);
 
+/** An optional reference to another record; an empty string means none. */
+const optId = z.string().nullable().optional().transform((v) => (v === '' ? null : v));
+
 const S = {
   login: z.object({ passphrase: z.string() }),
   onboarding: z.object({
@@ -65,24 +69,24 @@ const S = {
   }),
   reorder: z.object({ ids: z.array(z.string()).max(100) }),
   goalCreate: z.object({
-    sphereId: z.string(),
+    sphereId: z.string().min(1),
     title: text(200),
     why: text(600).optional(),
     horizon: horizon.optional(),
     targetDate: date.nullable().optional(),
-    metricId: z.string().nullable().optional(),
+    metricId: optId,
     startValue: z.number().nullable().optional(),
     targetValue: z.number().nullable().optional(),
     milestones: z.array(text(200)).max(30).optional(),
   }),
   goalPatch: z.object({
-    sphereId: z.string().optional(),
+    sphereId: z.string().min(1).optional(),
     title: text(200).optional(),
     why: text(600).optional(),
     status: status.optional(),
     horizon: horizon.optional(),
     targetDate: date.nullable().optional(),
-    metricId: z.string().nullable().optional(),
+    metricId: optId,
     startValue: z.number().nullable().optional(),
     targetValue: z.number().nullable().optional(),
     manualProgress: z.number().min(0).max(100).optional(),
@@ -92,20 +96,20 @@ const S = {
   taskCreate: z.object({
     title: text(200),
     notes: text(2000).optional(),
-    sphereId: z.string().nullable().optional(),
-    goalId: z.string().nullable().optional(),
+    sphereId: optId,
+    goalId: optId,
     dueDate: date.nullable().optional(),
   }),
   taskPatch: z.object({
     title: text(200).optional(),
     notes: text(2000).optional(),
-    sphereId: z.string().nullable().optional(),
-    goalId: z.string().nullable().optional(),
+    sphereId: optId,
+    goalId: optId,
     dueDate: date.nullable().optional(),
     done: z.boolean().optional(),
   }),
   habitCreate: z.object({
-    sphereId: z.string(),
+    sphereId: z.string().min(1),
     name: text(120),
     cadence: cadence.optional(),
     targetPerWeek: z.number().int().min(1).max(7).optional(),
@@ -117,7 +121,7 @@ const S = {
     archived: z.boolean().optional(),
   }),
   habitLog: z.object({ date: date.optional(), done: z.boolean().optional() }),
-  metricCreate: z.object({ sphereId: z.string(), name: text(120), unit: text(12).optional(), direction: direction.optional() }),
+  metricCreate: z.object({ sphereId: z.string().min(1), name: text(120), unit: text(12).optional(), direction: direction.optional() }),
   metricPatch: z.object({ name: text(120).optional(), unit: text(12).optional(), direction: direction.optional() }),
   entryCreate: z.object({ value: z.number(), date: date.optional(), note: text(300).optional() }),
   noteCreate: z.object({
@@ -125,13 +129,13 @@ const S = {
     title: text(200).optional(),
     body: text(50_000).optional(),
     url: text(2000).optional(),
-    sphereId: z.string().nullable().optional(),
+    sphereId: optId,
   }),
   notePatch: z.object({
     title: text(200).optional(),
     body: text(50_000).optional(),
     url: text(2000).optional(),
-    sphereId: z.string().nullable().optional(),
+    sphereId: optId,
     pinned: z.boolean().optional(),
   }),
   journal: z.object({ body: text(50_000) }),
@@ -183,6 +187,15 @@ export function createApp(opts: AppOptions): Hono {
   const anyHost = opts.allowedHosts?.includes('*') ?? false;
   const allowedHosts = new Set([...LOOPBACK, ...(opts.allowedHosts ?? []).map((h) => h.toLowerCase())]);
   const failedLogins: number[] = [];
+  // Sessions belong to the passphrase they were made under: change it and everyone signs in again.
+  if (opts.passphrase) {
+    const marker = sha256(`terminus-sessions:${opts.passphrase}`);
+    const row = opts.db.prepare("SELECT value FROM settings WHERE key = 'session_marker'").get() as { value: string } | undefined;
+    if (row?.value !== JSON.stringify(marker)) {
+      opts.db.prepare('DELETE FROM sessions').run();
+      opts.db.prepare("INSERT INTO settings (key, value) VALUES ('session_marker', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(marker));
+    }
+  }
 
   const signedIn = (c: Context): boolean => {
     if (!opts.passphrase) return true;
@@ -212,9 +225,14 @@ export function createApp(opts: AppOptions): Hono {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
       const site = c.req.header('sec-fetch-site');
       const origin = c.req.header('origin');
-      const crossSite = site
-        ? site !== 'same-origin' && site !== 'none'
-        : !!origin && new URL(origin).host !== new URL(c.req.url).host;
+      const originHost = (() => {
+        try {
+          return origin ? new URL(origin).host : null;
+        } catch {
+          return 'unparseable'; // "null" and other opaque origins count as another site
+        }
+      })();
+      const crossSite = site ? site !== 'same-origin' && site !== 'none' : !!originHost && originHost !== new URL(c.req.url).host;
       if (crossSite) return c.json({ error: 'Cross-site requests are not allowed.' }, 403);
     }
     // Shortcuts and other apps save links with the capture token instead of a session.
@@ -222,6 +240,9 @@ export function createApp(opts: AppOptions): Hono {
     if (!c.req.path.startsWith('/api/auth/') && !tokenCapture && !signedIn(c)) {
       return c.json({ error: 'Sign in first.' }, 401);
     }
+    // The browser says which zone it is in, so "today" and "quiet for 3 days" are its days.
+    const tz = c.req.header('x-timezone');
+    if (tz && tz.length <= 64 && signedIn(c)) store.setZone(tz);
     await next();
   });
 
@@ -231,11 +252,12 @@ export function createApp(opts: AppOptions): Hono {
 
   app.post('/api/auth/login', async (c) => {
     if (!opts.passphrase) return c.json({ ok: true });
+    // Read the body first, then count and compare with no await in between, so guesses
+    // sent at once cannot all slip past the limit while their bodies are in flight.
+    const { passphrase } = await read(c, S.login);
     const cutoff = Date.now() - 5 * 60_000;
     while (failedLogins.length && failedLogins[0]! < cutoff) failedLogins.shift();
     if (failedLogins.length >= 8) return c.json({ error: 'Too many attempts. Wait a few minutes.' }, 429);
-
-    const { passphrase } = await read(c, S.login);
     if (!sameSecret(passphrase, opts.passphrase)) {
       failedLogins.push(Date.now());
       return c.json({ error: 'That passphrase is not right.' }, 401);
@@ -384,15 +406,9 @@ export function createApp(opts: AppOptions): Hono {
   app.get('/api/journal/:date', (c) => c.json(store.getJournal(dayParam(c))));
   app.put('/api/journal/:date', async (c) => c.json(store.putJournal(dayParam(c), (await read(c, S.journal)).body)));
 
-  // One document; the shape is owned by the client (shared/types.ts → Screenings).
-  const screenings = z.looseObject({
-    title: z.string().max(200),
-    visits: z.array(z.looseObject({ label: z.string() })).min(1).max(2),
-    results: z.array(z.looseObject({ g: z.string(), n: z.string() })).max(1000),
-  });
   app.get('/api/screenings', (c) => c.json(store.getScreenings()));
   app.put('/api/screenings', async (c) => {
-    store.putScreenings((await read(c, screenings)) as unknown as Screenings);
+    store.putScreenings((await read(c, screeningsSchema)) as Screenings);
     return c.json({ ok: true });
   });
   app.delete('/api/screenings', (c) => {
