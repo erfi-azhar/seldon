@@ -71,6 +71,8 @@ test('lounge eligibility follows the cabin, KrisFlyer tier and alliance; hotel p
   const pps = loungeAccess(flight(), [account('KrisFlyer', 'PPS Club'), account('Priority Pass', 'Prestige', 'lounge')]).map((l) => l.access);
   assert.deepEqual(pps, ['SilverKris Lounge, Business Class (Changi)', 'Star Alliance Gold lounges, plus one guest', 'Priority Pass lounges in your terminal']);
   assert.match(loungeAccess(flight(), [account('KrisFlyer', 'Solitaire PPS Club')])[0]!.access, /First Class section/);
+  const revolut = loungeAccess(flight({ carrier: 'LH', fromCode: 'FRA' }), [account('KrisFlyer', 'Elite Silver'), account('Revolut Ultra', 'Ultra', 'lounge')]);
+  assert.deepEqual(revolut, [{ access: 'LoungeKey lounges, free for you (guests pay)', basis: 'Revolut Ultra' }], 'Revolut Ultra opens LoungeKey lounges on any fare');
 
   const stay = flight({ kind: 'stay', title: 'The Westin Tokyo', carrier: '' });
   assert.deepEqual(stayPerks(stay, [account('Marriott Bonvoy', 'Platinum Elite', 'hotel')])[0], 'Executive lounge and breakfast');
@@ -137,6 +139,13 @@ test('loyalty: one account per programme, only the last four digits of a number,
   assert.equal(kf!.progress, 31000);
   assert.equal(kf!.memberSuffix, '5678');
   assert.equal(listLoyalty(store).length, 1);
+});
+
+test('lounge cards are recognised by name: Revolut Ultra and LoungeKey join Priority Pass', () => {
+  const store = travelStore();
+  const r = upsertLoyalty(store, { program: 'revolut ultra card' });
+  assert.equal(r.program, 'Revolut Ultra');
+  assert.equal(r.kind, 'lounge');
 });
 
 test('a booking read from somewhere makes or joins a trip; a work booking lands in Work', () => {

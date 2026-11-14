@@ -700,6 +700,8 @@ export function canonicalProgram(name: string): { program: string; kind: Loyalty
   if (/kris ?flyer|pps club|singapore airlines/i.test(name)) return { program: 'KrisFlyer', kind: 'airline' };
   if (/bonvoy|marriott/i.test(name)) return { program: 'Marriott Bonvoy', kind: 'hotel' };
   if (/priority pass/i.test(name)) return { program: 'Priority Pass', kind: 'lounge' };
+  if (/revolut/i.test(name)) return { program: 'Revolut Ultra', kind: 'lounge' };
+  if (/lounge ?key/i.test(name)) return { program: 'LoungeKey', kind: 'lounge' };
   return null;
 }
 
@@ -796,18 +798,27 @@ const Companion = z.object({
   plan: z.array(z.string().max(300)).max(8),
 });
 
+/** The connection before a flight on the same trip: the previous flight landing where this one leaves, under a day earlier. */
+function connectionBefore(trip: Trip, seg: Segment): { airport: string; hours: number } | undefined {
+  const flights = trip.segments.filter((x) => x.kind === 'flight');
+  const prev = flights[flights.findIndex((x) => x.id === seg.id) - 1];
+  if (!prev || !prev.toCode || prev.toCode !== seg.fromCode) return undefined;
+  const hours = (Date.parse(seg.startUtc) - Date.parse(prev.endUtc)) / 3_600_000;
+  return hours > 0 && hours < 24 ? { airport: seg.fromCode, hours: Math.round(hours * 10) / 10 } : undefined;
+}
+
 /** The airport app for one flight: the lounges to use there and what to do with the time. */
 export async function buildCompanion(store: Store, segmentId: string, now: Date = new Date()): Promise<Trip> {
   const r = store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(segmentId) as Row | undefined;
   if (!r || r.kind !== 'flight' || !r.trip_id) throw new NotFound('Flight');
   const trip = getTrip(store, r.trip_id);
   const seg = trip.segments.find((s) => s.id === segmentId)!;
-  const layover = travelContext(store, localDate(now), now).layovers.find((l) => l.nextSegmentId === segmentId);
+  const layover = connectionBefore(trip, seg) ?? travelContext(store, localDate(now), now).layovers.find((l) => l.nextSegmentId === segmentId);
   const where = airport(seg.fromCode);
   const res = await think({
     store,
     task: `You are preparing a short airport companion for someone about to fly. Using what you know of ${where ? `${where.name} airport in ${where.city}` : `the departure airport (${seg.fromCode || seg.fromName})`}:
-- "lounges": the specific lounge(s) they can use, matching the eligibility given (name, terminal or area, and anything worth knowing such as showers or the best one if several qualify). If they are eligible for none, say so once and name the best pay-in option.
+- "lounges": the specific lounge(s) they can use, matching the eligibility given (name, terminal or area, and anything worth knowing such as showers or the best one if several qualify). Start each with the lounge's name, then " — " and the details, and end with how they get in (e.g. "· Revolut Ultra"). Revolut Ultra and LoungeKey mean the LoungeKey network; Priority Pass its own. On a connection only lounges airside of where they land and leave count: say plainly if a card lounge is landside or in another terminal. If they are eligible for none, say so once and name the best pay-in option.
 - "plan": 3 to 6 concrete suggestions that fit the time they have${layover ? ` (a ${layover.hours}-hour layover)` : ' before boarding'}, e.g. what to see or eat (halal options), where the prayer room (musolla) is, whether there is time to leave the airport, and when to head to the gate. They are Muslim; on a long journey mention that a traveller may shorten and combine prayers.
 Be specific and brief. Say if you are unsure of a detail. Reply {"lounges": [...], "plan": [...]}.`,
     input: [
