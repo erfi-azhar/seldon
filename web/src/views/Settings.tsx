@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { api, useAuth, useMemories, useSettings, useSpheres, useWrite, write } from '../api.ts';
 import { AccessTokens } from '../components/AccessTokens.tsx';
 import { BrainsSection } from '../components/Brains.tsx';
-import { CaptureSetup, GmailConnection, McpConnections } from '../components/Connections.tsx';
+import { CalendarConnection, CaptureSetup, GmailConnection, McpConnections } from '../components/Connections.tsx';
 import { Orb } from '../components/Orb.tsx';
 import { Field, Loading, Seg } from '../components/ui.tsx';
 import { useApp } from '../state.tsx';
@@ -106,6 +106,7 @@ export function Settings() {
         </header>
         <div className="settings-body">
           <GmailConnection />
+          <CalendarConnection />
           <McpConnections />
           <CaptureSetup />
         </div>

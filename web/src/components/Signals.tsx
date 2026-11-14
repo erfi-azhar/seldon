@@ -12,6 +12,7 @@ const SOURCE_ICON: Record<string, ReactNode> = {
   gmail: <Mail size={15} />,
   jobs: <Briefcase size={15} />,
   travel: <Plane size={15} />,
+  calendar: <Plane size={15} />,
   faith: <MoonStar size={15} />,
 };
 
