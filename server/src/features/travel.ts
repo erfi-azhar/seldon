@@ -15,7 +15,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
 import { addDays, daysBetween, Invalid, localDate, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { FlightOption, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { FlightOption, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { airport, validZone, zonedToUtc } from './airports.ts';
 import { getIntegration, updateIntegration } from './integrations.ts';
 import { loungeAccess, stayPerks } from './lounges.ts';
@@ -121,6 +121,8 @@ function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store)): Trip 
     itinerary: (store.db.prepare("SELECT * FROM itinerary_items WHERE trip_id = ? ORDER BY date, COALESCE(time, '99:99'), created_at").all(r.id) as Row[]).map(itemFromRow),
     todos: store.listTasks({ tripId: r.id, status: 'all', limit: 100 }),
     options: (store.db.prepare('SELECT * FROM trip_options WHERE trip_id = ? ORDER BY recommended DESC, position, created_at').all(r.id) as Row[]).map(optionFromRow),
+    // Nearest first; ones without a distance after, in the order they were added.
+    stayOptions: (store.db.prepare('SELECT * FROM trip_stay_options WHERE trip_id = ? ORDER BY distance_km IS NULL, distance_km, position, created_at').all(r.id) as Row[]).map(stayOptionFromRow),
   };
 }
 
@@ -532,6 +534,119 @@ export function unchooseOption(store: Store, id: string): Trip {
   }
   store.db.prepare("UPDATE trip_options SET chosen_at = NULL, added = '{}' WHERE id = ?").run(id);
   return getTrip(store, o.tripId);
+}
+
+// ── Hotel options ───────────────────────────────────────────────────────────
+
+const stayOptionFromRow = (r: Row): StayOption => ({
+  id: r.id,
+  tripId: r.trip_id,
+  name: r.name,
+  brand: r.brand,
+  address: r.address,
+  area: r.area,
+  distanceKm: r.distance_km,
+  distanceFrom: r.distance_from,
+  gettingThere: r.getting_there,
+  summary: r.summary,
+  notes: JSON.parse(r.notes),
+  recommended: !!r.recommended,
+  chosenAt: r.chosen_at,
+  createdAt: r.created_at,
+});
+
+export interface StayOptionInput {
+  name: string;
+  brand?: string;
+  address?: string;
+  area?: string;
+  distanceKm?: number | null;
+  distanceFrom?: string;
+  gettingThere?: string;
+  summary?: string;
+  notes?: string[];
+  recommended?: boolean;
+}
+
+const stayNotes = (notes: string[]) => JSON.stringify(notes.map((x) => clean(x, 300)).filter(Boolean).slice(0, 8));
+const km = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? null : Math.round(n * 100) / 100);
+
+export function addStayOption(store: Store, tripId: string, input: StayOptionInput, quiet = false): StayOption {
+  const trip = getTrip(store, tripId);
+  const name = clean(input.name, 120);
+  if (!name) throw new Invalid('A hotel option needs a name');
+  // Only one recommended at a time: the newest pick wins.
+  if (input.recommended) store.db.prepare('UPDATE trip_stay_options SET recommended = 0 WHERE trip_id = ?').run(tripId);
+  const id = newId();
+  const position = (store.db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM trip_stay_options WHERE trip_id = ?').get(tripId) as Row).p;
+  store.db
+    .prepare('INSERT INTO trip_stay_options (id, trip_id, name, brand, address, area, distance_km, distance_from, getting_there, summary, notes, recommended, position, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, tripId, name, clean(input.brand, 60), clean(input.address, 300), clean(input.area, 80), km(input.distanceKm), clean(input.distanceFrom, 80), clean(input.gettingThere, 80), clean(input.summary, 300), stayNotes(input.notes ?? []), Number(!!input.recommended), position, nowIso());
+  if (!quiet) store.record('created', 'trip_stay_option', id, sphereFor(store, trip.purpose), `Hotel option for ${trip.title}: ${clean(name, 60)}`);
+  return stayOptionFromRow(store.db.prepare('SELECT * FROM trip_stay_options WHERE id = ?').get(id) as Row);
+}
+
+export function updateStayOption(store: Store, id: string, p: Partial<StayOptionInput>): StayOption {
+  const r = store.db.prepare('SELECT * FROM trip_stay_options WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Hotel option');
+  if (p.recommended) store.db.prepare('UPDATE trip_stay_options SET recommended = 0 WHERE trip_id = ? AND id != ?').run(r.trip_id, id);
+  const str = (v: string | undefined, col: string, n: number) => (v !== undefined ? clean(v, n) : r[col]);
+  store.db
+    .prepare('UPDATE trip_stay_options SET name = ?, brand = ?, address = ?, area = ?, distance_km = ?, distance_from = ?, getting_there = ?, summary = ?, notes = ?, recommended = ? WHERE id = ?')
+    .run(
+      p.name !== undefined ? clean(p.name, 120) || r.name : r.name,
+      str(p.brand, 'brand', 60),
+      str(p.address, 'address', 300),
+      str(p.area, 'area', 80),
+      p.distanceKm !== undefined ? km(p.distanceKm) : r.distance_km,
+      str(p.distanceFrom, 'distance_from', 80),
+      str(p.gettingThere, 'getting_there', 80),
+      str(p.summary, 'summary', 300),
+      p.notes !== undefined ? stayNotes(p.notes) : r.notes,
+      p.recommended !== undefined ? Number(p.recommended) : r.recommended,
+      id,
+    );
+  return stayOptionFromRow(store.db.prepare('SELECT * FROM trip_stay_options WHERE id = ?').get(id) as Row);
+}
+
+/** Put a hotel on its trip as a planned stay for the whole trip (not booked yet), and mark it chosen. */
+export function chooseStayOption(store: Store, id: string): Trip {
+  const r = store.db.prepare('SELECT * FROM trip_stay_options WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Hotel option');
+  const o = stayOptionFromRow(r);
+  if (o.chosenAt) return getTrip(store, o.tripId);
+  const trip = getTrip(store, o.tripId);
+  // Check in the day the flight out lands and check out the day the flight home leaves: the last flight landing
+  // in the first half of the trip, and the first leaving in the second half. Without them, the trip's own dates.
+  const mid = (Date.parse(trip.startDate) + Date.parse(trip.endDate)) / 2 + 12 * 3_600_000;
+  const flights = trip.segments.filter((s) => s.kind === 'flight');
+  const inbound = flights.filter((s) => Date.parse(s.endUtc) < mid).at(-1);
+  const outbound = flights.find((s) => Date.parse(s.startUtc) >= mid);
+  const tz = inbound?.endTz ?? outbound?.startTz ?? null;
+  const input: SegmentInput = {
+    kind: 'stay',
+    title: o.name,
+    carrier: o.brand || undefined,
+    address: o.address || undefined,
+    startLocal: `${inbound ? inbound.endLocal.slice(0, 10) : trip.startDate}T15:00`,
+    startTz: tz,
+    endLocal: `${outbound ? outbound.startLocal.slice(0, 10) : trip.endDate}T12:00`,
+    endTz: tz,
+    notes: `Planned from the hotel options, not booked yet.${o.gettingThere ? ` ${o.gettingThere}${o.distanceFrom ? ` to ${o.distanceFrom}` : ''}.` : ''}`,
+  };
+  // A hotel already booked under that name for these dates is not added twice, and is not ours to take back.
+  const added = findSame(store, o.tripId, normalise(input, travelSettings(store))) ? null : addSegment(store, o.tripId, input, 'option').segment.id;
+  store.db.prepare('UPDATE trip_stay_options SET chosen_at = ?, added_segment = ? WHERE id = ?').run(nowIso(), added, id);
+  return getTrip(store, o.tripId);
+}
+
+/** Take back the planned stay choosing a hotel added. A stay you booked or edited since stays. */
+export function unchooseStayOption(store: Store, id: string): Trip {
+  const r = store.db.prepare('SELECT * FROM trip_stay_options WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Hotel option');
+  if (r.added_segment) store.db.prepare("DELETE FROM trip_segments WHERE id = ? AND source = 'option'").run(r.added_segment);
+  store.db.prepare('UPDATE trip_stay_options SET chosen_at = NULL, added_segment = NULL WHERE id = ?').run(id);
+  return getTrip(store, r.trip_id);
 }
 
 export interface ItemInput {
@@ -984,6 +1099,7 @@ registerUndo('created:trip', (db, id) => void db.prepare('DELETE FROM trips WHER
 registerUndo('created:trip_segment', (db, id) => void db.prepare('DELETE FROM trip_segments WHERE id = ?').run(id));
 registerUndo('created:itinerary', (db, id) => void db.prepare('DELETE FROM itinerary_items WHERE id = ?').run(id));
 registerUndo('created:trip_option', (db, id) => void db.prepare('DELETE FROM trip_options WHERE id = ?').run(id));
+registerUndo('created:trip_stay_option', (db, id) => void db.prepare('DELETE FROM trip_stay_options WHERE id = ?').run(id));
 // Takes back the draft's own items that are not ticked off. The trip stays marked as drafted,
 // so the half-hourly job does not draft it again; "Draft with Seldon" still can.
 registerUndo('created:itinerary_draft', (db, id) => {
@@ -1014,8 +1130,9 @@ registerSnapshotSection<Store>('Travel', (store, today) => {
   if (ctx.mode === 'away' && ctx.trip) lines.push(`Away now: day ${ctx.dayOfTrip} of ${ctx.tripDays} in ${ctx.trip.title}${ctx.stay ? `, staying at ${ctx.stay.title}` : ''}.`);
   for (const t of trips) {
     const open = t.todos.filter((x) => !x.done);
-    lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items, ${open.length} open to-dos${t.options.length ? `, ${t.options.length} flight options` : ''}.`);
+    lines.push(`Trip [${t.id}] ${t.title} (${t.purpose}), ${t.startDate} to ${t.endDate}: ${t.segments.length} bookings, ${t.itinerary.length} plan items, ${open.length} open to-dos${t.options.length ? `, ${t.options.length} flight options` : ''}${t.stayOptions.length ? `, ${t.stayOptions.length} hotel options` : ''}.`);
     for (const o of t.options.slice(0, 4)) lines.push(`  Option [${o.id}] ${o.title}${o.recommended ? ' (recommended)' : ''}${o.chosenAt ? ' (added to the trip)' : ''}: ${o.legs.map((l) => `${l.carrier}${l.number} ${l.fromCode}-${l.toCode} ${l.startLocal.replace('T', ' ')}`).join(', ')}`);
+    for (const h of t.stayOptions.slice(0, 8)) lines.push(`  Hotel option [${h.id}] ${h.name}${h.recommended ? ' (recommended)' : ''}${h.chosenAt ? ' (added to the trip)' : ''}${h.distanceKm != null ? `: ${h.distanceKm} km${h.distanceFrom ? ` to ${h.distanceFrom}` : ''}` : ''}${h.gettingThere ? `, ${h.gettingThere}` : ''}`);
     for (const x of open.slice(0, 8)) lines.push(`  To-do [${x.id}] ${x.title}${x.dueDate ? ` (due ${x.dueDate})` : ''}`);
   }
   for (const a of loyalty) lines.push(`${a.program}: ${[a.tier, a.points !== null ? `${a.points.toLocaleString('en')} ${a.kind === 'airline' ? 'miles' : 'points'}` : '', a.progress !== null && a.progressTarget ? `${a.progress}/${a.progressTarget} ${a.progressLabel}` : ''].filter(Boolean).join(', ')} (as of ${a.updatedAt.slice(0, 10)}).`);
@@ -1064,6 +1181,18 @@ const optionInput = z.object({
   recommended: z.boolean().optional(),
   legs: z.array(optionLegInput).min(1).max(6),
 });
+const stayOptionInput = z.object({
+  name: z.string().min(1).max(120),
+  brand: z.string().max(60).optional(),
+  address: z.string().max(300).optional(),
+  area: z.string().max(80).optional(),
+  distanceKm: z.number().min(0).max(20000).nullable().optional(),
+  distanceFrom: z.string().max(80).optional(),
+  gettingThere: z.string().max(80).optional(),
+  summary: z.string().max(300).optional(),
+  notes: z.array(z.string().max(300)).max(8).optional(),
+  recommended: z.boolean().optional(),
+});
 const itemInput = z.object({ date: dateStr, time: time.nullable().optional(), title: z.string().min(1).max(160), place: z.string().max(160).optional(), notes: z.string().max(600).optional(), kind: z.enum(['activity', 'food', 'transit', 'work', 'rest']).optional() });
 const loyaltyInput = z.object({
   program: z.string().min(1).max(60),
@@ -1093,7 +1222,7 @@ const compactTrip = (t: Trip) => ({
 
 registerFeature({
   id: ID,
-  tables: ['trips', 'trip_segments', 'itinerary_items', 'loyalty_accounts', 'trip_options'],
+  tables: ['trips', 'trip_segments', 'itinerary_items', 'loyalty_accounts', 'trip_options', 'trip_stay_options'],
   integration: { configured: () => true },
   jobs: [{ id: ID, everyMs: 30 * 60_000, run: async (store) => prepareTravel(store) }],
   mail: async (store, m) => onMail(store, m),
@@ -1132,6 +1261,15 @@ registerFeature({
       ({ trip_id, ...o }, { store }) => {
         const opt = addOption(store, trip_id, o);
         return { data: { ok: true, id: opt.id }, summary: `Saved the option “${opt.title}”` };
+      },
+    ),
+    tool(
+      'add_hotel_option',
+      'Save a hotel for the user to weigh on the trip\'s page, before anything is booked. Give its name, brand ("Marriott" for any Bonvoy hotel, so status perks show), address and neighbourhood, the distance in km to where they will spend their days (distance_from: "the office", "the venue") and how long it takes ("12 min walk", "15 min by car"), one line on why, and short notes. The page lists them nearest first. Mark at most one recommended. Say in the notes what is estimated.',
+      stayOptionInput.extend({ trip_id: z.string().min(1) }),
+      ({ trip_id, ...o }, { store }) => {
+        const opt = addStayOption(store, trip_id, o);
+        return { data: { ok: true, id: opt.id }, summary: `Saved the hotel option “${opt.name}”` };
       },
     ),
     tool(
@@ -1224,6 +1362,26 @@ registerFeature({
     });
     app.delete('/api/travel/options/:id', (c) => {
       if (!store.db.prepare('DELETE FROM trip_options WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Option');
+      return c.json(state(c));
+    });
+    app.post('/api/travel/trips/:id/stay-options', async (c) => {
+      addStayOption(store, c.req.param('id'), await read(c, stayOptionInput));
+      return c.json(state(c), 201);
+    });
+    app.patch('/api/travel/stay-options/:id', async (c) => {
+      updateStayOption(store, c.req.param('id'), await read(c, stayOptionInput.partial()));
+      return c.json(state(c));
+    });
+    app.post('/api/travel/stay-options/:id/choose', (c) => {
+      chooseStayOption(store, c.req.param('id'));
+      return c.json(state(c));
+    });
+    app.post('/api/travel/stay-options/:id/unchoose', (c) => {
+      unchooseStayOption(store, c.req.param('id'));
+      return c.json(state(c));
+    });
+    app.delete('/api/travel/stay-options/:id', (c) => {
+      if (!store.db.prepare('DELETE FROM trip_stay_options WHERE id = ?').run(c.req.param('id')).changes) throw new NotFound('Hotel option');
       return c.json(state(c));
     });
     app.post('/api/travel/trips/:id/itinerary', async (c) => {
