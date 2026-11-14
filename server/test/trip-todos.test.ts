@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { renderSnapshot } from '../src/agent/prompt.ts';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
-import { createTrip, getTrip, listTrips } from '../src/features/travel.ts';
+import { addSegment, createTrip, getTrip, listTrips } from '../src/features/travel.ts';
 import { Store } from '../src/store.ts';
 import type { TravelState } from '../../shared/types.ts';
 
@@ -126,4 +126,27 @@ test('an option’s flights can be changed: resolved again, and no longer marked
   assert.equal(changed.legs[0]!.startUtc, '2026-11-28T05:55:00.000Z');
   assert.equal(changed.chosenAt, null);
   assert.equal(updateOption(store, o.id, { title: 'Via Frankfurt, from Shenzhen' }).legs[0]!.number, '229', 'other edits keep the legs');
+});
+
+test('option legs carry their distance in miles, and choosing skips a flight already booked on any trip', async () => {
+  const { store } = setup();
+  const { addOption, chooseOption } = await import('../src/features/travel.ts');
+  const szx = createTrip(store, { title: 'Shenzhen', purpose: 'work', startDate: '2026-11-24', endDate: '2026-11-29' });
+  addSegment(store, szx.id, { kind: 'flight', carrier: 'SQ', number: '857', fromCode: 'SZX', toCode: 'SIN', startLocal: '2026-11-29T00:05', endLocal: '2026-11-29T04:20' });
+  const gru = createTrip(store, { title: 'São Paulo', purpose: 'work', startDate: '2026-11-29', endDate: '2026-12-12' });
+  const o = addOption(store, gru.id, {
+    title: 'Sunday via Frankfurt',
+    legs: [
+      { carrier: 'SQ', number: '857', fromCode: 'SZX', toCode: 'SIN', startLocal: '2026-11-29T00:05', endLocal: '2026-11-29T04:20' },
+      { carrier: 'SQ', number: '326', fromCode: 'SIN', toCode: 'FRA', startLocal: '2026-11-29T12:50', endLocal: '2026-11-29T19:25' },
+      { carrier: 'LH', number: '506', fromCode: 'FRA', toCode: 'GRU', startLocal: '2026-11-29T21:55', endLocal: '2026-11-30T06:00' },
+    ],
+  });
+  const miles = o.legs.map((l) => l.miles);
+  assert.ok(miles[0]! > 1550 && miles[0]! < 1650, `SZX–SIN ≈ 1,610 mi, got ${miles[0]}`);
+  assert.ok(miles[1]! > 6300 && miles[1]! < 6450, `SIN–FRA ≈ 6,380 mi, got ${miles[1]}`);
+  assert.ok(miles[2]! > 6000 && miles[2]! < 6200, `FRA–GRU ≈ 6,100 mi, got ${miles[2]}`);
+  const t = chooseOption(store, o.id);
+  assert.deepEqual(t.segments.map((s) => `${s.carrier}${s.number}`), ['SQ326', 'LH506'], 'SQ857 stays on the Shenzhen trip');
+  assert.equal(getTrip(store, szx.id).segments.length, 1);
 });

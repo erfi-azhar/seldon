@@ -365,12 +365,23 @@ export function updateSegment(store: Store, id: string, p: Partial<SegmentInput>
 
 // ── Flight options ──────────────────────────────────────────────────────────
 
+/** Great-circle statute miles between two airports, 0 when either is unknown. */
+function milesBetween(from: string, to: string): number {
+  const a = airport(from);
+  const b = airport(to);
+  if (!a || !b) return 0;
+  const rad = Math.PI / 180;
+  const h = Math.sin(((b.lat - a.lat) * rad) / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(((b.lon - a.lon) * rad) / 2) ** 2;
+  return Math.round(2 * 3958.8 * Math.asin(Math.sqrt(h)));
+}
+
 const optionFromRow = (r: Row): FlightOption => ({
   id: r.id,
   tripId: r.trip_id,
   title: r.title,
   summary: r.summary,
-  legs: JSON.parse(r.legs),
+  // Options saved before distances were kept get them worked out here.
+  legs: (JSON.parse(r.legs) as OptionLeg[]).map((l) => ({ ...l, miles: l.miles ?? milesBetween(l.fromCode, l.toCode) })),
   notes: JSON.parse(r.notes),
   recommended: !!r.recommended,
   chosenAt: r.chosen_at,
@@ -412,6 +423,7 @@ function optionLeg(l: OptionLegInput, settings: TravelSettings): OptionLeg {
     endTz: n.endTz,
     startUtc: n.startUtc,
     endUtc: n.endUtc,
+    miles: milesBetween(n.fromCode, n.toCode),
   };
 }
 
@@ -454,8 +466,12 @@ export function chooseOption(store: Store, id: string): Trip {
   const r = store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Option');
   const o = optionFromRow(r);
+  const settings = travelSettings(store);
   for (const l of o.legs) {
-    addSegment(store, o.tripId, { kind: 'flight', carrier: l.carrier, number: l.number, fromCode: l.fromCode, toCode: l.toCode, startLocal: l.startLocal, endLocal: l.endLocal, startTz: l.startTz, endTz: l.endTz, notes: `Planned from the option “${o.title}”, not booked yet.` }, 'option');
+    const input: SegmentInput = { kind: 'flight', carrier: l.carrier, number: l.number, fromCode: l.fromCode, toCode: l.toCode, startLocal: l.startLocal, endLocal: l.endLocal, startTz: l.startTz, endTz: l.endTz, notes: `Planned from the option “${o.title}”, not booked yet.` };
+    // A flight already booked on any trip (SQ857 home from Shenzhen, say) stays where it is.
+    if (findSame(store, null, normalise(input, settings))) continue;
+    addSegment(store, o.tripId, input, 'option');
   }
   store.db.prepare('UPDATE trip_options SET chosen_at = ? WHERE id = ?').run(nowIso(), id);
   return getTrip(store, o.tripId);
