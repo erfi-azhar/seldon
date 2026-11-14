@@ -6973,12 +6973,6 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 .trip-page-head .trip-sub {
   margin-top: 8px;
 }
-.trip-page-card .trip-body {
-  padding: 16px 18px 18px;
-}
-.trip-page-card .trip-actions {
-  margin: -6px -8px 12px;
-}
 
 /* Flight options on a trip's page: routings to weigh before booking. */
 .trip-options {
@@ -7134,5 +7128,57 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   :root:not([data-theme='light']) .opt-badge.is-chosen {
     color: oklch(0.85 0.08 250);
     background: oklch(0.3 0.06 250);
+  }
+}
+
+/* A trip's page: its sections as separate cards. */
+.trip-detail {
+  display: grid;
+  gap: 16px;
+}
+.trip-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 4px;
+}
+.trip-page-head .trip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+}
+.trip-section .card-head .card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.trip-section .card-head .card-title svg {
+  color: var(--ink-3);
+}
+.trip-section-count {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.trip-section-body {
+  padding: 0 18px 18px;
+}
+.trip-section-body > .empty {
+  margin: 4px 0 0;
+}
+.trip-section-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.trip-options .opt-grid {
+  margin-bottom: 0;
+}
+@media (max-width: 860px) {
+  .trip-section-pair {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
