@@ -6833,3 +6833,97 @@ form.stage-center.is-opening > :not(.vault-anchor) {
     animation: none !important;
   }
 }
+
+/* Trips in the Travels sphere: one line of what matters each, opening the trip's own page. */
+.trip-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--tile);
+  box-shadow: var(--tile-shadow);
+  border: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.trip-summary:hover {
+  border-color: var(--line-2);
+}
+.trip-summary:hover .trip-chev {
+  transform: translateX(2px);
+}
+.trip-summary.is-past {
+  opacity: 0.75;
+}
+.trip-summary .grow {
+  display: grid;
+  min-width: 0;
+}
+.trip-summary .trip-title {
+  display: block;
+}
+.ts-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ts-leg,
+.ts-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ts-fact svg {
+  color: var(--ink-3);
+  flex: none;
+}
+.ts-leg-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.horizon-link {
+  color: inherit;
+  text-decoration: none;
+}
+.horizon-link:hover {
+  background: var(--surface-2);
+}
+
+/* A trip's own page */
+.trip-page-head .trip-sub {
+  margin-top: 8px;
+}
+.trip-page-card .trip-body {
+  padding: 16px 18px 18px;
+}
+.trip-page-card .trip-actions {
+  margin: -6px -8px 12px;
+}
+.ts-leg,
+.ts-fact {
+  max-width: 100%;
+}
+.ts-leg > span:last-child,
+.ts-fact {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .ts-next {
+    display: none;
+  }
+  .ts-facts {
+    flex-direction: column;
+    gap: 6px;
+  }
+}

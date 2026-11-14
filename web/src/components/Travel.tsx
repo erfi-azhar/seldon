@@ -3,9 +3,9 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { BedDouble, Briefcase, CalendarDays, Camera, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Sofa, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Sofa, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useLocation, useSearch as useUrlSearch } from 'wouter';
+import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { ItineraryItem, LoyaltyAccount, Segment, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
 import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
@@ -652,7 +652,8 @@ function StayRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
   );
 }
 
-function TripCard({ trip, state, open, onToggle }: { trip: Trip; state: TravelState; open: boolean; onToggle: () => void }) {
+/** Everything about a trip: its actions, the globe beside its flights, stays, to-dos and the day-by-day plan. */
+function TripDetail({ trip, state }: { trip: Trip; state: TravelState }) {
   const { agentName, ask } = useApp();
   const today = todayStr();
   const [editing, setEditing] = useState(false);
@@ -670,21 +671,8 @@ function TripCard({ trip, state, open, onToggle }: { trip: Trip; state: TravelSt
   const flights = trip.segments.filter((s) => s.kind === 'flight');
 
   return (
-    <article id={`trip-${trip.id}`} className={cx('trip-card', open && 'is-open', past && 'is-past')}>
-      <button type="button" className="trip-head" onClick={onToggle} aria-expanded={open}>
-        <div className="grow">
-          <div className="trip-title">{trip.title}</div>
-          <div className="trip-sub">
-            <PurposeChip purpose={trip.purpose} />
-            <span>{dates(trip.startDate, trip.endDate)}</span>
-            <span className="faint">· {whenLabel(trip, today)}</span>
-            {!open && flights.length > 0 && <span className="faint">· {plural(flights.length, 'flight')}</span>}
-          </div>
-        </div>
-        <ChevronDown size={16} className="trip-chev" />
-      </button>
-
-      {open && (
+    <div className="trip-detail">
+      {(
         <div className="trip-body">
           <div className="trip-actions">
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBooking('new')}>
@@ -787,7 +775,98 @@ function TripCard({ trip, state, open, onToggle }: { trip: Trip; state: TravelSt
       {editing && <TripSheet trip={trip} onClose={() => setEditing(false)} />}
       {booking && <BookingSheet trip={trip} segment={booking === 'new' ? null : booking} onClose={() => setBooking(null)} />}
       {item && <ItemSheet trip={trip} item={item.item} date={item.date} onClose={() => setItem(null)} />}
-    </article>
+    </div>
+  );
+}
+
+/** A trip at a glance, for the list in the Travels sphere: tap for its page. */
+function TripSummary({ trip }: { trip: Trip }) {
+  const today = todayStr();
+  const flights = trip.segments.filter((s) => s.kind === 'flight');
+  const out = flights[0];
+  const back = flights.length > 1 ? flights[flights.length - 1] : undefined;
+  const stay = trip.segments.find((s) => s.kind === 'stay');
+  const open = trip.todos.filter((x) => !x.done);
+  const next = open.find((x) => x.dueDate);
+  const leg = (label: string, s: Segment) => (
+    <span className="ts-leg">
+      <AirlineTail code={s.carrier} size={20} />
+      <span>
+        <span className="ts-leg-label">{label}</span> {`${s.carrier} ${s.number}`.trim()} · {weekday(dayOf(s.startLocal))} {time(s.startLocal)} · {s.fromCode} → {s.toCode}
+      </span>
+    </span>
+  );
+  return (
+    <Link href={`/trips/${trip.id}`} className={cx('trip-summary', trip.endDate < today && 'is-past')}>
+      <span className="grow">
+        <span className="trip-title">{trip.title}</span>
+        <span className="trip-sub">
+          <PurposeChip purpose={trip.purpose} />
+          <span>{dates(trip.startDate, trip.endDate)}</span>
+          <span className="faint">· {whenLabel(trip, today)}</span>
+        </span>
+        <span className="ts-facts">
+          {out ? leg('Out', out) : <span className="ts-fact faint">No flights booked yet</span>}
+          {back && leg('Home', back)}
+          {stay && (
+            <span className="ts-fact">
+              <BedDouble size={14} /> {stay.title} · {plural(nightsOf(stay), 'night')}
+            </span>
+          )}
+          {open.length > 0 && (
+            <span className="ts-fact">
+              <ListChecks size={14} /> {plural(open.length, 'to-do')}
+              {next && <span className="faint ts-next"> · next: {next.title}</span>}
+            </span>
+          )}
+        </span>
+      </span>
+      <ChevronRight size={18} className="trip-chev" />
+    </Link>
+  );
+}
+
+/** A trip's own page: everything about it, at /trips/:id. */
+export function TripPage({ id }: { id: string }) {
+  const { data: t, isError } = useTravel();
+  const { spheres } = useApp();
+  const travels = spheres.find((s) => s.key === 'travels');
+  const backTo = travels ? { href: `/spheres/${travels.id}`, label: travels.name } : { href: '/spheres', label: 'Spheres' };
+  const trip = t?.trips.find((x) => x.id === id);
+  const back = (
+    <Link href={backTo.href} className="back">
+      <ArrowLeft size={15} /> {backTo.label}
+    </Link>
+  );
+  if (!t && !isError) return <div className="page">{back}</div>;
+  if (!trip)
+    return (
+      <div className="page">
+        {back}
+        <div className="empty-block">
+          <h3>This trip isn't here</h3>
+          <p>It may have been deleted, or it ended a while ago.</p>
+        </div>
+      </div>
+    );
+  const today = todayStr();
+  return (
+    <div className="page trip-page">
+      {back}
+      <header className="page-head trip-page-head">
+        <div>
+          <h1 className="page-title">{trip.title}</h1>
+          <div className="trip-sub">
+            <PurposeChip purpose={trip.purpose} />
+            <span>{dates(trip.startDate, trip.endDate)}</span>
+            <span className="faint">· {whenLabel(trip, today)}</span>
+          </div>
+        </div>
+      </header>
+      <section className="card trip-page-card">
+        <TripDetail trip={trip} state={t!} />
+      </section>
+    </div>
   );
 }
 
@@ -798,24 +877,17 @@ export function TravelTrips() {
   const { data: t } = useTravel();
   const [newTrip, setNewTrip] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [open, setOpen] = useState<string | null | undefined>(undefined);
   const [showPast, setShowPast] = useState(false);
-  // Arriving from Today's notch (?trip=…): open that trip and bring it into view.
+  // Older links to a trip (?trip=…) now go to its own page.
   const wanted = new URLSearchParams(useUrlSearch()).get('trip');
-  const loaded = !!t;
+  const [, navigate] = useLocation();
   useEffect(() => {
-    if (!wanted || !loaded) return;
-    setOpen(wanted);
-    if (t!.trips.some((x) => x.id === wanted && x.endDate < todayStr())) setShowPast(true);
-    const timer = setTimeout(() => document.getElementById(`trip-${wanted}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wanted, loaded]);
+    if (wanted) navigate(`/trips/${wanted}`, { replace: true });
+  }, [wanted, navigate]);
   if (!t) return null;
   const today = todayStr();
   const upcoming = t.trips.filter((x) => x.endDate >= today);
   const past = t.trips.filter((x) => x.endDate < today);
-  const openId = open === undefined ? (upcoming[0]?.id ?? null) : open;
 
   return (
     <section className="card">
@@ -833,14 +905,14 @@ export function TravelTrips() {
       {upcoming.length === 0 && <p className="empty">Nothing booked. Start a trip, or send a confirmation.</p>}
       <div className="trip-list">
         {upcoming.map((trip) => (
-          <TripCard key={trip.id} trip={trip} state={t} open={openId === trip.id} onToggle={() => setOpen(openId === trip.id ? null : trip.id)} />
+          <TripSummary key={trip.id} trip={trip} />
         ))}
         {past.length > 0 && (
           <button type="button" className="link trip-past-toggle" onClick={() => setShowPast((v) => !v)}>
             {showPast ? 'Hide past trips' : `Past trips (${past.length})`}
           </button>
         )}
-        {showPast && past.map((trip) => <TripCard key={trip.id} trip={trip} state={t} open={openId === trip.id} onToggle={() => setOpen(openId === trip.id ? null : trip.id)} />)}
+        {showPast && past.map((trip) => <TripSummary key={trip.id} trip={trip} />)}
       </div>
       {newTrip && <TripSheet trip={null} onClose={() => setNewTrip(false)} />}
       {importing && <ImportSheet onClose={() => setImporting(false)} />}
@@ -889,7 +961,7 @@ export function WorkTrips() {
       {trips.map((trip) => {
         const f = trip.segments.find((s) => s.kind === 'flight' && s.endUtc > new Date().toISOString());
         return (
-          <div key={trip.id} className="horizon-item">
+          <Link key={trip.id} href={`/trips/${trip.id}`} className="horizon-item horizon-link">
             <Briefcase size={14} className="faint" />
             <span className="grow clamp-1">
               {trip.title} <span className="faint">· {dates(trip.startDate, trip.endDate)}</span>
@@ -897,7 +969,8 @@ export function WorkTrips() {
             <span className="faint" style={{ fontSize: 12.5 }}>
               {f ? `${f.carrier} ${f.number} ${weekday(dayOf(f.startLocal))}` : whenLabel(trip, today)}
             </span>
-          </div>
+            <ChevronRight size={14} className="faint" />
+          </Link>
         );
       })}
     </section>
@@ -1085,14 +1158,10 @@ export function TravelModeCard() {
   );
 }
 
-/** Open a trip's full plan in the Travels sphere (or Work, for a work trip with no Travels sphere). */
+/** Open a trip's own page, with its full plan. */
 function useOpenTrip() {
-  const { spheres } = useApp();
   const [, navigate] = useLocation();
-  return (trip: Trip) => {
-    const home = spheres.find((s) => s.key === 'travels') ?? (trip.purpose === 'work' ? spheres.find((s) => s.key === 'work') : undefined);
-    if (home) navigate(`/spheres/${home.id}?trip=${trip.id}`);
-  };
+  return (trip: Trip) => navigate(`/trips/${trip.id}`);
 }
 
 /** A click on the card itself, not on one of its controls (a to-do, the add line, a button). */

@@ -17,12 +17,13 @@ import { Library } from './views/Library.tsx';
 import { Screenings } from './views/Screenings.tsx';
 import { Settings } from './views/Settings.tsx';
 import { SphereDetail, Spheres } from './views/Spheres.tsx';
+import { TripPage } from './components/Travel.tsx';
 import { Today } from './views/Today.tsx';
 import { Onboarding, SignIn } from './views/Welcome.tsx';
 
 const TABS = [
   { href: '/', label: 'Today', icon: Sun, match: (p: string) => p === '/' },
-  { href: '/spheres', label: 'Spheres', icon: Orbit, match: (p: string) => p.startsWith('/spheres') },
+  { href: '/spheres', label: 'Spheres', icon: Orbit, match: (p: string) => p.startsWith('/spheres') || p.startsWith('/trips') },
   { href: '/goals', label: 'Goals', icon: Target, match: (p: string) => p.startsWith('/goals') },
   { href: '/library', label: 'Library', icon: LibraryIcon, match: (p: string) => p.startsWith('/library') },
 ];
@@ -79,6 +80,8 @@ function Shell({ settings }: { settings: SettingsData }) {
   where.current = useMemo(() => {
     const sphereId = location.match(/^\/spheres\/([^/]+)/)?.[1];
     if (sphereId) return `The ${spheres?.find((s) => s.id === sphereId)?.name ?? 'a'} sphere`;
+    const tripId = location.match(/^\/trips\/([^/]+)/)?.[1];
+    if (tripId) return `The page for trip [${tripId}]`;
     if (location === '/') return 'Today';
     return { '/spheres': 'All spheres', '/goals': 'Goals', '/library': 'Library', '/settings': 'Settings' }[location] ?? 'Terminus';
   }, [location, spheres]);
@@ -179,6 +182,7 @@ function Shell({ settings }: { settings: SettingsData }) {
               <Route path="/spheres" component={Spheres} />
               <Route path="/spheres/:id/screenings">{(params) => <Screenings sphereId={params.id} />}</Route>
               <Route path="/spheres/:id">{(params) => <SphereDetail key={params.id} id={params.id} />}</Route>
+              <Route path="/trips/:id">{(params) => <TripPage key={params.id} id={params.id} />}</Route>
               <Route path="/goals" component={Goals} />
               <Route path="/library" component={Library} />
               <Route path="/settings" component={Settings} />
