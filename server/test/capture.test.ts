@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { after, test } from 'node:test';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
-import { capture, capturesSettled, decodeEntities, extract, readableText } from '../src/features/capture.ts';
+import { capture, capturesSettled, decodeEntities, extract, readableText, useOembedProvidersForTests } from '../src/features/capture.ts';
 import { allowPrivateAddressesForTests, isPublicAddress, safeFetch } from '../src/features/fetcher.ts';
 import { listSignals } from '../src/features/signals.ts';
 import { Store } from '../src/store.ts';
@@ -98,6 +98,49 @@ test('without a brain, a link keeps what the page says about itself; a bad link 
   assert.equal(store.getNote(bad.id).status, 'failed');
   assert.match(store.getNote(bad.id).capture!.error!, /404/);
   assert.throws(() => capture(store, { url: 'javascript:alert(1)' }, 'app'), /not a link/);
+});
+
+test('a post keeps its own words when no brain can summarise it; short links are followed to their embed', async () => {
+  allowPrivateAddressesForTests(true);
+  const tweet = { author_name: 'jhey', html: '<blockquote><p>spoke highlight reveal <a href="https://t.co/x">pic.twitter.com/x</a></p>&mdash; jhey (@jh3yy) <a href="#">November 1, 2026</a></blockquote>' };
+  const tiktok = { title: '', author_name: 'Sam', html: '<blockquote><section><a>@sam</a> one-pan dinner <a>#recipe</a></section></blockquote>' };
+  const base = await site({
+    '/oembed/status/1': { type: 'application/json', body: JSON.stringify(tweet) },
+    '/oembed/@sam/video/7': { type: 'application/json', body: JSON.stringify(tiktok) },
+    '/short': { type: 'text/html', body: '', status: 301, location: '/@sam/video/7' },
+  });
+  useOembedProvidersForTests([
+    { test: new RegExp(`^${base}/status/`), endpoint: (u) => `${base}/oembed${new URL(u).pathname}`, kind: 'tweet', site: 'X' },
+    { test: new RegExp(`^${base}/@[^/]+/video/`), endpoint: (u) => `${base}/oembed${new URL(u).pathname}`, kind: 'video', site: 'TikTok' },
+  ]);
+  try {
+    // No brain at all.
+    const store = new Store(openDb(':memory:'));
+    const post = capture(store, { url: `${base}/status/1` }, 'app');
+    // The short link's own page is missing: the embed under the address it leads to still answers.
+    const short = capture(store, { url: `${base}/short` }, 'app');
+    await capturesSettled();
+    const p = store.getNote(post.id);
+    assert.equal(p.title, 'jhey on X');
+    assert.equal(p.body, 'spoke highlight reveal');
+    assert.equal(p.capture!.error, undefined);
+    const t = store.getNote(short.id);
+    assert.equal(t.status, 'ready');
+    assert.equal(t.title, 'Sam on TikTok');
+    assert.match(t.body, /one-pan dinner #recipe/);
+
+    // A brain that refuses (out of credits) still leaves the words in place.
+    const broke = new Store(openDb(':memory:'));
+    const model = await fakeModel([{ status: 402, json: { error: { type: 'billing_error', message: 'Add usage credits' } } }]);
+    broke.addConnection({ provider: 'anthropic', baseUrl: model.url, apiKey: 'k', model: 'claude-opus-5-5' });
+    const refused = capture(broke, { url: `${base}/status/1` }, 'app');
+    await capturesSettled();
+    const r = broke.getNote(refused.id);
+    assert.equal(r.body, 'spoke highlight reveal');
+    assert.match(r.capture!.error!, /could not be organised/);
+  } finally {
+    useOembedProvidersForTests(null);
+  }
 });
 
 test('helpers: entities and readable text', () => {
