@@ -880,7 +880,9 @@ button.chip:hover {
 /* The sky: a band across the top of the page, behind the floating top bar, that
    dissolves into the page just above the date. Drawn by components/Sky.tsx. */
 .app-main {
-  --sky-h: clamp(220px, 24vw, 330px);
+  --sky-h: clamp(200px, 19vw, 270px);
+  /* Space between the bottom of the band (where the last, faintest dots are) and the day above the date. */
+  --sky-gap: 0px;
 }
 .sky {
   position: absolute;
@@ -900,15 +902,16 @@ button.chip:hover {
   transform: translate(14px, -50%);
   white-space: nowrap;
 }
+/* The page starts below the floating top bar (72px), so this puts the hero just under the band. */
 .page.page-today {
-  padding-top: calc(var(--sky-h) - 72px - 70px);
+  padding-top: calc(var(--sky-h) - 72px + var(--sky-gap));
 }
 @media (max-width: 720px) {
   .app-main {
-    --sky-h: 210px;
+    --sky-h: 180px;
   }
   .page.page-today {
-    padding-top: calc(var(--sky-h) - 48px);
+    padding-top: calc(var(--sky-h) - 64px + var(--sky-gap));
   }
 }
 
