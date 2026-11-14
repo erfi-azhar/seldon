@@ -234,12 +234,12 @@ export function slugGuesses(company: string, url: URL | null): string[] {
   return out.slice(0, 4);
 }
 
-async function boardExists(b: Board): Promise<boolean> {
+/** How many roles a board lists, or null when there is no such board. */
+async function boardSize(b: Board): Promise<number | null> {
   try {
-    await fetchPostings(b);
-    return true;
+    return (await fetchPostings(b)).length;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -269,11 +269,18 @@ export async function resolveBoard(input: string, company = ''): Promise<Board> 
       if (!(err instanceof FetchError)) throw err;
     }
   }
+  // A guessed name can land on a board someone left behind, or on another company's that
+  // shares the name. One that lists roles is the likelier match, so an empty board is only
+  // the fallback when nothing else turns up.
+  let empty: Board | null = null;
   for (const slug of slugGuesses(company, url)) {
     for (const ats of ['greenhouse', 'lever', 'ashby'] as const) {
-      if (await boardExists({ ats, board: slug })) return { ats, board: slug };
+      const size = await boardSize({ ats, board: slug });
+      if (size) return { ats, board: slug };
+      if (size === 0) empty ??= { ats, board: slug };
     }
   }
+  if (empty) return empty;
   throw new Invalid('Could not find a Greenhouse, Lever, Ashby, Workable or SmartRecruiters board for that company. Open one of its job links and paste that instead.');
 }
 

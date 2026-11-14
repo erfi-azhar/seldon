@@ -5337,27 +5337,151 @@ textarea.title-input {
 .jobs-pref:hover {
   color: var(--ink);
 }
-.jobs-watches {
+.jobs-pref {
+  max-width: calc(100% - 40px);
+}
+.jobs-pref svg {
+  flex: none;
+}
+.jobs-pref-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jobs-companies {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 20px 0;
+  padding: 12px 0 2px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.jobs-companies-line {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
-  padding: 0 20px 12px;
 }
-.job-watch {
+.jobs-companies-line .chip b {
+  font-weight: 650;
+  color: var(--ink);
+}
+.jobs-companies-line .link {
+  margin-left: auto;
+}
+.jobs-warn {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  padding-right: 4px;
+  align-self: flex-start;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-align: left;
 }
-.job-watch button {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+.jobs-warn svg {
+  flex: none;
+  color: var(--bad);
+}
+.jobs-warn u {
+  text-underline-offset: 3px;
+}
+.jobs-warn:hover {
+  color: var(--ink);
+}
+.jobs-empty-note {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.jobs-empty-note svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--bad);
+}
+.jobs-empty-note b,
+.jobs-empty-note a {
+  color: var(--ink);
+}
+
+/* The companies sheet: watched boards grouped by how they are doing. */
+.watch-search {
+  position: relative;
+  display: block;
+}
+.watch-search svg {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.watch-search .input {
+  padding-left: 32px;
+}
+.watch-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+}
+.watch-group h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.watch-group .hint {
+  margin: 0 0 4px;
+}
+.watch-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.watch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.watch-row .grow {
+  min-width: 0;
+}
+.watch-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: none;
+}
+.watch-name svg {
   color: var(--ink-3);
 }
-.job-watch button:hover {
-  background: var(--glass-press);
-  color: var(--ink);
+.watch-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.watch-note {
+  margin-top: 1px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.watch-note.is-quiet {
+  color: var(--ink-3);
 }
 .jobs-list {
   list-style: none;

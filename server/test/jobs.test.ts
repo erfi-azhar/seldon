@@ -223,6 +223,22 @@ test('name guessing tries the company before the link host, and never a job site
   assert.deepEqual(listPostings(store).map((p) => p.title), ['Acme role']);
 });
 
+test('name guessing passes over an empty board for one that lists roles, and falls back to the empty one', async () => {
+  const store = jobsStore();
+  boards({
+    // An abandoned Greenhouse board under the name, and the live one on Ashby.
+    [GH]: { jobs: [] },
+    'https://api.ashbyhq.com/posting-api/job-board/acme': { jobs: [{ id: 'a1', title: 'Designer', location: 'SG', jobUrl: 'https://jobs.ashbyhq.com/acme/a1' }] },
+  });
+  const w = await addWatch(store, 'Acme', '');
+  assert.deepEqual([`${w.ats}:${w.board}`, w.openings], ['ashby:acme', 1]);
+
+  const other = jobsStore();
+  boards({ [GH]: { jobs: [] } });
+  const quiet = await addWatch(other, 'Acme', '');
+  assert.deepEqual([`${quiet.ats}:${quiet.board}`, quiet.openings], ['greenhouse:acme', 0]);
+});
+
 test('SmartRecruiters boards are read page by page, so a big company’s roles are not closed by mistake', async () => {
   const store = jobsStore();
   let ids = Array.from({ length: 150 }, (_, i) => i + 1);
