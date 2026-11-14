@@ -1,7 +1,7 @@
 // Terminus service worker: makes the app installable and lets the shell open without a
 // network. Your data is never cached here — /api always goes to your server.
 
-const CACHE = 'terminus-shell-v2';
+const CACHE = 'terminus-shell-v3';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -21,6 +21,8 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+const isHtml = (res) => (res.headers.get('content-type') || '').includes('text/html');
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -31,7 +33,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          if (res.ok) {
+          // Only the app shell is kept: opening an icon or the manifest as a page must not replace it.
+          if (res.ok && isHtml(res)) {
             const copy = res.clone();
             caches.open(CACHE).then((cache) => cache.put('/', copy));
           }
@@ -49,7 +52,8 @@ self.addEventListener('fetch', (event) => {
         (hit) =>
           hit ??
           fetch(request).then((res) => {
-            if (res.ok) {
+            // Never keep an HTML page under an asset's name.
+            if (res.ok && !isHtml(res)) {
               const copy = res.clone();
               caches.open(CACHE).then((cache) => cache.put(request, copy));
             }
