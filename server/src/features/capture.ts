@@ -119,6 +119,8 @@ async function fromOembed(url: string): Promise<Extracted | null> {
     // A tweet's embed ends with "— Name (@handle) date"; the words before it are the post.
     const text = known.kind === 'tweet' ? words.replace(/—\s*[^—]*$/, '').trim() : words;
     const author = o.author_name?.trim() ?? '';
+    // TikTok answers a short link with an empty embed; that is no answer at all.
+    if (!o.title?.trim() && !author && !text) return null;
     return {
       kind: known.kind,
       title: o.title?.trim() || (author ? `${author} on ${known.site}` : known.kind === 'tweet' ? 'Post on X' : known.site),
@@ -395,7 +397,8 @@ export function readAgain(store: Store, id: string): Note {
   if (!meta) throw new Invalid('Only saved links and files can be read again.');
   if (n.status === 'processing') return n;
   // A read item's body holds the summary; reading it again would fold that into the note.
-  if (n.status !== 'failed') throw new Invalid('Only something that could not be read can be read again.');
+  // One that came back with nothing to say has no summary to fold in, so it can be tried again.
+  if (n.status !== 'failed' && n.body.trim()) throw new Invalid('Only something that could not be read can be read again.');
   const fileId = meta.fileId ?? (n.url ? null : meta.imageFileId);
   const stored = fileId ? getFile(store, fileId) : null;
   if (fileId && !stored) throw new Invalid('The saved file is gone, so it cannot be read again.');

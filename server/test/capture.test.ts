@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { after, test } from 'node:test';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
-import { capture, capturesSettled, decodeEntities, extract, readableText, useOembedProvidersForTests } from '../src/features/capture.ts';
+import { capture, capturesSettled, decodeEntities, extract, readableText, readAgain, useOembedProvidersForTests } from '../src/features/capture.ts';
 import { allowPrivateAddressesForTests, isPublicAddress, safeFetch } from '../src/features/fetcher.ts';
 import { listSignals } from '../src/features/signals.ts';
 import { Store } from '../src/store.ts';
@@ -108,9 +108,12 @@ test('a post keeps its own words when no brain can summarise it; short links are
     '/oembed/status/1': { type: 'application/json', body: JSON.stringify(tweet) },
     '/oembed/@sam/video/7': { type: 'application/json', body: JSON.stringify(tiktok) },
     '/short': { type: 'text/html', body: '', status: 301, location: '/@sam/video/7' },
+    // TikTok gives a short link an empty embed rather than an error.
+    '/oembed/short': { type: 'application/json', body: '{"version":"1.0","type":"video"}' },
   });
   useOembedProvidersForTests([
     { test: new RegExp(`^${base}/status/`), endpoint: (u) => `${base}/oembed${new URL(u).pathname}`, kind: 'tweet', site: 'X' },
+    { test: new RegExp(`^${base}/short`), endpoint: (u) => `${base}/oembed${new URL(u).pathname}`, kind: 'video', site: 'TikTok' },
     { test: new RegExp(`^${base}/@[^/]+/video/`), endpoint: (u) => `${base}/oembed${new URL(u).pathname}`, kind: 'video', site: 'TikTok' },
   ]);
   try {
@@ -128,6 +131,16 @@ test('a post keeps its own words when no brain can summarise it; short links are
     assert.equal(t.status, 'ready');
     assert.equal(t.title, 'Sam on TikTok');
     assert.match(t.body, /one-pan dinner #recipe/);
+
+    // Something read with nothing to say can be read again in place; once it has words, it cannot.
+    const empty = capture(store, { url: `${base}/blank` }, 'app');
+    await capturesSettled();
+    assert.equal(store.getNote(empty.id).status, 'failed');
+    store.db.prepare("UPDATE notes SET status = 'ready', body = '', url = ? WHERE id = ?").run(`${base}/status/1`, empty.id);
+    readAgain(store, empty.id);
+    await capturesSettled();
+    assert.equal(store.getNote(empty.id).body, 'spoke highlight reveal');
+    assert.throws(() => readAgain(store, empty.id), /could not be read/);
 
     // A brain that refuses (out of credits) still leaves the words in place.
     const broke = new Store(openDb(':memory:'));
