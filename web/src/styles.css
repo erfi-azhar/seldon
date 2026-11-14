@@ -7358,6 +7358,231 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   }
 }
 
+/* A hotel stay: name and status, in/out/nights, the Bonvoy nights it earns, then the benefits. */
+:root {
+  --bonvoy: oklch(0.6 0.13 55);
+  --bonvoy-soft: oklch(0.95 0.035 70);
+  --bonvoy-ink: oklch(0.46 0.1 55);
+}
+:root[data-theme='dark'] {
+  --bonvoy: oklch(0.74 0.12 65);
+  --bonvoy-soft: oklch(0.32 0.05 60);
+  --bonvoy-ink: oklch(0.86 0.09 70);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bonvoy: oklch(0.74 0.12 65);
+    --bonvoy-soft: oklch(0.32 0.05 60);
+    --bonvoy-ink: oklch(0.86 0.09 70);
+  }
+}
+.stay-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.stay-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.stay-card-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  color: var(--ink-2);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.stay-card-title {
+  flex: 1;
+  min-width: 0;
+}
+.stay-card-title h3 {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.stay-card-title p {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stay-status {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  white-space: nowrap;
+}
+.stay-status.is-planned {
+  color: oklch(0.45 0.12 250);
+  background: oklch(0.95 0.03 250);
+  box-shadow: none;
+}
+:root[data-theme='dark'] .stay-status.is-planned {
+  color: oklch(0.85 0.08 250);
+  background: oklch(0.3 0.06 250);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .stay-status.is-planned {
+    color: oklch(0.85 0.08 250);
+    background: oklch(0.3 0.06 250);
+  }
+}
+.stay-card-stats {
+  border-color: var(--line);
+}
+/* On a narrow card the small line wraps rather than cutting off "2pm late". */
+.stay-card-stats .opt-stat-sub {
+  white-space: normal;
+}
+.stay-card-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+/* Bonvoy elite nights */
+.stay-bonvoy {
+  display: grid;
+  gap: 8px;
+}
+.stay-bonvoy-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stay-bonvoy-add {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--bonvoy-ink);
+  font-variant-numeric: tabular-nums;
+}
+.stay-bonvoy-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line-2);
+  overflow: hidden;
+}
+.stay-bonvoy-bar > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+.stay-bonvoy-bar .is-before {
+  background: var(--ink-4);
+}
+.stay-bonvoy-bar .is-stay {
+  background: var(--bonvoy);
+}
+/* Tier marks: thin notches cut into the bar */
+.stay-bonvoy-bar > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--surface-2);
+}
+.stay-bonvoy-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 10px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.stay-bonvoy-foot b {
+  color: var(--ink);
+  font-weight: 650;
+}
+.stay-bonvoy-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: start;
+  margin: 2px 0 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bonvoy-ink);
+  background: var(--bonvoy-soft);
+}
+.stay-bonvoy-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+/* What your status gets you */
+.stay-card-perks {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.stay-card-perks ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stay-card-perks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+.stay-card-perks li svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--good);
+}
+.stay-card-address {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.stay-card-address svg {
+  flex: none;
+  margin-top: 2px;
+}
+.stay-card-address:hover span {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Hotel options in a trip's Stay card: nearest first, each a numbered row. */
 .stay-options.is-after-booking {
   margin-top: 14px;
