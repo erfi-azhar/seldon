@@ -656,8 +656,11 @@ function StayRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
   );
 }
 
-/** Everything about a trip: its actions, the globe beside its flights, stays, to-dos and the day-by-day plan. */
-function TripDetail({ trip, state }: { trip: Trip; state: TravelState }) {
+/**
+ * Everything about a trip, as separate cards: flights (the globe beside them), flight options, the stay,
+ * to-dos and the day-by-day plan. The page's head, with the trip's actions, comes first.
+ */
+function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; head: ReactNode }) {
   const { agentName, ask } = useApp();
   const today = todayStr();
   const [editing, setEditing] = useState(false);
@@ -673,78 +676,115 @@ function TripDetail({ trip, state }: { trip: Trip; state: TravelState }) {
   const layovers = state.context.trip?.id === trip.id ? state.context.layovers : [];
   const past = trip.endDate < today;
   const flights = trip.segments.filter((s) => s.kind === 'flight');
+  const others = trip.segments.filter((s) => s.kind !== 'flight');
+  const legs = globeLegs(flights);
+  const openTodos = trip.todos.filter((x) => !x.done).length;
+  const row = (s: Segment) => {
+    const lay = layovers.find((l) => l.afterSegmentId === s.id);
+    return (
+      <div key={s.id}>
+        {s.kind === 'flight' ? <FlightRow s={s} onEdit={() => setBooking(s)} /> : <StayRow s={s} onEdit={() => setBooking(s)} />}
+        {lay && (
+          <div className="layover">
+            <Clock size={12} /> {lay.hours} h connection in {lay.city}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="trip-detail">
-      {(
-        <div className="trip-body">
-          <div className="trip-actions">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBooking('new')}>
-              <Plus size={13} /> Flight or hotel
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
-              <Pencil size={12} /> Edit
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask(`Help me with my ${trip.purpose} trip "${trip.title}" (${trip.startDate} to ${trip.endDate}). Look at the bookings and the plan, then tell me what is missing or could be better.`)}>
-              <Sparkles size={13} /> Ask {agentName}
-            </button>
-          </div>
+      <header className="page-head trip-page-head">
+        {head}
+        <div className="trip-actions">
+          <button type="button" className="btn btn-sm" onClick={() => setBooking('new')}>
+            <Plus size={13} /> Flight or hotel
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
+            <Pencil size={12} /> Edit
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask(`Help me with my ${trip.purpose} trip "${trip.title}" (${trip.startDate} to ${trip.endDate}). Look at the bookings and the plan, then tell me what is missing or could be better.`)}>
+            <Sparkles size={13} /> Ask {agentName}
+          </button>
+        </div>
+      </header>
 
-          {trip.segments.length === 0 ? (
-            <p className="empty">No bookings yet. Add them, paste a confirmation, or let Gmail bring them in.</p>
-          ) : (
-            <div className="seg-list">
-              {(() => {
-                const row = (s: Segment) => {
-                  const lay = layovers.find((l) => l.afterSegmentId === s.id);
-                  return (
-                    <div key={s.id}>
-                      {s.kind === 'flight' ? <FlightRow s={s} onEdit={() => setBooking(s)} /> : <StayRow s={s} onEdit={() => setBooking(s)} />}
-                      {lay && (
-                        <div className="layover">
-                          <Clock size={12} /> {lay.hours} h connection in {lay.city}
-                        </div>
-                      )}
-                    </div>
-                  );
-                };
-                const legs = globeLegs(flights);
-                // Flights beside their globe, the globe card as tall as the flight cards together; stays below.
-                if (!legs.length) return trip.segments.map(row);
-                return (
-                  <>
-                    <div className="flight-pair">
-                      <div className="globe-card">
-                        <RouteGlobe legs={legs} fill />
-                      </div>
-                      <div className="flight-stack">{flights.map(row)}</div>
-                    </div>
-                    {trip.segments.filter((s) => s.kind !== 'flight').map(row)}
-                  </>
-                );
-              })()}
+      <section className="card trip-section">
+        <div className="card-head">
+          <h2 className="card-title">
+            <Plane size={15} /> Flights
+          </h2>
+          {flights.length > 0 && <span className="trip-section-count">{plural(flights.length, 'flight')}</span>}
+        </div>
+        <div className="trip-section-body">
+          {flights.length === 0 ? (
+            <p className="empty">{trip.options.length ? 'Nothing booked yet. Compare the options below.' : 'No flights yet. Add them, paste a confirmation, or let Gmail bring them in.'}</p>
+          ) : legs.length ? (
+            <div className="flight-pair">
+              <div className="globe-card">
+                <RouteGlobe legs={legs} fill />
+              </div>
+              <div className="flight-stack">{flights.map(row)}</div>
             </div>
+          ) : (
+            <div className="seg-list">{flights.map(row)}</div>
           )}
+        </div>
+      </section>
 
-          {trip.options.length > 0 && <FlightOptions trip={trip} />}
+      {trip.options.length > 0 && (
+        <section className="card trip-section">
+          <FlightOptions trip={trip} />
+        </section>
+      )}
 
-          <div className="plan-head">
-            <h3>
-              <ListChecks size={14} /> To-dos
-            </h3>
+      <div className="trip-section-pair">
+        <section className="card trip-section">
+          <div className="card-head">
+            <h2 className="card-title">
+              <BedDouble size={15} /> Stay
+            </h2>
           </div>
-          <TripTodos trip={trip} past={past} />
-
-          <div className="plan-head">
-            <h3>
-              <CalendarDays size={14} /> Plan
-            </h3>
-            {!past && (
-              <button type="button" className="btn btn-ghost btn-sm" disabled={draft.isPending} onClick={() => draft.mutate()}>
-                {draft.isPending ? <Spinner /> : <Wand2 size={13} />} {trip.itinerary.length ? 'Fill empty days' : `Draft with ${agentName}`}
-              </button>
+          <div className="trip-section-body">
+            {others.length ? (
+              <div className="seg-list">{others.map(row)}</div>
+            ) : (
+              <p className="empty">
+                No hotel yet.{' '}
+                <button type="button" className="link" onClick={() => setBooking('new')}>
+                  Add one
+                </button>
+              </p>
             )}
           </div>
+        </section>
+
+        <section className="card trip-section">
+          <div className="card-head">
+            <h2 className="card-title">
+              <ListChecks size={15} /> To-dos
+            </h2>
+            {openTodos > 0 && <span className="trip-section-count">{plural(openTodos, 'open', 'open')}</span>}
+          </div>
+          <div className="trip-section-body">
+            <TripTodos trip={trip} past={past} />
+          </div>
+        </section>
+      </div>
+
+      <section className="card trip-section">
+        <div className="card-head">
+          <h2 className="card-title">
+            <CalendarDays size={15} /> Plan
+          </h2>
+          {!past && (
+            <button type="button" className="btn btn-ghost btn-sm" disabled={draft.isPending} onClick={() => draft.mutate()}>
+              {draft.isPending ? <Spinner /> : <Wand2 size={13} />} {trip.itinerary.length ? 'Fill empty days' : `Draft with ${agentName}`}
+            </button>
+          )}
+        </div>
+        <div className="trip-section-body">
           {draft.error && <p className="error-text">{draft.error.message}</p>}
           <div className="plan-days">
             {days.map((d) => {
@@ -777,7 +817,8 @@ function TripDetail({ trip, state }: { trip: Trip; state: TravelState }) {
             })}
           </div>
         </div>
-      )}
+      </section>
+
       {editing && <TripSheet trip={trip} onClose={() => setEditing(false)} />}
       {booking && <BookingSheet trip={trip} segment={booking === 'new' ? null : booking} onClose={() => setBooking(null)} />}
       {item && <ItemSheet trip={trip} item={item.item} date={item.date} onClose={() => setItem(null)} />}
@@ -866,19 +907,20 @@ function FlightOptions({ trip }: { trip: Trip }) {
   const choose = useWrite((id: string) => travelWrite.post(`/options/${id}/choose`));
   const remove = useWrite((id: string) => travelWrite.del(`/options/${id}`));
   return (
-    <section className="trip-options">
-      <div className="plan-head">
-        <h3>
-          <Route size={14} /> Flight options
-        </h3>
+    <div className="trip-options">
+      <div className="card-head">
+        <h2 className="card-title">
+          <Route size={15} /> Flight options
+        </h2>
+        <span className="trip-section-count">{plural(trip.options.length, 'option')} · not booked</span>
       </div>
-      <div className="opt-grid">
+      <div className="opt-grid trip-section-body">
         {trip.options.map((o) => (
           <OptionCard key={o.id} o={o} onChoose={() => choose.mutate(o.id)} onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)} busy={choose.isPending && choose.variables === o.id} />
         ))}
       </div>
       {choose.error && <p className="error-text">{choose.error.message}</p>}
-    </section>
+    </div>
   );
 }
 
@@ -985,19 +1027,20 @@ export function TripPage({ id }: { id: string }) {
   return (
     <div className="page trip-page">
       {back}
-      <header className="page-head trip-page-head">
-        <div>
-          <h1 className="page-title">{trip.title}</h1>
-          <div className="trip-sub">
-            <PurposeChip purpose={trip.purpose} />
-            <span>{dates(trip.startDate, trip.endDate)}</span>
-            <span className="faint">· {whenLabel(trip, today)}</span>
+      <TripDetail
+        trip={trip}
+        state={t!}
+        head={
+          <div>
+            <h1 className="page-title">{trip.title}</h1>
+            <div className="trip-sub">
+              <PurposeChip purpose={trip.purpose} />
+              <span>{dates(trip.startDate, trip.endDate)}</span>
+              <span className="faint">· {whenLabel(trip, today)}</span>
+            </div>
           </div>
-        </div>
-      </header>
-      <section className="card trip-page-card">
-        <TripDetail trip={trip} state={t!} />
-      </section>
+        }
+      />
     </div>
   );
 }
