@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A self-hosted Terminus: your spheres, goals, habits and a personal agent — on your own machine.",
+  "description": "A self-hosted Terminus: your spheres, goals, habits and a personal agent \u2014 on your own machine.",
   "engines": {
     "node": ">=22.18"
   },
@@ -15,7 +15,8 @@
     "start": "node --disable-warning=ExperimentalWarning server/src/index.ts",
     "seed:demo": "node --disable-warning=ExperimentalWarning scripts/seed-demo.ts",
     "test": "node --disable-warning=ExperimentalWarning --test \"server/test/*.test.ts\"",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
+    "demo:welcome": "node demo/welcome/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
