@@ -3,7 +3,7 @@
 // board is doing, lives in a sheet — so a long watch list never buries the roles.
 
 import { Bookmark, BookmarkCheck, Briefcase, CircleAlert, ExternalLink, Plus, RefreshCw, Search, SlidersHorizontal, Star, X } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { JobBoardKind, JobPosting, JobPreferences, JobsState, JobWatch } from '../../../shared/types.ts';
 import { jobsWrite, useJobs, useWrite } from '../api.ts';
 import { cx, plural, timeAgo } from '../lib.ts';
@@ -57,6 +57,36 @@ function useArmed(): [boolean, () => void, () => void] {
     return () => clearTimeout(t);
   }, [armed]);
   return [armed, () => setArmed(true), () => setArmed(false)];
+}
+
+/**
+ * A box that scrolls on one axis, and which of its ends still hide something — so the
+ * fade can sit only where there is more to see.
+ */
+function useScrollEdges<T extends HTMLElement>(axis: 'x' | 'y', deps: unknown[]) {
+  const ref = useRef<T>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const [pos, size, total] = axis === 'y' ? [el.scrollTop, el.clientHeight, el.scrollHeight] : [el.scrollLeft, el.clientWidth, el.scrollWidth];
+    const start = pos > 2;
+    const end = pos + size < total - 2;
+    setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
+  }, [axis]);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    update();
+    // Rows wrap and grow with the width, so watch the content as well as the box.
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    for (const child of Array.from(el.children)) ro.observe(child);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [update, ...deps]);
+  const fade = cx(edges.start && 'fade-start', edges.end && 'fade-end');
+  return { ref, onScroll: update, fade, scrolls: edges.start || edges.end };
 }
 
 function PreferencesSheet({ prefs, onClose }: { prefs: JobPreferences; onClose: () => void }) {
@@ -329,9 +359,10 @@ export function JobAlertsCard() {
   const [prefs, setPrefs] = useState(false);
   const [adding, setAdding] = useState(false);
   const [managing, setManaging] = useState(false);
-  const [all, setAll] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const check = useWrite(jobsWrite.check);
+  const list = useScrollEdges<HTMLUListElement>('y', [data, filter]);
+  const fitsRow = useScrollEdges<HTMLDivElement>('x', [data]);
   if (!data) return null;
   const s: JobsState = data;
   const places = s.preferences.locations;
@@ -345,7 +376,6 @@ export function JobAlertsCard() {
   const filters = counts.filter(([f, , n]) => f === 'all' || (n > 0 && n < s.postings.length));
   const active = filters.some(([f]) => f === filter) ? filter : 'all';
   const roles = filterRoles(s.postings, active, places);
-  const shown = all ? roles : roles.slice(0, 6);
   const fresh = s.postings.filter((p) => p.status === 'new').length;
   const g = group(s.watches);
 
@@ -374,7 +404,16 @@ export function JobAlertsCard() {
           {filters.length > 1 && (
             <div className="jobs-filters" role="group" aria-label="Show roles">
               {filters.map(([f, label, n]) => (
-                <button key={f} type="button" className={cx('chip', active === f && 'chip-on')} aria-pressed={active === f} onClick={() => setFilter(f)}>
+                <button
+                  key={f}
+                  type="button"
+                  className={cx('chip', active === f && 'chip-on')}
+                  aria-pressed={active === f}
+                  onClick={() => {
+                    setFilter(f);
+                    list.ref.current?.scrollTo({ top: 0 });
+                  }}
+                >
                   {f === 'highlighted' && <Star size={11} fill="currentColor" />}
                   {label} <span className="jobs-filter-n">{n}</span>
                 </button>
@@ -384,8 +423,9 @@ export function JobAlertsCard() {
           {s.postings.length === 0 ? (
             <p className="empty">Nothing open that fits right now. You'll hear when something does.</p>
           ) : (
-            <ul className="jobs-list">
-              {shown.map((p) => (
+            // Scrolls inside the card once the list outgrows it; focusable so the keys scroll it too.
+            <ul ref={list.ref} onScroll={list.onScroll} className={cx('jobs-list', 'jobs-scroll', list.fade)} tabIndex={list.scrolls ? 0 : undefined} aria-label={`${plural(roles.length, 'open role')}`}>
+              {roles.map((p) => (
                 <Posting key={p.id} p={p} />
               ))}
             </ul>
@@ -397,18 +437,21 @@ export function JobAlertsCard() {
                 <>
                   <span className="faint">·</span>
                   <span className="muted">hiring for you</span>
-                  {g.fits.slice(0, 4).map((w) => (
-                    <span key={w.id} className="chip">
-                      {w.company} <b>{w.matching}</b>
-                    </span>
-                  ))}
-                  {g.fits.length > 4 && <span className="muted">+{g.fits.length - 4} more</span>}
                 </>
               )}
               <button type="button" className="link" onClick={() => setManaging(true)}>
                 Manage
               </button>
             </div>
+            {g.fits.length > 0 && (
+              <div ref={fitsRow.ref} onScroll={fitsRow.onScroll} className={cx('jobs-fits', fitsRow.fade)}>
+                {g.fits.map((w) => (
+                  <span key={w.id} className="chip">
+                    {w.company} <b>{w.matching}</b>
+                  </span>
+                ))}
+              </div>
+            )}
             {g.quiet.length > 0 && (
               <button type="button" className="jobs-warn" onClick={() => setManaging(true)}>
                 <CircleAlert size={14} />
@@ -417,13 +460,7 @@ export function JobAlertsCard() {
             )}
           </div>
           <div className="card-foot jobs-foot">
-            {roles.length > 6 ? (
-              <button type="button" className="link" onClick={() => setAll((v) => !v)}>
-                {all ? 'Show fewer' : `Show ${plural(roles.length, 'role')}`}
-              </button>
-            ) : (
-              <span />
-            )}
+            <span className="hint">{roles.length > 0 && plural(roles.length, 'role')}</span>
             <span className="hint">
               {s.lastRunAt ? `Checked ${timeAgo(s.lastRunAt)}` : ''}
               <button type="button" className="icon-btn icon-btn-sm" aria-label="Check now" disabled={check.isPending || s.running} onClick={() => check.mutate()}>

@@ -160,38 +160,43 @@ function StatusButtons({ date, prayer, status, disabled, offerMissed = true }: {
 }
 
 function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramadan']> }) {
+  const long = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  const short = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   if (ramadan.inRamadan)
     return (
       <div className="ramadan">
-        <MoonStar size={20} />
-        <div>
-          <b>Ramadan Mubarak — day {ramadan.day}</b>
-          <span>Began {parseDay(ramadan.start).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+        <div className="ramadan-head">
+          <span className="ramadan-count num">{ramadan.day}</span>
+          {/* Read as the Hijri date, e.g. "5 Ramadan". */}
+          <b>Ramadan</b>
+          <MoonStar size={22} className="ramadan-moon" />
         </div>
+        <p className="ramadan-note">Ramadan Mubarak — began {long(ramadan.start)}.</p>
       </div>
     );
   // Islamic days begin at sunset, so the first tarawih is prayed after Isha on the
   // evening before 1 Ramadan, and the first fast is 1 Ramadan itself.
-  const fmt = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   const tarawih = addDays(ramadan.start, -1);
   return (
     <div className="ramadan">
-      <div className="ramadan-count num">{ramadan.daysUntil}</div>
-      <div>
+      <div className="ramadan-head">
+        <span className="ramadan-count num">{ramadan.daysUntil}</span>
         <b>{ramadan.daysUntil === 1 ? 'day' : 'days'} until Ramadan</b>
-        <dl className="ramadan-dates">
-          <div>
-            <dt>First tarawih</dt>
-            <dd>{tarawih === todayStr() ? 'Tonight' : fmt(tarawih)}, after Isha</dd>
-          </div>
-          <div>
-            <dt>First fast</dt>
-            <dd>{fmt(ramadan.start)}</dd>
-          </div>
-        </dl>
-        <span>Expected dates — confirmed by the local moon sighting.</span>
+        <MoonStar size={22} className="ramadan-moon" />
       </div>
-      <MoonStar size={22} className="ramadan-moon" />
+      <dl className="ramadan-dates">
+        <div>
+          <dt>First tarawih</dt>
+          <dd>{tarawih === todayStr() ? 'Tonight' : short(tarawih)}</dd>
+          <dd className="ramadan-sub">Night, after Isha</dd>
+        </div>
+        <div>
+          <dt>First fast</dt>
+          <dd>{short(ramadan.start)}</dd>
+          <dd className="ramadan-sub">Suhoor before Fajr</dd>
+        </div>
+      </dl>
+      <p className="ramadan-note">Expected dates — confirmed by the local moon sighting.</p>
     </div>
   );
 }

@@ -4307,10 +4307,9 @@ body::before {
 }
 .ramadan {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 18px 22px;
+  display: grid;
+  gap: 14px;
+  padding: 20px 24px;
   border-radius: 26px;
   overflow: hidden;
   color: #fff;
@@ -4320,33 +4319,11 @@ body::before {
     linear-gradient(135deg, oklch(0.32 0.08 280), oklch(0.24 0.06 260));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.3 0.1 280 / 0.8);
 }
-.ramadan b {
-  display: block;
-  font-size: 16px;
-  font-weight: 600;
-}
-.ramadan span {
-  display: block;
-  font-size: 13px;
-  opacity: 0.8;
-  max-width: 46ch;
-}
-.ramadan-dates {
+/* The count and its label share a baseline, so "86 days until Ramadan" reads as one line. */
+.ramadan-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 20px;
-  margin: 6px 0 4px;
-}
-.ramadan-dates dt {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.65;
-}
-.ramadan-dates dd {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
+  align-items: baseline;
+  gap: 10px;
 }
 .ramadan-count {
   font-size: 46px;
@@ -4354,10 +4331,49 @@ body::before {
   line-height: 1;
   letter-spacing: -0.04em;
 }
+.ramadan-head b {
+  font-size: 17px;
+  font-weight: 600;
+}
 .ramadan-moon {
+  align-self: center;
   margin-left: auto;
   opacity: 0.8;
   flex: none;
+}
+.ramadan-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid rgb(255 255 255 / 0.14);
+}
+.ramadan-dates > div + div {
+  padding-left: 18px;
+  border-left: 1px solid rgb(255 255 255 / 0.14);
+}
+.ramadan-dates dt {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  opacity: 0.6;
+}
+.ramadan-dates dd {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ramadan-dates .ramadan-sub {
+  margin-top: 1px;
+  font-size: 12.5px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+.ramadan-note {
+  margin: 0;
+  font-size: 12.5px;
+  opacity: 0.6;
 }
 .glass-pill {
   display: inline-flex;
@@ -5424,9 +5440,17 @@ textarea.title-input {
 }
 .jobs-filters {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
   padding: 0 20px 10px;
+  /* One line; on a narrow screen it scrolls sideways instead of wrapping. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.jobs-filters::-webkit-scrollbar {
+  display: none;
+}
+.jobs-filters .chip {
+  flex: none;
 }
 .jobs-filters .chip {
   border: 1px solid transparent;
@@ -5459,6 +5483,60 @@ textarea.title-input {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+.jobs-fits {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.jobs-fits::-webkit-scrollbar {
+  display: none;
+}
+.jobs-fits .chip {
+  flex: none;
+}
+.jobs-fits .chip b {
+  font-weight: 650;
+  color: var(--ink);
+}
+.jobs-fits.fade-end {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+.jobs-fits.fade-start {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px);
+  mask-image: linear-gradient(to right, transparent, #000 32px);
+}
+.jobs-fits.fade-start.fade-end {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+}
+/* The roles: about five and a half rows, then the list scrolls inside the card. */
+.jobs-scroll {
+  max-height: min(460px, 62vh);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+.jobs-scroll:focus-visible {
+  outline: 2px solid var(--ink-3);
+  outline-offset: -2px;
+  border-radius: 10px;
+}
+.jobs-scroll.fade-end {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+.jobs-scroll.fade-start {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px);
+  mask-image: linear-gradient(to bottom, transparent, #000 32px);
+}
+.jobs-scroll.fade-start.fade-end {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 40px), transparent);
 }
 .jobs-companies-line .chip b {
   font-weight: 650;
