@@ -5194,18 +5194,20 @@ textarea.title-input {
 /* The featured trip on Today: a countdown card in the manner of the Ramadan card, light or
    dark with the theme, with any trip that follows within a week as a notch beneath it. */
 .trip-hero {
-  /* Light: a pale sky for work, a pale dawn for leisure. */
+  /* Light: white, with a little sky in one corner for work (dawn for leisure) and the
+     countdown in the trip's colour. */
   --th-bg:
-    radial-gradient(80% 120% at 100% 0%, oklch(0.86 0.09 215 / 0.85), transparent 60%),
-    radial-gradient(70% 120% at 0% 100%, oklch(0.88 0.07 260 / 0.85), transparent 60%),
-    linear-gradient(135deg, oklch(0.97 0.02 230), oklch(0.93 0.035 245));
-  --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 0 0 1px oklch(0.55 0.08 240 / 0.12), 0 18px 40px -22px oklch(0.45 0.1 240 / 0.45);
-  --th-fg: oklch(0.24 0.06 250);
-  --th-ink-2: oklch(0.36 0.05 250);
-  --th-ink-3: oklch(0.46 0.05 250);
-  --th-ink-4: oklch(0.58 0.05 250);
-  --th-line: oklch(0.35 0.08 250 / 0.13);
-  --th-chip: rgb(255 255 255 / 0.65);
+    radial-gradient(50% 75% at 100% 0%, oklch(0.9 0.07 225 / 0.5), transparent 70%),
+    radial-gradient(35% 55% at 0% 100%, oklch(0.94 0.035 255 / 0.4), transparent 70%),
+    #fff;
+  --th-shadow: 0 0 0 1px oklch(0.4 0.03 250 / 0.09), 0 1px 2px oklch(0.4 0.03 250 / 0.06), 0 18px 40px -26px oklch(0.45 0.08 240 / 0.35);
+  --th-accent: oklch(0.5 0.14 245);
+  --th-fg: oklch(0.22 0.02 255);
+  --th-ink-2: oklch(0.4 0.02 255);
+  --th-ink-3: oklch(0.52 0.015 255);
+  --th-ink-4: oklch(0.64 0.015 255);
+  --th-line: oklch(0.3 0.02 255 / 0.1);
+  --th-chip: oklch(0.96 0.02 240);
   --th-scheme: light;
   position: relative;
   z-index: 1;
@@ -5228,15 +5230,12 @@ textarea.title-input {
 }
 .trip-hero.is-leisure {
   --th-bg:
-    radial-gradient(80% 120% at 100% 0%, oklch(0.88 0.09 60 / 0.85), transparent 60%),
-    radial-gradient(70% 120% at 0% 100%, oklch(0.88 0.07 15 / 0.85), transparent 60%),
-    linear-gradient(135deg, oklch(0.98 0.02 70), oklch(0.94 0.04 40));
-  --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 0 0 1px oklch(0.55 0.1 40 / 0.14), 0 18px 40px -22px oklch(0.5 0.12 40 / 0.45);
-  --th-fg: oklch(0.28 0.07 35);
-  --th-ink-2: oklch(0.4 0.06 35);
-  --th-ink-3: oklch(0.5 0.06 35);
-  --th-ink-4: oklch(0.62 0.05 35);
-  --th-line: oklch(0.4 0.09 35 / 0.14);
+    radial-gradient(50% 75% at 100% 0%, oklch(0.92 0.07 60 / 0.5), transparent 70%),
+    radial-gradient(35% 55% at 0% 100%, oklch(0.95 0.035 20 / 0.4), transparent 70%),
+    #fff;
+  --th-shadow: 0 0 0 1px oklch(0.4 0.03 40 / 0.09), 0 1px 2px oklch(0.4 0.03 40 / 0.06), 0 18px 40px -26px oklch(0.5 0.1 40 / 0.35);
+  --th-accent: oklch(0.58 0.15 45);
+  --th-chip: oklch(0.97 0.02 55);
 }
 :root[data-theme='dark'] .trip-hero {
   --th-bg:
@@ -5251,6 +5250,7 @@ textarea.title-input {
   --th-line: rgb(255 255 255 / 0.14);
   --th-chip: rgb(255 255 255 / 0.12);
   --th-scheme: dark;
+  --th-accent: #fff;
 }
 :root[data-theme='dark'] .trip-hero.is-leisure {
   --th-bg:
@@ -5273,6 +5273,7 @@ textarea.title-input {
     --th-line: rgb(255 255 255 / 0.14);
     --th-chip: rgb(255 255 255 / 0.12);
     --th-scheme: dark;
+    --th-accent: #fff;
   }
   :root:not([data-theme='light']) .trip-hero.is-leisure {
     --th-bg:
@@ -5292,6 +5293,7 @@ textarea.title-input {
   gap: 10px;
 }
 .trip-hero-count {
+  color: var(--th-accent);
   font-size: 46px;
   font-weight: 500;
   line-height: 1;
@@ -5306,7 +5308,8 @@ textarea.title-input {
 .trip-hero-icon {
   align-self: center;
   margin-left: auto;
-  opacity: 0.8;
+  color: var(--th-accent);
+  opacity: 0.85;
   flex: none;
 }
 .trip-hero-legs {
@@ -5374,9 +5377,9 @@ textarea.title-input {
   padding: 26px 18px 12px;
   border-radius: 0 0 20px 20px;
   text-align: left;
-  color: oklch(0.3 0.06 250);
-  background: linear-gradient(180deg, oklch(0.9 0.04 240), oklch(0.95 0.025 240));
-  box-shadow: 0 0 0 1px oklch(0.55 0.08 240 / 0.12), 0 12px 24px -18px oklch(0.45 0.1 240 / 0.5);
+  color: oklch(0.25 0.02 255);
+  background: linear-gradient(180deg, oklch(0.965 0.012 240), #fff 70%);
+  box-shadow: 0 0 0 1px oklch(0.4 0.03 250 / 0.09), 0 12px 24px -20px oklch(0.45 0.08 240 / 0.4);
   transition: transform 0.15s, filter 0.15s;
 }
 .trip-notch + .trip-notch {
@@ -5384,9 +5387,8 @@ textarea.title-input {
   padding-top: 20px;
 }
 .trip-notch.is-leisure {
-  color: oklch(0.32 0.07 35);
-  background: linear-gradient(180deg, oklch(0.9 0.05 45), oklch(0.96 0.025 55));
-  box-shadow: 0 0 0 1px oklch(0.55 0.1 40 / 0.14), 0 12px 24px -18px oklch(0.5 0.12 40 / 0.5);
+  background: linear-gradient(180deg, oklch(0.97 0.015 55), #fff 70%);
+  box-shadow: 0 0 0 1px oklch(0.4 0.03 40 / 0.09), 0 12px 24px -20px oklch(0.5 0.1 40 / 0.4);
 }
 .trip-notch:hover:not(:disabled) {
   transform: translateY(2px);
