@@ -287,6 +287,9 @@ function engine(): Engine {
   flash.className = 'vault-flash';
   flash.setAttribute('aria-hidden', 'true');
   const ctx = canvas.getContext('2d')!;
+  // A theme change (the system's, or the app's own switch) re-reads the colours.
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => (palette = null));
+  new MutationObserver(() => (palette = null)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
   const n = innerWidth < 640 ? 2400 : 4200;
   const m = monolith(n);
   const f = bust(Math.round(n * 0.92));
@@ -554,22 +557,33 @@ function hide() {
   }, 250);
 }
 
+/** Put the stage on screen; returns a function that takes it away again. */
+export function mountVault(): () => void {
+  show();
+  return hide;
+}
+
+/** Move the stage to a scene. */
+export function setVaultScene(scene: VaultScene): void {
+  const e = engine();
+  if (e.scene === scene) return;
+  // Arriving straight into "open" (no sign-in), sink and open at once.
+  if (scene === 'open') {
+    e.drop = 1;
+    e.open = 1;
+  }
+  e.scene = scene;
+}
+
+/** Draw the scene in this box (or the top of the screen, with none). */
+export function setVaultAnchor(el: HTMLElement | null): void {
+  engine().anchor = el;
+}
+
 /** Show the stage behind this page, in a given scene. */
 export function VaultStage({ scene }: { scene: VaultScene }) {
-  useEffect(() => {
-    show();
-    return hide;
-  }, []);
-  useEffect(() => {
-    const e = engine();
-    if (e.scene === scene) return;
-    // Arriving straight into "open" (no sign-in), sink and open at once.
-    if (scene === 'open') {
-      e.drop = 1;
-      e.open = 1;
-    }
-    e.scene = scene;
-  }, [scene]);
+  useEffect(() => mountVault(), []);
+  useEffect(() => setVaultScene(scene), [scene]);
   return null;
 }
 
@@ -577,10 +591,10 @@ export function VaultStage({ scene }: { scene: VaultScene }) {
 export function VaultAnchor({ className }: { className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const e = engine();
-    e.anchor = ref.current;
+    const el = ref.current;
+    setVaultAnchor(el);
     return () => {
-      if (e.anchor === ref.current) e.anchor = null;
+      if (engine().anchor === el) setVaultAnchor(null);
     };
   }, []);
   return <div ref={ref} className={`vault-anchor ${className ?? ''}`} aria-hidden />;
