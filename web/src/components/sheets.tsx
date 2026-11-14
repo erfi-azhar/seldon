@@ -12,6 +12,7 @@ import { cx, formatNumber, hueStyle, monthDay, parseNumber, pct, shortDay, today
 import { useApp, type Sheet } from '../state.tsx';
 import { SPHERE_ICONS, SphereIcon } from './Icon.tsx';
 import { Orb } from './Orb.tsx';
+import { TaskFollowupsPanel } from './Followups.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
 import { AutoTextarea, Check, Field, InlineEdit, Loading, Modal, ProgressBar, Seg, SphereSelect } from './ui.tsx';
 
@@ -280,18 +281,25 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
   const [notes, setNotes] = useState(task.notes);
   const [sphereId, setSphereId] = useState(task.sphereId);
   const [dueDate, setDueDate] = useState(task.dueDate ?? '');
+  const { ask } = useApp();
   const save = useWrite((body: object) => write.patch(`/tasks/${task.id}`, body));
   const remove = useWrite(() => write.del(`/tasks/${task.id}`));
   // Send only what was edited here, so a change made elsewhere meanwhile survives.
-  const saveEdits = () => {
+  const saveEdits = (then: () => void = onClose) => {
     const body: Partial<Task> = {};
-    if (title !== task.title) body.title = title;
+    if (title.trim() && title !== task.title) body.title = title;
     if (notes !== task.notes) body.notes = notes;
     if (sphereId !== task.sphereId) body.sphereId = sphereId;
     if ((dueDate || null) !== task.dueDate) body.dueDate = dueDate || null;
-    if (Object.keys(body).length === 0) onClose();
-    else save.mutate(body, { onSuccess: onClose });
+    if (Object.keys(body).length === 0) then();
+    else save.mutate(body, { onSuccess: then });
   };
+  // Handing a step to Seldon keeps what was typed here, then gets out of the way of the chat.
+  const handOff = (prompt: string) =>
+    saveEdits(() => {
+      onClose();
+      ask(prompt);
+    });
 
   return (
     <Modal
@@ -304,7 +312,7 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
             <button className="btn btn-ghost btn-sm" onClick={() => save.mutate({ done: !task.done }, { onSuccess: onClose })}>
               {task.done ? 'Reopen' : 'Mark done'}
             </button>
-            <button className="btn btn-primary btn-sm" disabled={!title.trim()} onClick={saveEdits}>
+            <button className="btn btn-primary btn-sm" disabled={!title.trim()} onClick={() => saveEdits()}>
               Save
             </button>
           </div>
@@ -323,6 +331,7 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
       <Field label="Notes">
         <AutoTextarea className="textarea" minRows={3} value={notes} onChange={setNotes} maxLength={2000} placeholder="Anything worth remembering about this." />
       </Field>
+      <TaskFollowupsPanel task={task} draft={{ title: title.trim() || task.title, notes, dueDate: dueDate || null }} onAsk={handOff} />
       <span className="hint">Added {shortDay(todayStr(new Date(task.createdAt)))}.</span>
     </Modal>
   );

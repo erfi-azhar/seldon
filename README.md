@@ -53,6 +53,17 @@ steps, from a number you track, or from a slider. Daily or few-times-a-week habi
 seven-day dots and fair streaks. Any metric over time with a sparkline. To-dos, one
 journal entry a day that saves as you type, and notes and links filed by sphere.
 
+**Follow-ups.** Seldon reads each new task and, when it deserves it, suggests what comes
+next: who to see, what to bring, the order to do things in. Each step can hand itself to
+Seldon in one tap ("Ask Seldon to book it") or become a task of its own. "Buy milk" gets
+nothing. Suggestions are made by the background brain, which has no tools, and refresh
+when you change the task.
+
+**Google Calendar.** Connect it under Settings → Connections (with an OAuth client from your
+own Google Cloud project; the card walks you through it) and Seldon can read your events
+and add appointments. It proposes a time and adds the event only once you agree, so
+"Ask Seldon to book it" on a task ends with the consultation on your calendar.
+
 **Today.** One screen for the day: what needs you (important mail, new job openings,
 flights), what's due, habits still open, the journal, what's on the horizon, and a feed of
 what changed — including what Seldon did, each with Undo. Your next prayer and your next
@@ -244,7 +255,7 @@ Set these in the environment before `npm start`.
 
 The older `LIFEOS_*` names still work, and an existing `data/lifeos.db` keeps being used.
 
-Connections need outbound network access: `imap.gmail.com:993` for Gmail; your calendar's host (`calendar.google.com`, `*.icloud.com`) for calendar flights; the job boards'
+Connections need outbound network access: `imap.gmail.com:993` for Gmail; `oauth2.googleapis.com` and `www.googleapis.com` for Google Calendar; your calendar's host (`calendar.google.com`, `*.icloud.com`) for calendar flights; the job boards'
 APIs (`boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com`, `apply.workable.com`,
 `api.smartrecruiters.com`); any MCP servers you add; and whatever links you capture.
 
