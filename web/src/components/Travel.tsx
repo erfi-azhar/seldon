@@ -627,11 +627,6 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
           </span>
         )}
       </span>
-      {s.lounges[0] && (
-        <span className="fc-lounge">
-          <Sofa size={12} /> {s.lounges[0].access}
-        </span>
-      )}
     </button>
   );
 }

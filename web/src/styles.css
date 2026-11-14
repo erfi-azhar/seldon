@@ -5361,14 +5361,6 @@ textarea.title-input {
   letter-spacing: 0.04em;
   color: var(--ink);
 }
-.fc-lounge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: -4px;
-  font-size: 12px;
-  color: oklch(0.5 0.1 75);
-}
 :root[data-theme='dark'] .fc-badge {
   color: oklch(0.85 0.08 250);
   background: oklch(0.3 0.06 250);
