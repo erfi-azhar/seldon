@@ -6738,3 +6738,98 @@ form.stage-center.is-opening > :not(.vault-anchor) {
     color: oklch(0.8 0.13 155);
   }
 }
+
+/* In the Travels sphere: the route globe beside the flight cards, as tall as they are together. */
+.flight-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+.flight-stack {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.globe-card {
+  display: flex;
+  min-width: 0;
+  padding: 12px 6px 14px;
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(16 18 30 / 0.04), 0 10px 24px -18px rgb(16 18 30 / 0.25);
+}
+.globe-card .route-globe {
+  flex: 1;
+}
+.rg-stage {
+  position: relative;
+}
+.route-globe.is-fill {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.route-globe.is-fill .rg-stage {
+  min-height: 220px;
+}
+@media (max-width: 760px) {
+  .flight-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .route-globe.is-fill .rg-stage {
+    min-height: 260px;
+  }
+}
+
+/* Today's trip card opens the full plan; its controls keep their own clicks. */
+.trip-hero.is-link,
+.travel-mode.is-link {
+  cursor: pointer;
+}
+.trip-hero.is-link :is(button, input, label, .task, .add-row) {
+  cursor: auto;
+}
+.trip-hero.is-link button {
+  cursor: pointer;
+}
+.trip-hero-todos-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.trip-hero-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 0;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--th-accent, var(--accent));
+}
+.trip-hero-open:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* Swapping trips: the newcomer rises into place. */
+.trip-swap.is-swapped {
+  animation: trip-swap-in 0.32s ease-out;
+}
+@keyframes trip-swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.trip-swap {
+  position: relative;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .trip-swap {
+    animation: none !important;
+  }
+}

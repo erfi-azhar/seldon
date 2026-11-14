@@ -540,6 +540,17 @@ function LoungeList({ seg, notes }: { seg: Segment; notes?: string[] }) {
   );
 }
 
+/** Flights whose airports are known, as legs for the route globe. */
+function globeLegs(flights: Segment[]): GlobeLeg[] {
+  return flights
+    .filter((s) => s.kind === 'flight' && s.fromGeo && s.toGeo)
+    .map((s) => ({
+      from: { code: s.fromCode, lat: s.fromGeo![0], lon: s.fromGeo![1] },
+      to: { code: s.toCode, lat: s.toGeo![0], lon: s.toGeo![1] },
+      minutes: Math.max(0, Math.round((Date.parse(s.endUtc) - Date.parse(s.startUtc)) / 60_000)) || undefined,
+    }));
+}
+
 /** Airline names for the codes a Singapore-based traveller meets most; others show their code. */
 const AIRLINES: Record<string, string> = {
   SQ: 'Singapore Airlines', TR: 'Scoot', MH: 'Malaysia Airlines', AK: 'AirAsia', OD: 'Batik Air', GA: 'Garuda Indonesia', TG: 'Thai Airways',
@@ -691,19 +702,35 @@ function TripCard({ trip, state, open, onToggle }: { trip: Trip; state: TravelSt
             <p className="empty">No bookings yet. Add them, paste a confirmation, or let Gmail bring them in.</p>
           ) : (
             <div className="seg-list">
-              {trip.segments.map((s) => {
-                const lay = layovers.find((l) => l.afterSegmentId === s.id);
+              {(() => {
+                const row = (s: Segment) => {
+                  const lay = layovers.find((l) => l.afterSegmentId === s.id);
+                  return (
+                    <div key={s.id}>
+                      {s.kind === 'flight' ? <FlightRow s={s} onEdit={() => setBooking(s)} /> : <StayRow s={s} onEdit={() => setBooking(s)} />}
+                      {lay && (
+                        <div className="layover">
+                          <Clock size={12} /> {lay.hours} h connection in {lay.city}
+                        </div>
+                      )}
+                    </div>
+                  );
+                };
+                const legs = globeLegs(flights);
+                // Flights beside their globe, the globe card as tall as the flight cards together; stays below.
+                if (!legs.length) return trip.segments.map(row);
                 return (
-                  <div key={s.id}>
-                    {s.kind === 'flight' ? <FlightRow s={s} onEdit={() => setBooking(s)} /> : <StayRow s={s} onEdit={() => setBooking(s)} />}
-                    {lay && (
-                      <div className="layover">
-                        <Clock size={12} /> {lay.hours} h connection in {lay.city}
+                  <>
+                    <div className="flight-pair">
+                      <div className="globe-card">
+                        <RouteGlobe legs={legs} fill />
                       </div>
-                    )}
-                  </div>
+                      <div className="flight-stack">{flights.map(row)}</div>
+                    </div>
+                    {trip.segments.filter((s) => s.kind !== 'flight').map(row)}
+                  </>
                 );
-              })}
+              })()}
             </div>
           )}
 
@@ -944,6 +971,7 @@ const weekdayShort = (d: string) => parseDay(d).toLocaleDateString(undefined, { 
 /** One trip ahead, in the manner of the Ramadan countdown: days to go, the way out and back, then what is left to do. */
 function TripCountdown({ trip }: { trip: Trip }) {
   const { agentName } = useApp();
+  const openTrip = useOpenTrip();
   const draft = useWrite(() => travelWrite.post(`/trips/${trip.id}/draft`));
   const today = todayStr();
   const days = daysFrom(today, trip.startDate);
@@ -952,18 +980,12 @@ function TripCountdown({ trip }: { trip: Trip }) {
   const out = flights[0];
   const back = flights.length > 1 ? flights[flights.length - 1] : undefined;
   const openTodos = trip.todos.filter((x) => !x.done).length;
-  const legs: GlobeLeg[] = flights
-    .filter((s) => s.fromGeo && s.toGeo)
-    .map((s) => ({
-      from: { code: s.fromCode, lat: s.fromGeo![0], lon: s.fromGeo![1] },
-      to: { code: s.toCode, lat: s.toGeo![0], lon: s.toGeo![1] },
-      minutes: Math.max(0, Math.round((Date.parse(s.endUtc) - Date.parse(s.startUtc)) / 60_000)) || undefined,
-    }));
+  const legs = globeLegs(flights);
   const [showTodos, toggleTodos] = useTodosShown();
   const leg = (s: Segment) => `${`${s.carrier} ${s.number}`.trim()} · ${s.startLocal.slice(11, 16)} from ${s.fromCode || s.fromName}`;
 
   return (
-    <section className={cx('trip-hero', trip.purpose === 'work' ? 'is-work' : 'is-leisure')}>
+    <section className={cx('trip-hero', 'is-link', trip.purpose === 'work' ? 'is-work' : 'is-leisure')} onClick={(e) => onCardItself(e) && openTrip(trip)}>
       <div className="trip-hero-head">
         {days > 0 ? (
           <>
@@ -1003,10 +1025,15 @@ function TripCountdown({ trip }: { trip: Trip }) {
       )}
       {draft.error && <p className="trip-hero-note">{draft.error.message}</p>}
       <div className={cx('trip-hero-todos', !showTodos && 'is-collapsed')}>
-        <button type="button" className="trip-hero-label trip-hero-toggle" aria-expanded={showTodos} onClick={() => toggleTodos(!showTodos)}>
-          To do{openTodos > 0 && <span className="trip-hero-badge num">{openTodos}</span>}
-          <ChevronDown size={14} className="trip-hero-chev" aria-hidden />
-        </button>
+        <div className="trip-hero-todos-head">
+          <button type="button" className="trip-hero-label trip-hero-toggle" aria-expanded={showTodos} onClick={() => toggleTodos(!showTodos)}>
+            To do{openTodos > 0 && <span className="trip-hero-badge num">{openTodos}</span>}
+            <ChevronDown size={14} className="trip-hero-chev" aria-hidden />
+          </button>
+          <button type="button" className="trip-hero-open" onClick={() => openTrip(trip)}>
+            Full plan <ChevronRight size={14} aria-hidden />
+          </button>
+        </div>
         {showTodos && <TripTodos trip={trip} />}
       </div>
     </section>
@@ -1032,6 +1059,9 @@ export function followingTrips(featured: Trip, rest: Trip[]): Trip[] {
  */
 export function TravelModeCard() {
   const { data: t } = useTravel();
+  // A notch brings its trip up into the card; the one it replaces drops into a notch.
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [picked, setPicked] = useState(false);
   if (!t) return null;
   const today = todayStr();
   const c = t.context;
@@ -1039,22 +1069,37 @@ export function TravelModeCard() {
   const ahead = t.trips.filter((x) => x.endDate >= today && x.id !== current?.id).sort((a, b) => a.startDate.localeCompare(b.startDate));
   const featured = current ?? ahead[0];
   if (!featured) return null;
-  const next = followingTrips(featured, ahead.filter((x) => x.id !== featured.id));
+  const group = [featured, ...followingTrips(featured, ahead.filter((x) => x.id !== featured.id))];
+  const shown = group.find((x) => x.id === chosen) ?? featured;
   return (
     <div className="trip-feature">
-      {current ? <TravelNowCard /> : <TripCountdown trip={featured} />}
-      {next.map((x) => (
-        <TripNotch key={x.id} trip={x} />
-      ))}
+      <div key={shown.id} className={cx('trip-swap', picked && 'is-swapped')}>
+        {current && shown.id === current.id ? <TravelNowCard /> : <TripCountdown trip={shown} />}
+      </div>
+      {group
+        .filter((x) => x.id !== shown.id)
+        .map((x) => (
+          <TripNotch key={x.id} trip={x} label={current?.id === x.id ? 'Now' : x.startDate < shown.startDate ? 'Before' : 'Then'} onPick={() => (setPicked(true), setChosen(x.id === featured.id ? null : x.id))} />
+        ))}
     </div>
   );
 }
 
-/** A trip that follows the featured one, as a tab beneath its card. Opens the trip in the Travels sphere. */
-function TripNotch({ trip }: { trip: Trip }) {
+/** Open a trip's full plan in the Travels sphere (or Work, for a work trip with no Travels sphere). */
+function useOpenTrip() {
   const { spheres } = useApp();
   const [, navigate] = useLocation();
-  const home = spheres.find((s) => s.key === 'travels') ?? (trip.purpose === 'work' ? spheres.find((s) => s.key === 'work') : undefined);
+  return (trip: Trip) => {
+    const home = spheres.find((s) => s.key === 'travels') ?? (trip.purpose === 'work' ? spheres.find((s) => s.key === 'work') : undefined);
+    if (home) navigate(`/spheres/${home.id}?trip=${trip.id}`);
+  };
+}
+
+/** A click on the card itself, not on one of its controls (a to-do, the add line, a button). */
+const onCardItself = (e: React.MouseEvent) => !(e.target as HTMLElement).closest('button, a, input, textarea, select, label, [role="checkbox"], .add-row, .task');
+
+/** A trip that follows the featured one, as a tab beneath its card. Opens the trip in the Travels sphere. */
+function TripNotch({ trip, label, onPick }: { trip: Trip; label: string; onPick: () => void }) {
   const open = trip.todos.filter((x) => !x.done).length;
   const flights = trip.segments.filter((s) => s.kind === 'flight').length;
   const detail = open ? plural(open, 'to-do') : flights ? plural(flights, 'flight') : 'nothing booked yet';
@@ -1062,11 +1107,10 @@ function TripNotch({ trip }: { trip: Trip }) {
     <button
       type="button"
       className={cx('trip-notch', trip.purpose === 'work' ? 'is-work' : 'is-leisure')}
-      disabled={!home}
-      onClick={() => home && navigate(`/spheres/${home.id}?trip=${trip.id}`)}
-      aria-label={`Then ${trip.title}, ${dates(trip.startDate, trip.endDate)}. Open in Travels`}
+      onClick={onPick}
+      aria-label={`${label} ${trip.title}, ${dates(trip.startDate, trip.endDate)}. Show this trip`}
     >
-      <span className="trip-notch-label">Then</span>
+      <span className="trip-notch-label">{label}</span>
       <span className="trip-notch-body">
         <b>{trip.title}</b>
         <span className="trip-notch-meta">
@@ -1081,6 +1125,7 @@ function TripNotch({ trip }: { trip: Trip }) {
 function TravelNowCard() {
   const { data: t } = useTravel();
   const { agentName, ask } = useApp();
+  const openTrip = useOpenTrip();
   const now = useNow();
   const prepare = useWrite((id: string) => travelWrite.post(`/segments/${id}/companion`));
   const toggle = useWrite((i: ItineraryItem) => travelWrite.patch(`/itinerary/${i.id}`, { done: !i.done }));
@@ -1095,7 +1140,7 @@ function TravelNowCard() {
     const leaves = untilLabel(f.startUtc, now);
     const lay = c.layovers.find((l) => l.nextSegmentId === f.id) ?? c.layovers.find((l) => l.afterSegmentId === f.id);
     return (
-      <section className="card travel-mode tm-departing">
+      <section className="card travel-mode tm-departing is-link" onClick={(e) => onCardItself(e) && openTrip(trip)}>
         <div className="tm-head">
           <span className="tm-kicker">
             <Plane size={13} /> Travel mode · {trip.title}
@@ -1175,7 +1220,7 @@ function TravelNowCard() {
   const hhmmNow = new Date(now).toTimeString().slice(0, 5);
   const nextItem = items.find((i) => !i.done && (i.time ?? '99:99') >= hhmmNow);
   return (
-    <section className="card travel-mode tm-away">
+    <section className="card travel-mode tm-away is-link" onClick={(e) => onCardItself(e) && openTrip(trip)}>
       <div className="tm-head">
         <span className="tm-kicker">
           <Palmtree size={13} /> {trip.title} · day {c.dayOfTrip} of {c.tripDays}

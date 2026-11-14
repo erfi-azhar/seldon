@@ -81,11 +81,11 @@ function axes(c: V3): { e: V3; n: V3 } {
   return { e, n: cross(c, e) };
 }
 
-const H = 210;
+const DEFAULT_H = 210;
 const TOP = 14;
 
 /** Face a point, turning the globe so it sits at a given height on the card (north stays up). */
-function facing(p: V3, R: number, y = H * 0.48): View {
+function facing(p: V3, R: number, y: number): View {
   const cy = TOP + R;
   const lift = Math.asin(Math.max(-0.95, Math.min(0.95, (cy - y) / R))) / RAD;
   const [lat, lon] = latLon(p);
@@ -137,23 +137,42 @@ const T_HOLD = 900; // the plane rests at the arrival
 const T_FADE = 500; // the route and plane fade before the next flight
 const flyTime = (km: number) => Math.min(4200, 2400 + km / 6);
 
-export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
-  const box = useRef<HTMLDivElement>(null);
+/**
+ * The globe and a caption for the flight being drawn. By default it is a dome 210px tall, as on
+ * Today's trip card; with `fill` it takes the height its container gives it and shows the whole
+ * globe, as beside the flight cards in the Travels sphere.
+ */
+export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: boolean }) {
+  const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [w, setW] = useState(520);
+  const [size, setSize] = useState({ w: 520, h: DEFAULT_H });
   const [legIndex, setLegIndex] = useState(0);
+  const { w } = size;
+  const H = size.h;
+  // A dome across the card; or, filling a tall box, the whole globe, centred in a layout band of
+  // height L (offset oy from the top) so a tall card does not leave it stranded at the top.
+  const R0 = fill ? Math.min(w * 0.42, (H - TOP) / 2.05) : Math.min(w * 0.31, (H - TOP) / 1.25);
+  const L = fill ? Math.min(H, Math.round(2 * R0 + TOP * 2 + 10)) : H;
+  const oy = Math.round((H - L) / 2);
 
   useEffect(() => {
-    const el = box.current;
+    const el = stage.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(([e]) => e && setW(Math.max(260, Math.round(e.contentRect.width))));
+    const ro = new ResizeObserver(([e]) => {
+      if (!e) return;
+      const next = { w: Math.max(240, Math.round(e.contentRect.width)), h: fill ? Math.max(200, Math.round(e.contentRect.height)) : DEFAULT_H };
+      setSize((cur) => (cur.w === next.w && cur.h === next.h ? cur : next));
+    });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [fill]);
 
   // Each flight's two views: facing its departure, then framing the route.
   const plan = useMemo(() => {
-    const R0 = Math.min(w * 0.31, (H - TOP) / 1.25);
+    const frameY = (R: number) => (fill ? Math.min(L * 0.55, TOP + R * 0.62) : L * 0.48);
+    const focusY = (R: number) => (fill ? Math.min(L * 0.58, TOP + R * 0.7) : L * 0.5);
+    // Beside the flight cards the globe's outline stays in view: no closer than about its width.
+    const Rmax = fill ? Math.max(R0, w * 0.46) : Infinity;
     return legs.map((l) => {
       const a = vec(l.from.lat, l.from.lon);
       const b = vec(l.to.lat, l.to.lon);
@@ -162,18 +181,18 @@ export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
       // Then shrink, if need be, until both airports sit inside the dome with room for labels.
       const mid = slerp(a, b, 0.5);
       const fits = (R: number) => {
-        const v = facing(mid, R);
+        const v = facing(mid, R, frameY(R));
         return [a, b].every((p) => {
           const q = onCard(p, v, w);
-          return q.z > 0.08 && q.x > 34 && q.x < w - 34 && q.y > 40 && q.y < H - 30;
+          return q.z > 0.08 && q.x > 34 && q.x < w - 34 && q.y > 40 && q.y < L - 30;
         });
       };
-      let R = R0 * Math.max(1, Math.min(1.75, 50 / Math.max(arc, 1)));
+      let R = Math.min(Rmax, R0 * Math.max(1, Math.min(1.75, 50 / Math.max(arc, 1))));
       for (let i = 0; i < 30 && !fits(R) && R > R0 * 0.55; i++) R *= 0.94;
       const km = distanceKm(l);
-      return { leg: l, a, b, km, focus: facing(a, R, H * 0.5), frame: facing(mid, R), fly: flyTime(km) };
+      return { leg: l, a, b, km, focus: facing(a, R, focusY(R)), frame: facing(mid, R, frameY(R)), fly: flyTime(km) };
     });
-  }, [legs, w]);
+  }, [legs, w, L, R0, fill]);
 
   useEffect(() => {
     const cv = canvas.current;
@@ -201,9 +220,9 @@ export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
       const { R } = v;
       const cy = TOP + R;
       const { e, n } = axes(v.centre);
-      lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      lctx.clearRect(0, 0, w, H);
-      const g = lctx.createLinearGradient(0, TOP, 0, H);
+      lctx.setTransform(dpr, 0, 0, dpr, 0, oy * dpr);
+      lctx.clearRect(0, -oy, w, H);
+      const g = lctx.createLinearGradient(0, TOP, 0, L);
       g.addColorStop(0, theme.seaTop);
       g.addColorStop(1, theme.seaBottom);
       lctx.fillStyle = g;
@@ -218,11 +237,11 @@ export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
           const z = P[i]! * c[0] + P[i + 1]! * c[1] + P[i + 2]! * c[2];
           if (z <= 0.02) continue;
           const y = cy - R * (P[i]! * n[0] + P[i + 1]! * n[1] + P[i + 2]! * n[2]);
-          if (y < 0 || y > H) continue;
+          if (y < -oy || y > H - oy) continue;
           const x = cx + R * (P[i]! * e[0] + P[i + 1]! * e[1] + P[i + 2]! * e[2]);
           if (x < 0 || x > w) continue;
           // Fainter towards the rim and towards the bottom, where the globe fades out.
-          lctx.globalAlpha = strength * Math.min(1, z * 2) * (1 - clamp01((y - H * 0.58) / (H * 0.42)));
+          lctx.globalAlpha = strength * Math.min(1, z * 2) * (1 - clamp01((y - L * 0.58) / (L * 0.42)));
           lctx.fillRect(x - size / 2, y - size / 2, size, size);
         }
       };
@@ -231,8 +250,8 @@ export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
       for (const d of rim) {
         const x = cx + Math.cos(d.a) * R * d.r;
         const y = cy + Math.sin(d.a) * R * d.r;
-        if (y < 0 || y > H) continue;
-        lctx.globalAlpha = d.o * (1 - clamp01((y - H * 0.55) / (H * 0.45)));
+        if (y < -oy || y > H - oy) continue;
+        lctx.globalAlpha = d.o * (1 - clamp01((y - L * 0.55) / (L * 0.45)));
         lctx.fillRect(x - d.s / 2, y - d.s / 2, d.s, d.s);
       }
       lctx.globalAlpha = 1;
@@ -361,6 +380,7 @@ export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, H);
       ctx.drawImage(layer, 0, 0, w, H);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, oy * dpr);
 
       const after = t - T_FOCUS - T_FRAME;
       const drawK = clamp01(after / T_DRAW);
@@ -450,18 +470,20 @@ export function RouteGlobe({ legs }: { legs: GlobeLeg[] }) {
       io?.disconnect();
       document.removeEventListener('visibilitychange', sync);
     };
-  }, [plan, w]);
+  }, [plan, w, H, L, oy]);
 
   const current = plan[Math.min(legIndex, plan.length - 1)];
   const minutes = current?.leg.minutes;
   return (
-    <div ref={box} className="route-globe">
-      <canvas
-        ref={canvas}
-        style={{ width: '100%', height: H, display: 'block' }}
-        role="img"
-        aria-label={`Map of the flights: ${legs.map((l) => `${l.from.code} to ${l.to.code}`).join(', ')}`}
-      />
+    <div className={fill ? 'route-globe is-fill' : 'route-globe'}>
+      <div ref={stage} className="rg-stage" style={fill ? undefined : { height: DEFAULT_H }}>
+        <canvas
+          ref={canvas}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}
+          role="img"
+          aria-label={`Map of the flights: ${legs.map((l) => `${l.from.code} to ${l.to.code}`).join(', ')}`}
+        />
+      </div>
       {current && (
         <div className="rg-caption">
           <span>
