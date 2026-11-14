@@ -1,8 +1,9 @@
-import { ArrowLeft, ArrowUpRight, Pencil, Plus, Stethoscope } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ChevronRight, Pencil, Plane, Plus, Stethoscope } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'wouter';
 import { CATALOG_BY_KEY } from '../../../shared/catalog.ts';
-import { useHealth, useSphere, useSpheres, useWrite, write } from '../api.ts';
+import type { Task } from '../../../shared/types.ts';
+import { useHealth, useSphere, useSpheres, useTravel, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
@@ -11,7 +12,7 @@ import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
-import { cx, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
+import { cx, dueLabel, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { normalise, useScreenings } from './Screenings.tsx';
 import { Lately } from './Today.tsx';
@@ -124,8 +125,35 @@ export function SphereDetail({ id }: { id: string }) {
   const habitIdeas = (kit?.habits ?? []).filter((h) => !habitNames.has(h.name.toLowerCase()));
   const metricIdeas = (kit?.metrics ?? []).filter((m) => !metricNames.has(m.name.toLowerCase()));
   const quiet = s.stats.quietDays;
-  // Spheres with a card you use every day: food, prayers, job alerts.
+  // Spheres with a card you use every day: food, prayers, work to-dos and job alerts.
   const hasDaily = s.key === 'health' || s.key === 'faith' || s.key === 'work';
+
+  const habitsCard = (
+    <section className="card">
+      <div className="card-head">
+        <h2 className="card-title">Habits</h2>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSheet({ kind: 'habit', sphereId: id })}>
+          <Plus size={14} /> New habit
+        </button>
+      </div>
+      {habits.length === 0 && <p className="empty">No habits yet.</p>}
+      <ul style={{ paddingBottom: habitIdeas.length ? 6 : 12 }}>
+        {habits.map((h) => (
+          <HabitRow key={h.id} habit={h} />
+        ))}
+      </ul>
+      {habitIdeas.length > 0 && (
+        <div className="suggest">
+          <span className="hint">Ideas</span>
+          {habitIdeas.map((h) => (
+            <button key={h.name} type="button" className="chip chip-outline" onClick={() => addHabit.mutate(h)}>
+              <Plus size={12} /> {h.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 
   return (
     <div className="page tint" style={hueStyle(s.hue)}>
@@ -164,10 +192,12 @@ export function SphereDetail({ id }: { id: string }) {
       {/* With a daily card on the left, tasks join habits on the right so the columns even out. */}
       <div className="detail-grid">
         <div className="col">
+          {/* Work leads with the work itself; everywhere else, what needs you comes first. */}
+          {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} />}
           <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
           {s.key === 'health' && <HealthToday />}
           {s.key === 'faith' && <PrayerCard />}
-          {s.key === 'work' && <JobAlertsCard />}
+          {s.key === 'work' && habitsCard}
           {!hasDaily && (
             <section className="card">
               <div className="card-head">
@@ -184,31 +214,8 @@ export function SphereDetail({ id }: { id: string }) {
           )}
         </div>
         <div className="col">
-          <section className="card">
-            <div className="card-head">
-              <h2 className="card-title">Habits</h2>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSheet({ kind: 'habit', sphereId: id })}>
-                <Plus size={14} /> New habit
-              </button>
-            </div>
-            {habits.length === 0 && <p className="empty">No habits yet.</p>}
-            <ul style={{ paddingBottom: habitIdeas.length ? 6 : 12 }}>
-              {habits.map((h) => (
-                <HabitRow key={h.id} habit={h} />
-              ))}
-            </ul>
-            {habitIdeas.length > 0 && (
-              <div className="suggest">
-                <span className="hint">Ideas</span>
-                {habitIdeas.map((h) => (
-                  <button key={h.name} type="button" className="chip chip-outline" onClick={() => addHabit.mutate(h)}>
-                    <Plus size={12} /> {h.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-          {hasDaily && (
+          {s.key === 'work' ? <JobAlertsCard /> : habitsCard}
+          {hasDaily && s.key !== 'work' && (
             <section className="card">
               <div className="card-head">
                 <h2 className="card-title">Tasks</h2>
@@ -329,4 +336,62 @@ function TrainingAndBody({ part }: { part: 'training' | 'body' }) {
   const { data: h } = useHealth();
   if (!h) return null;
   return part === 'training' ? <TrainingCard h={h} /> : <BodyCard h={h} />;
+}
+
+/**
+ * The Work sphere's lead card: the work on your plate. To-dos filed to a trip (book the
+ * hotel, check in online) are logistics rather than work, so they fold into one line per
+ * trip below, still a tap away and still on time.
+ */
+function WorkTodos({ sphereId, tasks }: { sphereId: string; tasks: Task[] }) {
+  const { data: travel } = useTravel();
+  const today = todayStr();
+  const work = tasks.filter((t) => !t.tripId);
+  const byTrip = new Map<string, Task[]>();
+  for (const t of tasks) if (t.tripId) byTrip.set(t.tripId, [...(byTrip.get(t.tripId) ?? []), t]);
+  const tripTitle = (tripId: string) => travel?.trips.find((x) => x.id === tripId)?.title ?? 'a trip';
+  const lateCount = work.filter((t) => t.dueDate && t.dueDate < today).length;
+
+  return (
+    <section className="card work-todos">
+      <div className="card-head">
+        <h2 className="card-title">To-dos</h2>
+        {work.length > 0 && (
+          <span className="hint">
+            {plural(work.length, 'open', 'open')}
+            {lateCount > 0 && <span className="late"> · {lateCount} late</span>}
+          </span>
+        )}
+      </div>
+      {work.length === 0 && <p className="empty">Nothing on your plate at work. Add what you're working on.</p>}
+      <ul>
+        {work.map((t) => (
+          <TaskRow key={t.id} task={t} showSphere={false} />
+        ))}
+      </ul>
+      <AddTask sphereId={sphereId} placeholder="Add a work to-do…" />
+      {[...byTrip].map(([tripId, list]) => {
+        const next = list.find((t) => t.dueDate)?.dueDate;
+        const due = next ? dueLabel(next, today) : null;
+        return (
+          <details key={tripId} className="todo-fold">
+            <summary>
+              <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+              <Plane size={14} className="faint" aria-hidden />
+              <span className="grow clamp-1">For {tripTitle(tripId)}</span>
+              <span className={cx('todo-fold-meta', due?.late && 'late')}>
+                {plural(list.length, 'to-do')}
+                {due && ` · next ${due.text}`}
+              </span>
+            </summary>
+            <ul>
+              {list.map((t) => (
+                <TaskRow key={t.id} task={t} showSphere={false} />
+              ))}
+            </ul>
+          </details>
+        );
+      })}
+    </section>
+  );
 }
