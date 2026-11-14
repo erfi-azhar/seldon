@@ -291,7 +291,9 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       if (pal.stars > 0.01 && k < 0.95) {
         const hs = hash(i * 7 + 11, j * 13 + 5);
         if (hs > 1 - starChance * pal.stars) {
-          const twinkle = 0.6 + 0.4 * Math.sin(seconds * (1.2 + hs * 40) + hs * 300);
+          // A slow, gentle swell: each star on its own 12–30 second cycle.
+          const own = hash(i + 5, j + 211);
+          const twinkle = 0.82 + 0.18 * Math.sin(seconds * (0.21 + 0.31 * own) + own * 40);
           c = mix(c, STAR, (0.45 + 0.55 * hash(i, j + 99)) * (1 - k) * Math.min(1, pal.stars + 0.3) * twinkle);
         }
       }
