@@ -2,13 +2,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Library as LibraryIcon, Orbit, Search, Settings as SettingsIcon, Sun, Target } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Switch, useLocation } from 'wouter';
-import type { Settings as SettingsData } from '../../shared/types.ts';
+import type { Settings as SettingsData, Sphere } from '../../shared/types.ts';
 import { useAgentChat } from './agent.ts';
 import { SIGNED_OUT, useAuth, useSettings, useSpheres } from './api.ts';
 import { AgentPanel } from './components/AgentPanel.tsx';
-import { AgentOrb } from './components/Orb.tsx';
 import { Palette } from './components/Palette.tsx';
 import { Sheets } from './components/sheets.tsx';
+import { AgentOrb, Orb } from './components/Orb.tsx';
 import { Loading } from './components/ui.tsx';
 import { cx } from './lib.ts';
 import { AppContext, type AppState, type Sheet, type Toast } from './state.tsx';
@@ -153,11 +153,15 @@ function Shell({ settings }: { settings: SettingsData }) {
                 <Search size={15} />
                 <kbd>⌘K</kbd>
               </button>
-              {TABS.map((t) => (
-                <Link key={t.href} href={t.href} className={cx(t.match(location) && 'active')}>
-                  {t.label}
-                </Link>
-              ))}
+              {TABS.map((t) =>
+                t.href === '/spheres' ? (
+                  <SpheresMenu key={t.href} active={t.match(location)} location={location} spheres={spheres} />
+                ) : (
+                  <Link key={t.href} href={t.href} className={cx(t.match(location) && 'active')}>
+                    {t.label}
+                  </Link>
+                ),
+              )}
             </nav>
             <div className="topbar-right">
               <button type="button" className="icon-btn only-mobile" onClick={() => setPaletteOpen(true)} aria-label="Search and commands">
@@ -239,5 +243,63 @@ function Shell({ settings }: { settings: SettingsData }) {
         </div>
       )}
     </AppContext.Provider>
+  );
+}
+
+/** The Spheres tab, which opens a list of the spheres on hover (or keyboard focus) so
+ *  one is a single click away. Clicking the tab itself still goes to the full page. */
+function SpheresMenu({ active, location, spheres }: { active: boolean; location: string; spheres: Sphere[] }) {
+  const [open, setOpen] = useState(false);
+  const closing = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const show = () => {
+    clearTimeout(closing.current);
+    setOpen(true);
+  };
+  // A short grace period, so crossing the gap between tab and menu doesn't close it.
+  const hide = () => {
+    clearTimeout(closing.current);
+    closing.current = setTimeout(() => setOpen(false), 140);
+  };
+  useEffect(() => () => clearTimeout(closing.current), []);
+  // Wherever you end up, the menu has done its job.
+  useEffect(() => setOpen(false), [location]);
+
+  return (
+    <div
+      className="nav-menu"
+      onPointerEnter={(e) => e.pointerType === 'mouse' && show()}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && hide()}
+      onFocus={show}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && hide()}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && open) {
+          setOpen(false);
+          e.currentTarget.querySelector<HTMLElement>('a')?.focus();
+        }
+      }}
+    >
+      <Link href="/spheres" className={cx(active && 'active')} aria-haspopup="true" aria-expanded={open}>
+        Spheres
+      </Link>
+      {open && spheres.length > 0 && (
+        <div className="nav-dropdown" role="menu" aria-label="Spheres">
+          {spheres.map((s) => (
+            <Link
+              key={s.id}
+              href={`/spheres/${s.id}`}
+              role="menuitem"
+              className={cx(location.startsWith(`/spheres/${s.id}`) && 'current')}
+              onClick={() => setOpen(false)}
+            >
+              <Orb hue={s.hue} icon={s.icon} size={24} />
+              <span>{s.name}</span>
+            </Link>
+          ))}
+          <Link href="/spheres" role="menuitem" className="nav-dropdown-all" onClick={() => setOpen(false)}>
+            All spheres
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
