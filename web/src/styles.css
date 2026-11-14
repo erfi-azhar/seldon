@@ -7404,3 +7404,39 @@ form.stage-center.is-opening > :not(.vault-anchor) {
     color: oklch(0.75 0.04 80);
   }
 }
+/* Flight options fold away; an added option's button takes its flights off again. */
+.opt-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.opt-toggle-chev {
+  color: var(--ink-3);
+  transition: transform 0.18s;
+}
+.opt-toggle-chev.is-closed {
+  transform: rotate(-90deg);
+}
+.opt-choose.is-added {
+  color: var(--ink-2);
+}
+.opt-added-label .is-hover {
+  display: none;
+}
+.opt-choose.is-added:hover .opt-added-label .is-rest,
+.opt-choose.is-added:focus-visible .opt-added-label .is-rest {
+  display: none;
+}
+.opt-choose.is-added:hover .opt-added-label .is-hover,
+.opt-choose.is-added:focus-visible .opt-added-label .is-hover {
+  display: inline;
+}
+.opt-choose.is-added:hover {
+  color: var(--bad, #d14343);
+}
+.opt-choose.is-added:hover .opt-added-icon {
+  display: none;
+}

@@ -150,3 +150,45 @@ test('option legs carry their distance in miles, and choosing skips a flight alr
   assert.deepEqual(t.segments.map((s) => `${s.carrier}${s.number}`), ['SQ326', 'LH506'], 'SQ857 stays on the Shenzhen trip');
   assert.equal(getTrip(store, szx.id).segments.length, 1);
 });
+
+test('choosing an option can be taken back: its planned flights come off and the trip’s dates return', async () => {
+  const { store } = setup();
+  const { addOption, chooseOption, unchooseOption } = await import('../src/features/travel.ts');
+  const gru = createTrip(store, { title: 'São Paulo', purpose: 'work', startDate: '2026-11-29', endDate: '2026-12-12' });
+  const legs = (day: string) => [
+    { carrier: 'SQ', number: '326', fromCode: 'SIN', toCode: 'FRA', startLocal: `2026-11-${day}T12:50`, endLocal: `2026-11-${day}T19:25` },
+    { carrier: 'LH', number: '506', fromCode: 'FRA', toCode: 'GRU', startLocal: `2026-11-${day}T21:55`, endLocal: `2026-11-${Number(day) + 1}T06:00` },
+  ];
+  const sat = addOption(store, gru.id, { title: 'Saturday via Frankfurt', legs: legs('28') });
+  const satBiz = addOption(store, gru.id, { title: 'Saturday via Frankfurt', legs: legs('28').map((l) => ({ ...l, cabin: 'business' as const })) });
+  chooseOption(store, sat.id);
+  assert.equal(getTrip(store, gru.id).startDate, '2026-11-28');
+  chooseOption(store, satBiz.id); // the same flights: nothing new added
+  assert.equal(getTrip(store, gru.id).segments.length, 2);
+
+  // Another chosen option still flies them, so they stay.
+  unchooseOption(store, sat.id);
+  assert.equal(getTrip(store, gru.id).segments.length, 2);
+  assert.equal(getTrip(store, gru.id).options.find((o) => o.id === sat.id)!.chosenAt, null);
+
+  // Chose them back and take both off: flights gone, dates back.
+  chooseOption(store, sat.id);
+  unchooseOption(store, satBiz.id);
+  unchooseOption(store, sat.id);
+  const t = getTrip(store, gru.id);
+  assert.equal(t.segments.length, 0);
+  assert.equal(t.startDate, '2026-11-29');
+  assert.ok(t.options.every((o) => !o.chosenAt));
+});
+
+test('an option chosen before additions were recorded still comes off, matched by its flights', async () => {
+  const { store } = setup();
+  const { addOption, chooseOption, unchooseOption } = await import('../src/features/travel.ts');
+  const gru = createTrip(store, { title: 'São Paulo', purpose: 'work', startDate: '2026-11-29', endDate: '2026-12-12' });
+  addSegment(store, gru.id, { kind: 'flight', carrier: 'TK', number: '15', fromCode: 'IST', toCode: 'GRU', startLocal: '2026-11-29T21:00', endLocal: '2026-11-30T05:10' });
+  const o = addOption(store, gru.id, { title: 'Sunday via Frankfurt', legs: [{ carrier: 'SQ', number: '326', fromCode: 'SIN', toCode: 'FRA', startLocal: '2026-11-29T12:50', endLocal: '2026-11-29T19:25' }] });
+  chooseOption(store, o.id);
+  store.db.prepare("UPDATE trip_options SET added = '{}' WHERE id = ?").run(o.id); // as saved before this change
+  unchooseOption(store, o.id);
+  assert.deepEqual(getTrip(store, gru.id).segments.map((s) => `${s.carrier}${s.number}`), ['TK15'], 'only the planned flight goes; a flight added by hand stays');
+});
