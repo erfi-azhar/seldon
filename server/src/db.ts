@@ -424,6 +424,10 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX trip_options_by_trip ON trip_options(trip_id, position);
   `,
+  // What choosing a flight option put on its trip, so it can be taken off again.
+  `
+  ALTER TABLE trip_options ADD COLUMN added TEXT NOT NULL DEFAULT '{}';
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

@@ -928,7 +928,28 @@ const roughly = (n: number) => (n >= 1000 ? `${(Math.round(n / 100) / 10).toLoca
 function FlightOptions({ trip }: { trip: Trip }) {
   const { data: t } = useTravel();
   const choose = useWrite((id: string) => travelWrite.post(`/options/${id}/choose`));
+  const unchoose = useWrite((id: string) => travelWrite.post(`/options/${id}/unchoose`));
   const remove = useWrite((id: string) => travelWrite.del(`/options/${id}`));
+  // Folded or open, remembered per trip on this device; folded by default once an option is on the trip.
+  const foldKey = `terminus.options.${trip.id}`;
+  const [open, setOpenState] = useState(() => {
+    try {
+      const v = localStorage.getItem(foldKey);
+      if (v) return v === 'open';
+    } catch {
+      /* storage blocked */
+    }
+    return !trip.options.some((o) => o.chosenAt);
+  });
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    try {
+      localStorage.setItem(foldKey, v ? 'open' : 'closed');
+    } catch {
+      /* remembered for this visit only */
+    }
+  };
+  const chosen = trip.options.filter((o) => o.chosenAt).length;
   // How far there is still to go for the next KrisFlyer tier, to show what each option does for it.
   const kf = t?.loyalty.find((a) => a.program === 'KrisFlyer');
   const toGo = kf && kf.progress !== null && kf.progressTarget ? Math.max(0, kf.progressTarget - kf.progress) : null;
@@ -938,25 +959,38 @@ function FlightOptions({ trip }: { trip: Trip }) {
   return (
     <div className="trip-options">
       <div className="card-head">
-        <h2 className="card-title">
+        <button type="button" className="card-title opt-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
           <Route size={15} /> Flight options
-        </h2>
-        <span className="trip-section-count">{plural(trip.options.length, 'option')} · not booked</span>
+          <ChevronDown size={15} className={cx('opt-toggle-chev', !open && 'is-closed')} aria-hidden />
+        </button>
+        <span className="trip-section-count">
+          {plural(trip.options.length, 'option')} · {chosen ? `${chosen} added to the trip` : 'not booked'}
+        </span>
       </div>
-      <div className="trip-section-body">
-        <div className="opt-grid">
-          {ordered.map((o) => (
-            <OptionCard key={o.id} o={o} toGo={toGo} goal={goal} onChoose={() => choose.mutate(o.id)} onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)} busy={choose.isPending && choose.variables === o.id} />
-          ))}
+      {open && (
+        <div className="trip-section-body">
+          <div className="opt-grid">
+            {ordered.map((o) => (
+              <OptionCard
+                key={o.id}
+                o={o}
+                toGo={toGo}
+                goal={goal}
+                onToggle={() => (o.chosenAt ? unchoose.mutate(o.id) : choose.mutate(o.id))}
+                onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)}
+                busy={(choose.isPending && choose.variables === o.id) || (unchoose.isPending && unchoose.variables === o.id)}
+              />
+            ))}
+          </div>
         </div>
-      </div>
-      {choose.error && <p className="error-text">{choose.error.message}</p>}
+      )}
+      {(choose.error || unchoose.error) && <p className="error-text">{(choose.error ?? unchoose.error)!.message}</p>}
     </div>
   );
 }
 
 /** One way to make the journey: three numbers that decide it, the route as a timeline of airports, then the fine print. */
-function OptionCard({ o, toGo, goal, onChoose, onRemove, busy }: { o: FlightOption; toGo: number | null; goal: string; onChoose: () => void; onRemove: () => void; busy: boolean }) {
+function OptionCard({ o, toGo, goal, onToggle, onRemove, busy }: { o: FlightOption; toGo: number | null; goal: string; onToggle: () => void; onRemove: () => void; busy: boolean }) {
   const elite = eliteMiles(o);
   const first = o.legs[0]!;
   const last = o.legs[o.legs.length - 1]!;
@@ -1071,8 +1105,23 @@ function OptionCard({ o, toGo, goal, onChoose, onRemove, busy }: { o: FlightOpti
       )}
 
       <footer className="opt-foot">
-        <button type="button" className={cx('btn btn-sm opt-choose', o.recommended && !o.chosenAt && 'btn-primary')} disabled={!!o.chosenAt || busy} onClick={onChoose} title="Adds these flights to the trip as planned flights; book them separately">
-          {busy ? <Spinner /> : o.chosenAt ? <CheckIcon size={13} /> : <Plus size={13} />} {o.chosenAt ? 'Flights added to the trip' : 'Use these flights'}
+        <button
+          type="button"
+          className={cx('btn btn-sm opt-choose', o.recommended && !o.chosenAt && 'btn-primary', o.chosenAt && 'is-added')}
+          disabled={busy}
+          aria-pressed={!!o.chosenAt}
+          onClick={onToggle}
+          title={o.chosenAt ? 'Take these planned flights off the trip' : 'Adds these flights to the trip as planned flights; book them separately'}
+        >
+          {busy ? <Spinner /> : o.chosenAt ? <CheckIcon size={13} className="opt-added-icon" /> : <Plus size={13} />}
+          {o.chosenAt ? (
+            <span className="opt-added-label">
+              <span className="is-rest">Flights added to the trip</span>
+              <span className="is-hover">Take them off the trip</span>
+            </span>
+          ) : (
+            'Use these flights'
+          )}
         </button>
         <button type="button" className="icon-btn icon-btn-sm opt-remove" onClick={onRemove} aria-label={`Remove the option ${o.title}`} title="Remove this option">
           <Trash2 size={14} />
