@@ -5191,35 +5191,96 @@ textarea.title-input {
   font-weight: 600;
 }
 
-/* Trips ahead: one countdown card per trip, in the manner of the Ramadan card */
+/* The featured trip on Today: a countdown card in the manner of the Ramadan card, light or
+   dark with the theme, with any trip that follows within a week as a notch beneath it. */
 .trip-hero {
+  /* Light: a pale sky for work, a pale dawn for leisure. */
+  --th-bg:
+    radial-gradient(80% 120% at 100% 0%, oklch(0.86 0.09 215 / 0.85), transparent 60%),
+    radial-gradient(70% 120% at 0% 100%, oklch(0.88 0.07 260 / 0.85), transparent 60%),
+    linear-gradient(135deg, oklch(0.97 0.02 230), oklch(0.93 0.035 245));
+  --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 0 0 1px oklch(0.55 0.08 240 / 0.12), 0 18px 40px -22px oklch(0.45 0.1 240 / 0.45);
+  --th-fg: oklch(0.24 0.06 250);
+  --th-ink-2: oklch(0.36 0.05 250);
+  --th-ink-3: oklch(0.46 0.05 250);
+  --th-ink-4: oklch(0.58 0.05 250);
+  --th-line: oklch(0.35 0.08 250 / 0.13);
+  --th-chip: rgb(255 255 255 / 0.65);
+  --th-scheme: light;
   position: relative;
+  z-index: 1;
   display: grid;
   gap: 14px;
   padding: 20px 24px;
   border-radius: 26px;
   overflow: hidden;
-  color: #fff;
-  color-scheme: dark;
-  /* Rows inside (to-dos) read light on the gradient, in both themes. */
-  --ink: #fff;
-  --ink-2: rgb(255 255 255 / 0.8);
-  --ink-3: rgb(255 255 255 / 0.62);
-  --ink-4: rgb(255 255 255 / 0.45);
-  --line: rgb(255 255 255 / 0.14);
-  --line-2: rgb(255 255 255 / 0.24);
-  background:
+  color: var(--th-fg);
+  color-scheme: var(--th-scheme);
+  background: var(--th-bg);
+  box-shadow: var(--th-shadow);
+  /* Rows inside (the to-dos) take the card's ink. */
+  --ink: var(--th-fg);
+  --ink-2: var(--th-ink-2);
+  --ink-3: var(--th-ink-3);
+  --ink-4: var(--th-ink-4);
+  --line: var(--th-line);
+  --line-2: var(--th-line);
+}
+.trip-hero.is-leisure {
+  --th-bg:
+    radial-gradient(80% 120% at 100% 0%, oklch(0.88 0.09 60 / 0.85), transparent 60%),
+    radial-gradient(70% 120% at 0% 100%, oklch(0.88 0.07 15 / 0.85), transparent 60%),
+    linear-gradient(135deg, oklch(0.98 0.02 70), oklch(0.94 0.04 40));
+  --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 0 0 1px oklch(0.55 0.1 40 / 0.14), 0 18px 40px -22px oklch(0.5 0.12 40 / 0.45);
+  --th-fg: oklch(0.28 0.07 35);
+  --th-ink-2: oklch(0.4 0.06 35);
+  --th-ink-3: oklch(0.5 0.06 35);
+  --th-ink-4: oklch(0.62 0.05 35);
+  --th-line: oklch(0.4 0.09 35 / 0.14);
+}
+:root[data-theme='dark'] .trip-hero {
+  --th-bg:
     radial-gradient(80% 120% at 100% 0%, oklch(0.6 0.12 215 / 0.9), transparent 60%),
     radial-gradient(70% 120% at 0% 100%, oklch(0.45 0.11 255 / 0.9), transparent 60%),
     linear-gradient(135deg, oklch(0.34 0.08 240), oklch(0.24 0.06 255));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.3 0.1 240 / 0.8);
+  --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.3 0.1 240 / 0.8);
+  --th-fg: #fff;
+  --th-ink-2: rgb(255 255 255 / 0.8);
+  --th-ink-3: rgb(255 255 255 / 0.62);
+  --th-ink-4: rgb(255 255 255 / 0.45);
+  --th-line: rgb(255 255 255 / 0.14);
+  --th-chip: rgb(255 255 255 / 0.12);
+  --th-scheme: dark;
 }
-.trip-hero.is-leisure {
-  background:
+:root[data-theme='dark'] .trip-hero.is-leisure {
+  --th-bg:
     radial-gradient(80% 120% at 100% 0%, oklch(0.68 0.14 55 / 0.9), transparent 60%),
     radial-gradient(70% 120% at 0% 100%, oklch(0.5 0.13 15 / 0.9), transparent 60%),
     linear-gradient(135deg, oklch(0.4 0.1 30), oklch(0.28 0.07 10));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.35 0.12 30 / 0.8);
+  --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.35 0.12 30 / 0.8);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .trip-hero {
+    --th-bg:
+      radial-gradient(80% 120% at 100% 0%, oklch(0.6 0.12 215 / 0.9), transparent 60%),
+      radial-gradient(70% 120% at 0% 100%, oklch(0.45 0.11 255 / 0.9), transparent 60%),
+      linear-gradient(135deg, oklch(0.34 0.08 240), oklch(0.24 0.06 255));
+    --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.3 0.1 240 / 0.8);
+    --th-fg: #fff;
+    --th-ink-2: rgb(255 255 255 / 0.8);
+    --th-ink-3: rgb(255 255 255 / 0.62);
+    --th-ink-4: rgb(255 255 255 / 0.45);
+    --th-line: rgb(255 255 255 / 0.14);
+    --th-chip: rgb(255 255 255 / 0.12);
+    --th-scheme: dark;
+  }
+  :root:not([data-theme='light']) .trip-hero.is-leisure {
+    --th-bg:
+      radial-gradient(80% 120% at 100% 0%, oklch(0.68 0.14 55 / 0.9), transparent 60%),
+      radial-gradient(70% 120% at 0% 100%, oklch(0.5 0.13 15 / 0.9), transparent 60%),
+      linear-gradient(135deg, oklch(0.4 0.1 30), oklch(0.28 0.07 10));
+    --th-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 18px 40px -18px oklch(0.35 0.12 30 / 0.8);
+  }
 }
 .trip-hero-top {
   display: grid;
@@ -5253,11 +5314,11 @@ textarea.title-input {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
   padding-top: 14px;
-  border-top: 1px solid rgb(255 255 255 / 0.14);
+  border-top: 1px solid var(--th-line);
 }
 .trip-hero-legs > div + div {
   padding-left: 18px;
-  border-left: 1px solid rgb(255 255 255 / 0.14);
+  border-left: 1px solid var(--th-line);
 }
 .trip-hero-legs dt,
 .trip-hero-label {
@@ -5285,18 +5346,104 @@ textarea.title-input {
 }
 .trip-hero-btn {
   justify-self: start;
-  color: #fff;
-  background: rgb(255 255 255 / 0.12);
-  border-color: rgb(255 255 255 / 0.2);
+  color: inherit;
+  background: var(--th-chip);
+  border-color: var(--th-line);
 }
 .trip-hero-todos {
   display: grid;
   gap: 4px;
   padding-top: 14px;
-  border-top: 1px solid rgb(255 255 255 / 0.14);
+  border-top: 1px solid var(--th-line);
 }
 .trip-hero .add-row input {
   color: inherit;
+}
+
+/* The featured card and the notches that tuck beneath it. */
+.trip-feature {
+  display: grid;
+}
+.trip-notch {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -16px 16px 0;
+  padding: 26px 18px 12px;
+  border-radius: 0 0 20px 20px;
+  text-align: left;
+  color: oklch(0.3 0.06 250);
+  background: linear-gradient(180deg, oklch(0.9 0.04 240), oklch(0.95 0.025 240));
+  box-shadow: 0 0 0 1px oklch(0.55 0.08 240 / 0.12), 0 12px 24px -18px oklch(0.45 0.1 240 / 0.5);
+  transition: transform 0.15s, filter 0.15s;
+}
+.trip-notch + .trip-notch {
+  margin: -10px 30px 0;
+  padding-top: 20px;
+}
+.trip-notch.is-leisure {
+  color: oklch(0.32 0.07 35);
+  background: linear-gradient(180deg, oklch(0.9 0.05 45), oklch(0.96 0.025 55));
+  box-shadow: 0 0 0 1px oklch(0.55 0.1 40 / 0.14), 0 12px 24px -18px oklch(0.5 0.12 40 / 0.5);
+}
+.trip-notch:hover:not(:disabled) {
+  transform: translateY(2px);
+  filter: brightness(1.03);
+}
+.trip-notch:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 2px;
+}
+.trip-notch-label {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+.trip-notch-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+  flex: 1;
+}
+.trip-notch-body b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.trip-notch-meta {
+  font-size: 12.5px;
+  opacity: 0.7;
+}
+.trip-notch-chev {
+  flex: none;
+  opacity: 0.6;
+}
+:root[data-theme='dark'] .trip-notch {
+  color: #fff;
+  background: linear-gradient(180deg, oklch(0.24 0.05 250), oklch(0.29 0.06 240));
+  box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.08), 0 12px 24px -16px rgb(0 0 0 / 0.6);
+}
+:root[data-theme='dark'] .trip-notch.is-leisure {
+  background: linear-gradient(180deg, oklch(0.27 0.06 25), oklch(0.32 0.08 35));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .trip-notch {
+    color: #fff;
+    background: linear-gradient(180deg, oklch(0.24 0.05 250), oklch(0.29 0.06 240));
+    box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.08), 0 12px 24px -16px rgb(0 0 0 / 0.6);
+  }
+  :root:not([data-theme='light']) .trip-notch.is-leisure {
+    background: linear-gradient(180deg, oklch(0.27 0.06 25), oklch(0.32 0.08 35));
+  }
+}
+.trip-card {
+  scroll-margin-top: 84px;
 }
 .trip-todos ul {
   margin: 0;
@@ -5989,4 +6136,7 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   font-weight: 600;
   color: var(--bad);
   background: var(--bad-soft);
+}
+.trip-feature > .travel-mode {
+  z-index: 1;
 }
