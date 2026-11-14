@@ -36,7 +36,7 @@ interface Palette {
 }
 
 const PALETTES: Record<Phase, Palette> = {
-  dawn: { top: [40, 42, 96], mid: [178, 108, 146], low: [248, 190, 146], glow: [255, 160, 120], core: [255, 230, 196], glowSize: 0.34, glowStrength: 0.6,
+  dawn: { top: [40, 42, 96], mid: [178, 108, 146], low: [248, 190, 146], glow: [255, 160, 120], core: [255, 172, 84], glowSize: 0.34, glowStrength: 0.6,
     cloud: [255, 200, 186], cloudShade: [130, 86, 128], clouds: 0.5, stars: 0.3, ink: [52, 36, 66], moon: 0.7, wind: 1 },
   day: { top: [54, 120, 212], mid: [122, 182, 238], low: [214, 236, 252], glow: [255, 250, 228], core: [255, 255, 246], glowSize: 0.22, glowStrength: 0.45,
     cloud: [255, 255, 255], cloudShade: [186, 208, 236], clouds: 0.62, stars: 0, ink: [36, 54, 86], moon: 0.4, wind: 1 },
@@ -281,6 +281,8 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       const x = ((i + 0.5) / cols) * aspect;
       let c = base;
       let ink = 0;
+      // How much of this dot is the sun's disc, which stays out of the fade into the page.
+      let disc = 0;
 
       // The sun's glow, even from below the horizon.
       const dx = x - sun.x;
@@ -318,7 +320,10 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
 
       if (sun.y < HZ + SUN_R) {
         const d = Math.sqrt(d2);
-        if (d < SUN_R * 1.05) c = mix(c, pal.core, smooth(SUN_R * 1.05, SUN_R * 0.8, d));
+        if (d < SUN_R * 1.05) {
+          disc = smooth(SUN_R * 1.05, SUN_R * 0.8, d);
+          c = mix(c, pal.core, disc);
+        }
       }
 
       if (moonShows && m2 < MOON_R * MOON_R) {
@@ -362,10 +367,12 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
         continue;
       }
       const b = B4[j & 3]![i & 3]!;
-      const r = cell * 0.5 * clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22);
+      // The sun's disc is drawn with full dots, so it reads as one solid shape.
+      const r = cell * 0.5 * (clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22) * (1 - disc) + 0.96 * disc);
       if (r < 0.3) continue;
       const dot = mul(c, 0.9 + 0.25 * b);
-      ctx.fillStyle = toPage > 0 ? css(mix(dot, page, toPage), alpha) : css(dot);
+      const fadeTo = toPage * (1 - disc);
+      ctx.fillStyle = fadeTo > 0 ? css(mix(dot, page, fadeTo), alpha + (1 - alpha) * disc) : css(dot);
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, 6.2832);
       ctx.fill();
