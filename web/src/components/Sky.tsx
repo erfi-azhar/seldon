@@ -40,8 +40,9 @@ const PALETTES: Record<Phase, Palette> = {
     cloud: [255, 200, 186], cloudShade: [130, 86, 128], clouds: 0.5, stars: 0.3, ink: [52, 36, 66], moon: 0.7, wind: 1 },
   day: { top: [54, 120, 212], mid: [122, 182, 238], low: [214, 236, 252], glow: [255, 250, 228], core: [255, 255, 246], glowSize: 0.22, glowStrength: 0.45,
     cloud: [255, 255, 255], cloudShade: [186, 208, 236], clouds: 0.62, stars: 0, ink: [36, 54, 86], moon: 0.4, wind: 1 },
-  dusk: { top: [36, 28, 78], mid: [146, 64, 112], low: [252, 142, 82], glow: [255, 112, 62], core: [255, 206, 146], glowSize: 0.42, glowStrength: 0.8,
-    cloud: [255, 150, 112], cloudShade: [92, 42, 84], clouds: 0.46, stars: 0.4, ink: [36, 20, 46], moon: 0.85, wind: 0.8 },
+  // Steel blue warming to peach, the same dusk as the hill at the foot of the page (hill.ts).
+  dusk: { top: [52, 72, 104], mid: [128, 142, 160], low: [250, 186, 140], glow: [255, 150, 90], core: [255, 214, 160], glowSize: 0.36, glowStrength: 0.85,
+    cloud: [255, 196, 168], cloudShade: [92, 100, 126], clouds: 0.3, stars: 0.12, ink: [28, 34, 46], moon: 0.85, wind: 0.8 },
   evening: { top: [4, 6, 16], mid: [12, 20, 48], low: [30, 46, 90], glow: [140, 160, 224], core: [236, 232, 214], glowSize: 0.13, glowStrength: 0.3,
     cloud: [108, 120, 162], cloudShade: [30, 36, 68], clouds: 0.75, stars: 1, ink: [226, 230, 242], moon: 1, wind: 0.5 },
 };

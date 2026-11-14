@@ -37,7 +37,7 @@ interface Palette {
   frost: RGB;
 }
 
-// The Today sky's colours, except dusk: steel blue warming to peach, after the reference.
+// The Today sky's colours (components/Sky.tsx); dusk is steel blue warming to peach.
 const PALETTES: Record<Phase, Palette> = {
   dawn: { top: [40, 42, 96], mid: [178, 108, 146], low: [248, 190, 146], glow: [255, 160, 120], core: [255, 230, 196], glowSize: 0.34, glowStrength: 0.6,
     cloud: [255, 200, 186], cloudShade: [130, 86, 128], clouds: 0.4, stars: 0.25, moon: 0.7, far: [86, 66, 102], crest: [38, 32, 58], ground: [62, 56, 88], frost: [156, 136, 168] },
