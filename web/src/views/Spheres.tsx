@@ -138,7 +138,7 @@ export function SphereDetail({ id }: { id: string }) {
           <InlineEdit label="Vision" multiline className="vision" value={s.vision} placeholder={kit?.visionPrompt ?? 'What does thriving here look like?'} onSave={(v) => saveVision.mutate(v)} />
           <div className="row-wrap" style={{ marginTop: 14 }}>
             <button type="button" className="btn btn-tint btn-sm" onClick={() => ask(`Let's review my ${s.name} sphere. Read it in full, tell me honestly how it's going, and suggest what to focus on next.`)}>
-              Review with {agentName} <ArrowUpRight size={14} />
+              <span className="btn-text">Review with {agentName}</span> <ArrowUpRight size={14} />
             </button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSheet({ kind: 'sphere', id })}>
               <Pencil size={13} /> Edit

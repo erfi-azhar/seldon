@@ -18,9 +18,11 @@ export interface ChatState {
   needsModel: boolean;
   /** Activity ids the person has undone from this conversation. */
   undone: number[];
+  /** A message that could not be sent, handed back to the composer. */
+  unsent: string | null;
 }
 
-const EMPTY: ChatState = { conversationId: undefined, connectionId: undefined, messages: [], streaming: false, error: null, needsModel: false, undone: [] };
+const EMPTY: ChatState = { conversationId: undefined, connectionId: undefined, messages: [], streaming: false, error: null, needsModel: false, undone: [], unsent: null };
 
 export interface AgentChat extends ChatState {
   send: (text: string) => void;
@@ -102,6 +104,7 @@ export function useAgentChat(viewing: () => string): AgentChat {
         streaming: true,
         error: null,
         needsModel: false,
+        unsent: null,
         messages: [...s.messages, { role: 'user', parts: [{ type: 'text', text }] }, { role: 'assistant', parts: [] }],
       }));
 
@@ -125,6 +128,15 @@ export function useAgentChat(viewing: () => string): AgentChat {
           if (err instanceof ApiError && err.code === 'no_model') {
             // Nothing was sent: take the question back out and offer to connect a model.
             setState((s) => ({ ...s, needsModel: true, messages: s.messages.slice(0, -2) }));
+          } else if (err instanceof ApiError && err.status === 404 && current.current.conversationId) {
+            // The conversation was deleted (or replaced by an import) under us. Start
+            // afresh and give the message back rather than failing on every send.
+            setState((s) => ({
+              ...EMPTY,
+              connectionId: s.connectionId,
+              unsent: text,
+              error: 'That conversation no longer exists, so your message was not sent. Send it again to start a new one.',
+            }));
           } else {
             setState((s) => ({ ...s, error: err instanceof Error ? err.message : 'Something went wrong.' }));
           }
@@ -157,7 +169,15 @@ export function useAgentChat(viewing: () => string): AgentChat {
 
   const undo = useCallback(
     async (activityId: number) => {
-      await write.post(`/activity/${activityId}/undo`);
+      try {
+        await write.post(`/activity/${activityId}/undo`);
+      } catch (err) {
+        // Already undone elsewhere (409), or gone: either way there is nothing left to undo.
+        if (!(err instanceof ApiError && err.status === 409)) {
+          setState((s) => ({ ...s, error: err instanceof Error ? err.message : 'Could not undo that.' }));
+          return;
+        }
+      }
       setState((s) => ({ ...s, undone: [...s.undone, activityId] }));
       void qc.invalidateQueries();
     },

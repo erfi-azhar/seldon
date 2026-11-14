@@ -210,6 +210,12 @@ ul {
   outline-offset: 2px;
   border-radius: 6px;
 }
+/* Dialogs and the agent panel take focus only to hold it; the ring belongs on what is inside. */
+.modal:focus-visible,
+.palette:focus-visible,
+.agent:focus-visible {
+  outline: none;
+}
 ::selection {
   background: oklch(0.86 0.1 86);
   color: #1b1a18;
@@ -292,6 +298,8 @@ ul {
 }
 .app-main {
   min-width: 0;
+  /* A backstop: nothing too wide inside may widen the page (on a phone that zooms the whole UI out). */
+  overflow-x: clip;
   display: flex;
   flex-direction: column;
 }
@@ -446,6 +454,16 @@ ul {
 .btn:hover {
   border-color: var(--ink-3);
 }
+/* Text that can be long (the agent's name is up to 40 characters) shortens instead of
+   pushing the button, and the page with it, past the edge. */
+.btn {
+  max-width: 100%;
+}
+.btn-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .btn:active {
   transform: translateY(1px);
 }
@@ -549,6 +567,7 @@ ul {
 }
 .select.mini {
   width: auto;
+  max-width: 100%;
   height: 36px;
   padding-top: 0;
   padding-bottom: 0;
@@ -764,6 +783,7 @@ button.chip:hover {
 }
 
 .spinner {
+  flex: none;
   width: 16px;
   height: 16px;
   border-radius: 50%;
@@ -872,6 +892,7 @@ button.chip:hover {
   margin: 2px 0 12px;
 }
 .hero-line {
+  overflow-wrap: anywhere;
   color: var(--ink-2);
   font-size: 15.5px;
   max-width: 46ch;
@@ -990,14 +1011,17 @@ button.chip:hover {
 }
 .add-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 12px 8px 20px;
   border-top: 1px solid var(--line);
   margin-top: 8px;
 }
+/* The title keeps a readable width; when the sphere, date and Add button no longer
+   fit beside it they move to a second line instead of squeezing it to nothing. */
 .add-row input[type='text'] {
-  flex: 1;
+  flex: 1 1 180px;
   min-width: 0;
   background: transparent;
   border: 0;
@@ -1008,6 +1032,7 @@ button.chip:hover {
   color: var(--ink-3);
 }
 .add-row .mini-select {
+  width: auto;
   max-width: 130px;
   border: 0;
   background-color: transparent;
@@ -1106,6 +1131,9 @@ button.chip:hover {
   gap: 10px;
   padding: 6px 20px;
   font-size: 13.5px;
+}
+.feed-item .grow {
+  overflow-wrap: anywhere;
 }
 .feed-item .who {
   flex: none;
@@ -1248,6 +1276,7 @@ button.chip:hover {
     var(--surface);
 }
 .sphere-hero h1 {
+  overflow-wrap: anywhere;
   font-family: var(--serif);
   font-size: 52px;
   line-height: 1;
@@ -1382,6 +1411,7 @@ button.chip:hover {
   color: var(--ink-2);
 }
 .metric-value {
+  overflow-wrap: anywhere;
   font: 500 25px/1.2 var(--mono);
   letter-spacing: -0.045em;
 }
@@ -2016,7 +2046,7 @@ code,
   opacity: 0.55;
   text-decoration: line-through;
 }
-.tool span {
+.tool > span:not(.spinner) {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;

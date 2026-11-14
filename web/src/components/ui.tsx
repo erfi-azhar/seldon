@@ -1,5 +1,5 @@
 import { Check as CheckIcon, X } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { cx, hueStyle } from '../lib.ts';
 import { useApp } from '../state.tsx';
 
@@ -13,6 +13,53 @@ export function Loading() {
       <Spinner />
     </div>
   );
+}
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Dialogs open over one another, so the last modal one in the page is on top. */
+function isTopDialog(el: HTMLElement): boolean {
+  const open = document.querySelectorAll('[aria-modal="true"]');
+  return open[open.length - 1] === el;
+}
+
+/**
+ * Keyboard focus for a dialog: moves in when it opens (to `initial`, else the dialog
+ * itself), stays inside on Tab and Shift+Tab while it is the top-most modal dialog, and
+ * goes back to where it was when it closes.
+ */
+export function useDialogFocus(ref: RefObject<HTMLElement | null>, initial?: () => HTMLElement | null | undefined) {
+  const pick = useRef(initial);
+  pick.current = initial;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const opener = document.activeElement as HTMLElement | null;
+    (pick.current?.() ?? el).focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !isTopDialog(el)) return;
+      const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((n) => n.getClientRects().length > 0);
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      let next: HTMLElement | undefined;
+      if (!first || !last) next = el;
+      else if (!el.contains(active)) next = e.shiftKey ? last : first;
+      else if (e.shiftKey && (active === first || active === el)) next = last;
+      else if (!e.shiftKey && active === last) next = first;
+      if (next) {
+        e.preventDefault();
+        next.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      // Not when focus has already moved on to the page (a docked panel stays usable).
+      const active = document.activeElement;
+      if (!active || active === document.body || el.contains(active)) opener?.focus?.();
+    };
+  }, [ref]);
 }
 
 export function Modal({
@@ -29,30 +76,28 @@ export function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Focus the first field so typing works immediately; with none (yet), the dialog.
+  useDialogFocus(ref, () => ref.current?.querySelector<HTMLElement>('[data-autofocus], textarea, input, select'));
 
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      // Only the top-most dialog: Escape in the palette over a sheet must not close both.
+      if (e.key === 'Escape' && ref.current && isTopDialog(ref.current)) {
         e.stopPropagation();
         onClose();
       }
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    // Focus the first field so typing works immediately.
-    const first = ref.current?.querySelector<HTMLElement>('[data-autofocus], textarea, input, select');
-    first?.focus();
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
-      previous?.focus?.();
     };
   }, [onClose]);
 
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={cx('modal', wide && 'modal-wide')} role="dialog" aria-modal="true" aria-label={title} ref={ref}>
+      <div className={cx('modal', wide && 'modal-wide')} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
         <div className="modal-head">
           <h2>{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close">
@@ -66,12 +111,23 @@ export function Modal({
   );
 }
 
+// Controls a Field can name by giving them its id. Anything else (a group of buttons, a
+// row holding a control) names itself.
+const LABELLED = new Set<unknown>(['input', 'select', 'textarea', AutoTextarea, SphereSelect]);
+
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  const id = useId();
+  const control = isValidElement<{ id?: string; 'aria-describedby'?: string }>(children) && LABELLED.has(children.type) ? children : null;
+  const controlId = control?.props.id ?? id;
   return (
     <div className="field">
-      <label>{label}</label>
-      {children}
-      {hint && <span className="hint">{hint}</span>}
+      <label htmlFor={control ? controlId : undefined}>{label}</label>
+      {control ? cloneElement(control, { id: controlId, 'aria-describedby': hint ? `${id}-hint` : control.props['aria-describedby'] }) : children}
+      {hint && (
+        <span className="hint" id={`${id}-hint`}>
+          {hint}
+        </span>
+      )}
     </div>
   );
 }
@@ -150,12 +206,20 @@ export function InlineEdit({
 }) {
   const [draft, setDraft] = useState(value);
   const [editing, setEditing] = useState(false);
+  // blur() runs onBlur before React re-renders, so commit would still see the edited
+  // draft: Escape marks the edit as cancelled instead.
+  const cancelled = useRef(false);
   useEffect(() => {
     if (!editing) setDraft(value);
   }, [value, editing]);
 
   const commit = () => {
     setEditing(false);
+    if (cancelled.current) {
+      cancelled.current = false;
+      setDraft(value);
+      return;
+    }
     const next = draft.trim();
     if (next !== value.trim()) onSave(next);
     else setDraft(value);
@@ -172,8 +236,9 @@ export function InlineEdit({
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
-          setDraft(value);
-          setEditing(false);
+          // Only the edit is abandoned, not the sheet it sits in.
+          e.stopPropagation();
+          cancelled.current = true;
           e.currentTarget.blur();
         } else if (e.key === 'Enter' && (!multiline || e.metaKey || e.ctrlKey)) {
           e.preventDefault();
@@ -191,16 +256,18 @@ export function SphereSelect({
   allowNone = true,
   className,
   noneLabel = 'No sphere',
+  id,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
   allowNone?: boolean;
   className?: string;
   noneLabel?: string;
+  id?: string;
 }) {
   const { spheres } = useApp();
   return (
-    <select className={cx('select', className)} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)} aria-label="Sphere">
+    <select id={id} className={cx('select', className)} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)} aria-label={id ? undefined : 'Sphere'}>
       {allowNone && <option value="">{noneLabel}</option>}
       {spheres.map((s) => (
         <option key={s.id} value={s.id}>

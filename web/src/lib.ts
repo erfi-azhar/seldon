@@ -71,6 +71,36 @@ export function formatNumber(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: Math.abs(n) < 10 ? 2 : 1 });
 }
 
+const DECIMAL = (1.5).toLocaleString().replace(/\d/g, '') || '.';
+
+/**
+ * A number as typed, in either convention: "78,4" and "78.4" are both 78.4, "1,234.5"
+ * and "1.234,5" are both 1234.5. A lone separator followed by exactly three digits is
+ * read the way this browser's locale writes numbers. NaN when it is not a number.
+ */
+export function parseNumber(raw: string): number {
+  const s = raw.trim().replace(/[\s\u00a0\u202f']/g, '');
+  if (!/^[-+]?[\d.,]*\d[\d.,]*$/.test(s)) return NaN;
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  let decimal: string | null;
+  if (lastComma >= 0 && lastDot >= 0) decimal = lastComma > lastDot ? ',' : '.';
+  else if (lastComma < 0 && lastDot < 0) decimal = null;
+  else {
+    const sep = lastComma >= 0 ? ',' : '.';
+    const parts = s.split(sep);
+    // Repeated, it can only be grouping; once, it is grouping only when three digits follow.
+    decimal = parts.length > 2 || (sep !== DECIMAL && parts[1]!.length === 3) ? null : sep;
+  }
+  const [int, frac, extra] = decimal ? s.split(decimal) : [s];
+  if (extra !== undefined) return NaN;
+  if (frac !== undefined && /[.,]/.test(frac)) return NaN;
+  // Anything left is grouping, and groups are three digits.
+  const groups = int!.split(/[.,]/);
+  if (groups.slice(1).some((g) => g.length !== 3)) return NaN;
+  return Number(frac === undefined ? groups.join('') : `${groups.join('')}.${frac}`);
+}
+
 export const pct = (n: number): string => `${Math.round(n * 100)}%`;
 
 export function plural(n: number, one: string, many: string = `${one}s`): string {

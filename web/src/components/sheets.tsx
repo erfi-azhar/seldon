@@ -8,7 +8,7 @@ import { useLocation } from 'wouter';
 import { CATALOG, CATALOG_BY_KEY, HORIZON_LABEL } from '../../../shared/catalog.ts';
 import type { Cadence, Direction, Goal, Habit, Horizon, Metric, Note, Task } from '../../../shared/types.ts';
 import { api, useGoal, useMetrics, useTasks, useWrite, write } from '../api.ts';
-import { cx, formatNumber, hueStyle, monthDay, pct, shortDay, todayStr, weekdayLong } from '../lib.ts';
+import { cx, formatNumber, hueStyle, monthDay, parseNumber, pct, shortDay, todayStr, weekdayLong } from '../lib.ts';
 import { useApp, type Sheet } from '../state.tsx';
 import { SPHERE_ICONS, SphereIcon } from './Icon.tsx';
 import { Orb } from './Orb.tsx';
@@ -175,9 +175,9 @@ function GoalSheet({ id, onClose }: { id: string; onClose: () => void }) {
               </select>
               {goal.metricId && (
                 <div className="row">
-                  <input className="input num" inputMode="decimal" aria-label="Starting value" title="Starting value" defaultValue={goal.startValue ?? ''} key={`s${goal.startValue}`} placeholder="From" onBlur={(e) => e.target.value !== '' && patch.mutate({ startValue: Number(e.target.value) })} />
+                  <input className="input num" inputMode="decimal" aria-label="Starting value" title="Starting value" defaultValue={goal.startValue ?? ''} key={`s${goal.startValue}`} placeholder="From" onBlur={(e) => Number.isFinite(parseNumber(e.target.value)) && patch.mutate({ startValue: parseNumber(e.target.value) })} />
                   <span className="faint">→</span>
-                  <input className="input num" inputMode="decimal" aria-label="Target value" title="Target value" defaultValue={goal.targetValue ?? ''} key={`t${goal.targetValue}`} placeholder="To" onBlur={(e) => e.target.value !== '' && patch.mutate({ targetValue: Number(e.target.value) })} />
+                  <input className="input num" inputMode="decimal" aria-label="Target value" title="Target value" defaultValue={goal.targetValue ?? ''} key={`t${goal.targetValue}`} placeholder="To" onBlur={(e) => Number.isFinite(parseNumber(e.target.value)) && patch.mutate({ targetValue: parseNumber(e.target.value) })} />
                 </div>
               )}
             </div>
@@ -226,7 +226,7 @@ function NewGoalSheet({ sphereId, onClose }: { sphereId?: string; onClose: () =>
   return (
     <Modal title="New goal" onClose={onClose}>
       <form className="stack" style={{ gap: 16 }} onSubmit={submit}>
-        <AutoTextarea className="title-input" value={title} onChange={setTitle} placeholder={ideas[0] ?? 'What do you want to be true?'} maxLength={200} data-autofocus onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()} />
+        <AutoTextarea className="title-input" value={title} onChange={setTitle} placeholder={ideas[0] ?? 'What do you want to be true?'} maxLength={200} aria-label="Goal" data-autofocus onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()} />
         <div className="field-row">
           <Field label="Sphere">
             <SphereSelect value={sphere} onChange={setSphere} allowNone={false} />
@@ -267,7 +267,9 @@ function NewGoalSheet({ sphereId, onClose }: { sphereId?: string; onClose: () =>
 // ── Task ────────────────────────────────────────────────────────────────────
 
 function TaskSheet({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data: task, isError } = useQuery({ queryKey: ['task', id], queryFn: () => api<Task>('GET', `/tasks/${id}`), retry: false });
+  // gcTime 0: the form copies what it is given once, so never hand it a cached copy
+  // that may have changed since the sheet was last open.
+  const { data: task, isError } = useQuery({ queryKey: ['task', id], queryFn: () => api<Task>('GET', `/tasks/${id}`), retry: false, gcTime: 0 });
   if (isError) return <Modal title="Task" onClose={onClose}><p className="muted">This task no longer exists.</p></Modal>;
   if (!task) return <Modal title="Task" onClose={onClose}><Loading /></Modal>;
   return <TaskForm key={task.id} task={task} onClose={onClose} />;
@@ -280,6 +282,16 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
   const [dueDate, setDueDate] = useState(task.dueDate ?? '');
   const save = useWrite((body: object) => write.patch(`/tasks/${task.id}`, body));
   const remove = useWrite(() => write.del(`/tasks/${task.id}`));
+  // Send only what was edited here, so a change made elsewhere meanwhile survives.
+  const saveEdits = () => {
+    const body: Partial<Task> = {};
+    if (title !== task.title) body.title = title;
+    if (notes !== task.notes) body.notes = notes;
+    if (sphereId !== task.sphereId) body.sphereId = sphereId;
+    if ((dueDate || null) !== task.dueDate) body.dueDate = dueDate || null;
+    if (Object.keys(body).length === 0) onClose();
+    else save.mutate(body, { onSuccess: onClose });
+  };
 
   return (
     <Modal
@@ -292,7 +304,7 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
             <button className="btn btn-ghost btn-sm" onClick={() => save.mutate({ done: !task.done }, { onSuccess: onClose })}>
               {task.done ? 'Reopen' : 'Mark done'}
             </button>
-            <button className="btn btn-primary btn-sm" disabled={!title.trim()} onClick={() => save.mutate({ title, notes, sphereId, dueDate: dueDate || null }, { onSuccess: onClose })}>
+            <button className="btn btn-primary btn-sm" disabled={!title.trim()} onClick={saveEdits}>
               Save
             </button>
           </div>
@@ -319,7 +331,7 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
 // ── Note ────────────────────────────────────────────────────────────────────
 
 function NoteSheet({ id, sphereId, onClose }: { id?: string; sphereId?: string; onClose: () => void }) {
-  const { data: note, isError } = useQuery({ queryKey: ['note', id], queryFn: () => api<Note>('GET', `/notes/${id}`), enabled: !!id, retry: false });
+  const { data: note, isError } = useQuery({ queryKey: ['note', id], queryFn: () => api<Note>('GET', `/notes/${id}`), enabled: !!id, retry: false, gcTime: 0 });
   if (id && isError) return <Modal title="Note" onClose={onClose}><p className="muted">This note no longer exists.</p></Modal>;
   if (id && !note) return <Modal title="Note" onClose={onClose}><Loading /></Modal>;
   return <NoteForm note={note ?? null} sphereId={sphereId} onClose={onClose} />;
@@ -331,9 +343,19 @@ function NoteForm({ note, sphereId, onClose }: { note: Note | null; sphereId?: s
   const [body, setBody] = useState(note?.body ?? '');
   const [url, setUrl] = useState(note?.url ?? '');
   const [sphere, setSphere] = useState<string | null>(note?.sphereId ?? sphereId ?? null);
-  const save = useWrite(() => {
-    if (journal) return write.put(`/journal/${note!.date}`, { body });
-    const payload = { title, body, url, sphereId: sphere };
+  // As with tasks, an existing note gets only the fields edited here.
+  const edits = (): Partial<Note> => {
+    if (!note) return { title, body, url, sphereId: sphere };
+    const changed: Partial<Note> = {};
+    if (body !== note.body) changed.body = body;
+    if (journal) return changed;
+    if (title !== note.title) changed.title = title;
+    if (url !== note.url) changed.url = url;
+    if (sphere !== note.sphereId) changed.sphereId = sphere;
+    return changed;
+  };
+  const save = useWrite((payload: Partial<Note>) => {
+    if (journal) return write.put(`/journal/${note!.date}`, payload);
     return note ? write.patch(`/notes/${note.id}`, payload) : write.post('/notes', payload);
   });
   const remove = useWrite(() => (journal ? write.put(`/journal/${note!.date}`, { body: '' }) : write.del(`/notes/${note!.id}`)));
@@ -355,7 +377,13 @@ function NoteForm({ note, sphereId, onClose }: { note: Note | null; sphereId?: s
               </button>
             )}
           </div>
-          <button className="btn btn-primary btn-sm" disabled={empty || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+          <button className="btn btn-primary btn-sm" disabled={empty || save.isPending}
+            onClick={() => {
+              const payload = edits();
+              if (Object.keys(payload).length === 0) onClose();
+              else save.mutate(payload, { onSuccess: onClose });
+            }}
+          >
             Save
           </button>
         </>
@@ -392,7 +420,7 @@ function NoteForm({ note, sphereId, onClose }: { note: Note | null; sphereId?: s
           {weekdayLong(note!.date!)}, {monthDay(note!.date!)}
         </h3>
       ) : (
-        <AutoTextarea className="title-input" value={title} onChange={setTitle} placeholder="Title" maxLength={200} data-autofocus={note ? undefined : true} onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()} />
+        <AutoTextarea className="title-input" value={title} onChange={setTitle} placeholder="Title" aria-label="Title" maxLength={200} data-autofocus={note ? undefined : true} onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()} />
       )}
       <AutoTextarea
         className="textarea"
@@ -407,7 +435,7 @@ function NoteForm({ note, sphereId, onClose }: { note: Note | null; sphereId?: s
         <div className="field-row">
           <Field label="Link">
             <div className="row">
-              <input className="input" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
+              <input className="input" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" aria-label="Link" />
               {/^https?:\/\//i.test(url.trim()) && (
                 <a className="icon-btn" href={url.trim()} target="_blank" rel="noopener noreferrer" aria-label="Open link in a new tab" title="Open link">
                   <ExternalLink size={16} />
@@ -558,7 +586,7 @@ function NewSphereSheet({ onClose }: { onClose: () => void }) {
 // ── Habit & metric ──────────────────────────────────────────────────────────
 
 function HabitSheet({ sphereId, id, onClose }: { sphereId: string; id?: string; onClose: () => void }) {
-  const { data: existing, isError } = useQuery({ queryKey: ['habit', id], queryFn: () => api<Habit>('GET', `/habits/${id}?date=${todayStr()}`), enabled: !!id, retry: false });
+  const { data: existing, isError } = useQuery({ queryKey: ['habit', id], queryFn: () => api<Habit>('GET', `/habits/${id}?date=${todayStr()}`), enabled: !!id, retry: false, gcTime: 0 });
   if (id && isError) return <Modal title="Habit" onClose={onClose}><p className="muted">This habit no longer exists.</p></Modal>;
   if (id && !existing) return <Modal title="Habit" onClose={onClose}><Loading /></Modal>;
   return <HabitForm key={existing?.id ?? 'new'} habit={existing} sphereId={sphereId} onClose={onClose} />;

@@ -4,7 +4,7 @@ import { ArrowDownRight, ArrowUpRight, Flame, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react';
 import type { Goal, Habit, Metric, Task } from '../../../shared/types.ts';
 import { useWrite, write } from '../api.ts';
-import { addDays, cx, dueLabel, formatNumber, hueStyle, parseDay, pct, relativeDay, todayStr } from '../lib.ts';
+import { addDays, cx, dueLabel, formatNumber, hueStyle, parseDay, parseNumber, pct, relativeDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { Check, ProgressBar, SphereSelect } from './ui.tsx';
 
@@ -24,10 +24,12 @@ export function TaskRow({ task, showSphere = true }: { task: Task; showSphere?: 
       <Check checked={done} onChange={(next) => toggle.mutate(next)} label={`${done ? 'Reopen' : 'Complete'}: ${task.title}`} />
       <button type="button" className="task-title" style={{ textAlign: 'left' }} onClick={() => openSheet({ kind: 'task', id: task.id })}>
         {task.title}
+        {/* The dot says which sphere by colour alone; say it in words as well. */}
+        {showSphere && s && <span className="sr-only">, {s.name}</span>}
       </button>
       <span className="task-meta">
         {due && <span className={cx(due.late && 'late')}>{due.text}</span>}
-        {showSphere && s && <span className="dot" title={s.name} />}
+        {showSphere && s && <span className="dot" title={s.name} aria-hidden />}
       </span>
     </li>
   );
@@ -141,8 +143,8 @@ export function MetricCard({ metric }: { metric: Metric }) {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const value = Number(draft.replace(/,/g, ''));
-    if (draft.trim() === '' || !Number.isFinite(value)) return;
+    const value = parseNumber(draft);
+    if (!Number.isFinite(value)) return;
     log.mutate(value);
     setDraft('');
   };

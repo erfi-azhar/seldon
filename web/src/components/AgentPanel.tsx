@@ -9,7 +9,7 @@ import type { AgentChat } from '../agent.ts';
 import { useConversations, useWrite, write } from '../api.ts';
 import { cx, timeAgo } from '../lib.ts';
 import { AgentOrb } from './Orb.tsx';
-import { AutoTextarea, Spinner } from './ui.tsx';
+import { AutoTextarea, Spinner, useDialogFocus } from './ui.tsx';
 
 // Model output is untrusted text: render Markdown, then strip anything active.
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -71,8 +71,28 @@ function Message({ message, live, chat }: { message: ChatMessage; live: boolean;
   );
 }
 
+// Matches the stylesheet: below this the panel floats over the page instead of docking.
+const FLOATING = '(max-width: 1180px)';
+
+function useFloating(): boolean {
+  const [floating, setFloating] = useState(() => window.matchMedia(FLOATING).matches);
+  useEffect(() => {
+    const query = window.matchMedia(FLOATING);
+    const onChange = () => setFloating(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return floating;
+}
+
 export function AgentPanel({ chat, settings, onClose }: { chat: AgentChat; settings: Settings; onClose: () => void }) {
   const [draft, setDraft] = useState('');
+  const panel = useRef<HTMLElement>(null);
+  const floating = useFloating();
+  // Docked, go straight to the composer. Floating over the page on a phone or tablet,
+  // focus the panel itself: it is announced and Tab starts inside it, without the
+  // on-screen keyboard jumping up over the conversation.
+  useDialogFocus(panel, () => (floating ? null : panel.current?.querySelector<HTMLTextAreaElement>('.composer textarea:not(:disabled)')));
   const [showHistory, setShowHistory] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -106,12 +126,27 @@ export function AgentPanel({ chat, settings, onClose }: { chat: AgentChat; setti
     setDraft('');
   };
 
-  const needsModel = chat.needsModel || !connected;
+  // From settings, not chat.needsModel: that is set by a failed send and would keep the
+  // panel locked after a model is connected, with nothing left in it able to clear it.
+  const needsModel = !connected;
+
+  // A message the server turned away comes back to the composer.
+  useEffect(() => {
+    if (chat.unsent) setDraft((d) => d || chat.unsent!);
+  }, [chat.unsent]);
 
   return (
     <>
       <div className="agent-scrim" onClick={onClose} />
-      <aside className="agent" aria-label={`${agentName}, your agent`}>
+      <aside
+        className="agent"
+        aria-label={`${agentName}, your agent`}
+        ref={panel}
+        tabIndex={-1}
+        // Over the page it behaves as a dialog, and keeps Tab inside.
+        role={floating ? 'dialog' : undefined}
+        aria-modal={floating ? true : undefined}
+      >
         <header className="agent-head">
           <AgentOrb size={30} thinking={chat.streaming} />
           <div className="grow">
@@ -167,7 +202,12 @@ export function AgentPanel({ chat, settings, onClose }: { chat: AgentChat; setti
                   <span className="faint" style={{ fontSize: 12 }}>
                     {timeAgo(c.updatedAt)}
                   </span>
-                  <button className="icon-btn icon-btn-sm" aria-label={`Delete conversation: ${c.title}`} onClick={() => removeConversation.mutate(c.id)}>
+                  <button className="icon-btn icon-btn-sm" aria-label={`Delete conversation: ${c.title}`} onClick={() => {
+                      // Deleting the open conversation: let go of it, or every later message would go to it.
+                      if (c.id === chat.conversationId) chat.reset();
+                      removeConversation.mutate(c.id);
+                    }}
+                  >
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -204,7 +244,7 @@ export function AgentPanel({ chat, settings, onClose }: { chat: AgentChat; setti
               {chat.messages.map((m, i) => (
                 <Message key={i} message={m} live={chat.streaming && i === chat.messages.length - 1} chat={chat} />
               ))}
-              {chat.needsModel && (
+              {needsModel && (
                 <div className="agent-error">
                   No model is connected. <Link href="/settings" className="link" onClick={onClose}>Connect one in Settings</Link>.
                 </div>

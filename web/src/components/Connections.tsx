@@ -291,7 +291,7 @@ export function McpConnections() {
           </Field>
           <Field label="Server URL">
             <div className="row">
-              <input className="input" value={custom.url} onChange={(e) => setCustom({ ...custom, url: e.target.value })} placeholder="https://…/mcp" />
+              <input className="input" value={custom.url} onChange={(e) => setCustom({ ...custom, url: e.target.value })} placeholder="https://…/mcp" aria-label="Server URL" />
               <button type="submit" className="btn btn-sm" disabled={!custom.name.trim() || !custom.url.trim()}>
                 Add
               </button>

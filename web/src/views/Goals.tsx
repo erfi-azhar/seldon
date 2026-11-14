@@ -53,7 +53,7 @@ export function Goals() {
                 Set a goal
               </button>
               <button type="button" className="btn" onClick={() => ask('I want to set a new goal. Help me think it through, one question at a time.')}>
-                Think it through with {agentName}
+                <span className="btn-text">Think it through with {agentName}</span>
               </button>
             </div>
           )}

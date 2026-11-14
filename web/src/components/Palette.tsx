@@ -8,6 +8,7 @@ import { useSearch, useWrite, write } from '../api.ts';
 import { hueStyle } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { SphereIcon } from './Icon.tsx';
+import { useDialogFocus } from './ui.tsx';
 
 interface Item {
   id: string;
@@ -35,7 +36,20 @@ export function Palette({ onClose }: { onClose: () => void }) {
   const [debounced, setDebounced] = useState('');
   const [index, setIndex] = useState(0);
   const list = useRef<HTMLDivElement>(null);
-  const addTask = useWrite((title: string) => write.post('/tasks', { title }));
+  const dialog = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useDialogFocus(dialog, () => input.current);
+  // The palette closes before the task is saved, and per-call callbacks die with it: say
+  // how it went from inside the write itself.
+  const addTask = useWrite(async (title: string) => {
+    try {
+      await write.post('/tasks', { title });
+      toast({ message: 'Task added.' });
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : 'Could not add the task.' });
+      throw err;
+    }
+  });
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 140);
@@ -77,12 +91,12 @@ export function Palette({ onClose }: { onClose: () => void }) {
       },
     }));
     return [
-      { id: 'a-task', group: 'Do', label: `Add task: ${q}`, icon: <Plus size={15} />, run: () => addTask.mutate(q, { onSuccess: () => toast({ message: 'Task added.' }) }) },
+      { id: 'a-task', group: 'Do', label: `Add task: ${q}`, icon: <Plus size={15} />, run: () => addTask.mutate(q) },
       { id: 'a-ask', group: 'Do', label: `Ask ${agentName}: ${q}`, icon: <Sparkles size={15} />, run: () => ask(q) },
       ...found,
       ...[...pages, ...create].filter((p) => p.label.toLowerCase().includes(lower)),
     ];
-  }, [query, hits, spheres, sphere, navigate, openSheet, ask, agentName, addTask, toast]);
+  }, [query, hits, spheres, sphere, navigate, openSheet, ask, agentName, addTask]);
 
   useEffect(() => setIndex(0), [query]);
   useEffect(() => {
@@ -98,11 +112,26 @@ export function Palette({ onClose }: { onClose: () => void }) {
   let lastGroup = '';
   return (
     <div className="scrim palette-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="palette" role="dialog" aria-modal="true" aria-label="Search and commands">
+      <div
+        className="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search and commands"
+        ref={dialog}
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            // Stop here: a sheet underneath (or the agent panel) would close on it too.
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+          }
+        }}
+      >
         <div className="palette-input">
           <Search size={18} />
           <input
-            autoFocus
+            ref={input}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Search, jump, capture, or ask ${agentName}…`}
@@ -120,9 +149,6 @@ export function Palette({ onClose }: { onClose: () => void }) {
               } else if (e.key === 'Enter') {
                 e.preventDefault();
                 choose(items[index]);
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                onClose();
               }
             }}
           />

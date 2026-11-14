@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
@@ -30,35 +31,106 @@ function SphereStrip({ overview }: { overview: Overview }) {
   );
 }
 
+// Text typed into a day's journal that the server has not confirmed yet. Outlives the
+// component, so leaving Today with a failed save doesn't throw the words away.
+const unsaved = new Map<string, string>();
+
 function Journal({ date, initial }: { date: string; initial: string }) {
-  const [text, setText] = useState(initial);
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const dirty = useRef(false);
+  const qc = useQueryClient();
+  const [text, setText] = useState(() => unsaved.get(date) ?? initial);
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+  const dirty = useRef(unsaved.has(date));
+  const inFlight = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef(text);
   latest.current = text;
-  const save = useWrite((body: string) => write.put(`/journal/${date}`, { body }));
+  const confirmed = (body: string) => {
+    if (unsaved.get(date) === body) unsaved.delete(date);
+  };
+  const save = useWrite(async (body: string) => {
+    inFlight.current = true;
+    try {
+      const result = await write.put(`/journal/${date}`, { body });
+      confirmed(body);
+      return result;
+    } finally {
+      inFlight.current = false;
+    }
+  });
 
-  // Pick up changes made elsewhere (the agent writing an entry) unless mid-edit.
+  // Pick up changes made elsewhere (the agent writing an entry) unless mid-edit. While a
+  // save is out, an overview fetched before it landed would bring back the older text.
   useEffect(() => {
-    if (!dirty.current) setText(initial);
+    if (!dirty.current && !inFlight.current) setText(initial);
   }, [initial]);
 
   const flush = () => {
     clearTimeout(timer.current);
     if (!dirty.current) return;
+    // One save at a time, so they land in order; this one goes next.
+    if (inFlight.current) {
+      timer.current = setTimeout(flush, 300);
+      return;
+    }
     dirty.current = false;
     setStatus('saving');
-    save.mutate(latest.current, { onSuccess: () => setStatus('saved'), onError: () => setStatus('idle') });
+    save.mutate(latest.current, {
+      onSuccess: () => setStatus(dirty.current ? 'idle' : 'saved'),
+      onError: () => {
+        // Keep the text and try again: shortly, on blur, and on the way out.
+        dirty.current = true;
+        setStatus('failed');
+        timer.current = setTimeout(flush, 5000);
+      },
+    });
   };
-  // Save on the way out.
-  useEffect(() => flush, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Leaving Today, hiding the tab or closing it: send what is left in a request that
+  // outlives the page (keepalive caps the body at 64 KB, so long entries go normally).
+  const sendNow = () => {
+    clearTimeout(timer.current);
+    if (!dirty.current) return;
+    dirty.current = false;
+    const body = latest.current;
+    const payload = JSON.stringify({ body });
+    setStatus('saving');
+    fetch(`/api/journal/${date}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: payload,
+      credentials: 'same-origin',
+      keepalive: payload.length < 60_000,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        confirmed(body);
+        setStatus('saved');
+        void qc.invalidateQueries({ queryKey: ['overview'] });
+      })
+      .catch(() => {
+        dirty.current = true;
+        setStatus('failed');
+      });
+  };
+
+  useEffect(() => {
+    // Words left over from a save that failed before: try them again.
+    if (dirty.current) flush();
+    const onHide = () => document.visibilityState === 'hidden' && sendNow();
+    window.addEventListener('pagehide', sendNow);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', sendNow);
+      document.removeEventListener('visibilitychange', onHide);
+      sendNow();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <section className="card">
       <div className="card-head">
         <h2 className="card-title">Journal</h2>
-        <span className="saved">{save.isError ? 'Could not save' : status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : ''}</span>
+        <span className="saved">{status === 'failed' ? 'Could not save — will try again' : status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : ''}</span>
       </div>
       <textarea
         className="journal"
@@ -67,8 +139,9 @@ function Journal({ date, initial }: { date: string; initial: string }) {
         aria-label="Today's journal"
         onChange={(e) => {
           setText(e.target.value);
+          unsaved.set(date, e.target.value);
           dirty.current = true;
-          setStatus('idle');
+          if (status !== 'failed') setStatus('idle');
           clearTimeout(timer.current);
           timer.current = setTimeout(flush, 900);
         }}
@@ -80,7 +153,7 @@ function Journal({ date, initial }: { date: string; initial: string }) {
 
 export function ActivityFeed({ items }: { items: Activity[] }) {
   const undo = useWrite((id: number) => write.post(`/activity/${id}/undo`));
-  const { agentName } = useApp();
+  const { agentName, toast } = useApp();
   return (
     <ul>
       {items.map((a) => (
@@ -90,7 +163,7 @@ export function ActivityFeed({ items }: { items: Activity[] }) {
           </span>
           <span className="grow">{a.summary}</span>
           {a.actor === 'agent' && a.undoable && (
-            <button type="button" className="link" style={{ fontSize: 12.5 }} onClick={() => undo.mutate(a.id)}>
+            <button type="button" className="link" style={{ fontSize: 12.5 }} onClick={() => undo.mutate(a.id, { onError: (e) => toast({ message: e.message }) })}>
               Undo
             </button>
           )}
@@ -138,7 +211,7 @@ export function Today() {
           <NextPrayerPill />
           <TravelPill />
           <button type="button" className="btn" onClick={() => ask('Help me plan today. Look at what is due, my habits and how each sphere has been going, then suggest a realistic plan.')}>
-          Plan today with {agentName} <ArrowUpRight size={15} />
+            <span className="btn-text">Plan today with {agentName}</span> <ArrowUpRight size={15} />
           </button>
         </div>
       </header>
