@@ -879,6 +879,27 @@ function TripTodos({ trip, past = false }: { trip: Trip; past?: boolean }) {
   );
 }
 
+/** Whether the trip card's to-dos are shown: a per-device preference, remembered when the browser allows. */
+function useTodosShown(): [boolean, (v: boolean) => void] {
+  const KEY = 'terminus.tripTodos';
+  const [shown, setShown] = useState(() => {
+    try {
+      return localStorage.getItem(KEY) !== 'hidden';
+    } catch {
+      return true;
+    }
+  });
+  const set = (v: boolean) => {
+    setShown(v);
+    try {
+      localStorage.setItem(KEY, v ? 'shown' : 'hidden');
+    } catch {
+      /* private mode: remembered for this visit only */
+    }
+  };
+  return [shown, set];
+}
+
 const weekdayShort = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
 /** One trip ahead, in the manner of the Ramadan countdown: days to go, the way out and back, then what is left to do. */
@@ -891,30 +912,26 @@ function TripCountdown({ trip }: { trip: Trip }) {
   const stays = trip.segments.filter((s) => s.kind === 'stay');
   const out = flights[0];
   const back = flights.length > 1 ? flights[flights.length - 1] : undefined;
+  const openTodos = trip.todos.filter((x) => !x.done).length;
+  const [showTodos, toggleTodos] = useTodosShown();
   const leg = (s: Segment) => `${`${s.carrier} ${s.number}`.trim()} · ${s.startLocal.slice(11, 16)} from ${s.fromCode || s.fromName}`;
-  const summary = [
-    trip.purpose === 'work' ? 'Work trip' : 'Leisure',
-    flights.length || stays.length ? `${plural(flights.length, 'flight')}, ${plural(stays.length, 'stay')}` : 'nothing booked yet',
-    trip.itinerary.length ? `${plural(trip.itinerary.length, 'thing')} planned` : 'no plan yet',
-  ].join(' · ');
 
   return (
     <section className={cx('trip-hero', trip.purpose === 'work' ? 'is-work' : 'is-leisure')}>
-      <div className="trip-hero-top">
-        <div className="trip-hero-head">
-          {days > 0 ? (
-            <>
-              <span className="trip-hero-count num">{days}</span>
-              <b>
-                {days === 1 ? 'day' : 'days'} until {trip.title}
-              </b>
-            </>
-          ) : (
-            <b>{trip.title} starts today</b>
-          )}
-          <PlaneTakeoff size={22} className="trip-hero-icon" />
-        </div>
-        <p className="trip-hero-note">{summary}</p>
+      <div className="trip-hero-head">
+        {days > 0 ? (
+          <>
+            <span className="trip-hero-count num">{days}</span>
+            <b>
+              {days === 1 ? 'day' : 'days'} until {trip.title}
+            </b>
+          </>
+        ) : (
+          <b>{trip.title} starts today</b>
+        )}
+        <span className="trip-hero-tag">
+          <PlaneTakeoff size={13} aria-hidden /> {trip.purpose === 'work' ? 'Work' : 'Personal'}
+        </span>
       </div>
       <dl className="trip-hero-legs">
         <div>
@@ -934,9 +951,12 @@ function TripCountdown({ trip }: { trip: Trip }) {
         </button>
       )}
       {draft.error && <p className="trip-hero-note">{draft.error.message}</p>}
-      <div className="trip-hero-todos">
-        <div className="trip-hero-label">To do</div>
-        <TripTodos trip={trip} />
+      <div className={cx('trip-hero-todos', !showTodos && 'is-collapsed')}>
+        <button type="button" className="trip-hero-label trip-hero-toggle" aria-expanded={showTodos} onClick={() => toggleTodos(!showTodos)}>
+          To do{openTodos > 0 && <span className="trip-hero-badge num">{openTodos}</span>}
+          <ChevronDown size={14} className="trip-hero-chev" aria-hidden />
+        </button>
+        {showTodos && <TripTodos trip={trip} />}
       </div>
     </section>
   );
