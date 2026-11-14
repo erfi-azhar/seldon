@@ -7,33 +7,42 @@ import { CATALOG } from '../../../shared/catalog.ts';
 import type { Settings } from '../../../shared/types.ts';
 import { useSettings, useWrite, write } from '../api.ts';
 import { ConnectionEditor } from '../components/Brains.tsx';
-import { AgentOrb, Orb } from '../components/Orb.tsx';
+import { Orb } from '../components/Orb.tsx';
+import { playUnlock, VaultAnchor, VaultStage } from '../components/Vault.tsx';
 import { Field } from '../components/ui.tsx';
 import { hueStyle } from '../lib.ts';
 
 export function SignIn() {
   const qc = useQueryClient();
   const [passphrase, setPassphrase] = useState('');
+  const [opening, setOpening] = useState(false);
   const login = useWrite((p: string) => write.post('/auth/login', { passphrase: p }));
 
   return (
-    <main className="stage">
+    <main className="stage stage-vault">
+      <VaultStage scene="hover" />
       <form
-        className="stage-inner"
+        className={`stage-inner stage-center${opening ? ' is-opening' : ''}`}
         style={{ maxWidth: 380 }}
         onSubmit={(e) => {
           e.preventDefault();
-          login.mutate(passphrase, { onSuccess: () => void qc.invalidateQueries() });
+          login.mutate(passphrase, {
+            // The vault drops and opens; the next screen appears behind its light.
+            onSuccess: () => {
+              setOpening(true);
+              void playUnlock().then(() => qc.invalidateQueries());
+            },
+          });
         }}
       >
-        <AgentOrb size={54} />
+        <VaultAnchor className="vault-anchor-signin" />
         <h1>Terminus</h1>
         <Field label="Passphrase">
-          <input className="input" type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoFocus autoComplete="current-password" />
+          <input className="input" type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoFocus autoComplete="current-password" disabled={opening} />
         </Field>
         {login.error && <p className="error-text">{login.error.message}</p>}
         <div>
-          <button type="submit" className="btn btn-primary" disabled={!passphrase || login.isPending}>
+          <button type="submit" className="btn btn-primary" disabled={!passphrase || login.isPending || opening}>
             Unlock
           </button>
         </div>
@@ -60,9 +69,11 @@ export function Onboarding({ settings }: { settings: Settings }) {
     });
 
   return (
-    <main className="stage">
+    <main className="stage stage-vault">
+      {/* The vault stands open on the names step; after that its light becomes Seldon. */}
+      <VaultStage scene={step === 0 ? 'open' : 'figure'} />
       <div className="stage-inner">
-        <div className="steps" aria-hidden>
+        <div className="steps stage-center" aria-hidden>
           {[0, 1, 2].map((i) => (
             <i key={i} className={i <= step ? 'on' : ''} />
           ))}
@@ -70,9 +81,9 @@ export function Onboarding({ settings }: { settings: Settings }) {
 
         {step === 0 && (
           <form className="stack" style={{ gap: 22 }} onSubmit={(e) => { e.preventDefault(); setStep(1); }}>
-            <AgentOrb size={58} />
-            <h1>A place for your whole life — and someone to help you tend it.</h1>
-            <p className="lede">Terminus runs on your machine and keeps everything in one file you own. An agent lives here with you: it can read what you track, capture what you tell it, and help you see what needs attention.</p>
+            <VaultAnchor className="vault-anchor-open" />
+            <h1 className="stage-center">A place for your whole life — and someone to help you tend it.</h1>
+            <p className="lede stage-center">Terminus runs on your machine and keeps everything in one file you own. An agent lives here with you: it can read what you track, capture what you tell it, and help you see what needs attention.</p>
             <div className="field-row">
               <Field label="What should it call you?">
                 <input className="input" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={80} autoFocus placeholder="Your first name" />
@@ -91,8 +102,9 @@ export function Onboarding({ settings }: { settings: Settings }) {
 
         {step === 1 && (
           <>
-            <h1>Which parts of life do you want to tend?</h1>
-            <p className="lede">These are your spheres. Each gets its own goals, habits and numbers. Start with the ones that matter now — you can add, rename or archive them whenever you like.</p>
+            <VaultAnchor className="vault-anchor-figure" />
+            <h1 className="stage-center">Which parts of life do you want to tend?</h1>
+            <p className="lede stage-center">These are your spheres. Each gets its own goals, habits and numbers. Start with the ones that matter now — you can add, rename or archive them whenever you like.</p>
             <div className="pick-grid">
               {CATALOG.map((c) => (
                 <button key={c.key} type="button" className="pick tint" style={hueStyle(c.hue)} aria-pressed={picked.has(c.key)} onClick={() => toggle(c.key)}>
@@ -117,8 +129,9 @@ export function Onboarding({ settings }: { settings: Settings }) {
 
         {step === 2 && (
           <>
-            <h1>Give {agentName.trim() || 'Seldon'} a mind.</h1>
-            <p className="lede">Pick the model it thinks with. A local one keeps every word on this machine; a hosted one is sharper but sends your conversations to that provider. You can change this later, or skip it and use Terminus on its own.</p>
+            <VaultAnchor className="vault-anchor-figure" />
+            <h1 className="stage-center">Give {agentName.trim() || 'Seldon'} a mind.</h1>
+            <p className="lede stage-center">Pick the model it thinks with. A local one keeps every word on this machine; a hosted one is sharper but sends your conversations to that provider. You can change this later, or skip it and use Terminus on its own.</p>
             <ConnectionEditor connection={live.connections[0]} />
             {finish.error && <p className="error-text">{finish.error.message}</p>}
             <div className="row">
