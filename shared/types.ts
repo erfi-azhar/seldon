@@ -83,6 +83,29 @@ export interface Task {
   createdAt: string;
 }
 
+/** One next step Seldon suggests for a task, with what you can do about it in a tap. */
+export interface FollowupStep {
+  title: string;
+  detail: string;
+  /** Hand this to Seldon: the button's label and what it is asked to do. */
+  ask: { label: string; prompt: string } | null;
+  /** Add this as a task of its own. */
+  task: { title: string; dueDate: string | null } | null;
+  /** The task above has been added. */
+  added: boolean;
+}
+
+/**
+ * What Seldon makes of a task. pending: it is thinking; ready: it has suggestions; none: the task
+ * needs nothing more; failed: it could not answer; unavailable: no background brain is connected.
+ */
+export interface TaskFollowups {
+  status: 'pending' | 'ready' | 'none' | 'failed' | 'unavailable';
+  summary: string;
+  steps: FollowupStep[];
+  error: string | null;
+}
+
 export type Cadence = 'daily' | 'weekly';
 
 export interface Habit {

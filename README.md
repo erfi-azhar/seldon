@@ -53,6 +53,12 @@ steps, from a number you track, or from a slider. Daily or few-times-a-week habi
 seven-day dots and fair streaks. Any metric over time with a sparkline. To-dos, one
 journal entry a day that saves as you type, and notes and links filed by sphere.
 
+**Follow-ups.** Seldon reads each new task and, when it deserves it, suggests what comes
+next: who to see, what to bring, the order to do things in. Each step can hand itself to
+Seldon in one tap ("Ask Seldon to book it") or become a task of its own. "Buy milk" gets
+nothing. Suggestions are made by the background brain, which has no tools, and refresh
+when you change the task.
+
 **Today.** One screen for the day: what needs you (important mail, new job openings,
 flights), what's due, habits still open, the journal, what's on the horizon, and a feed of
 what changed — including what Seldon did, each with Undo. Your next prayer and your next

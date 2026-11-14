@@ -21,6 +21,7 @@ import type {
   SphereDetail,
   SphereWithStats,
   Task,
+  TaskFollowups,
 } from '../../shared/types.ts';
 import { todayStr } from './lib.ts';
 
@@ -102,6 +103,16 @@ export const useTasks = (params: { goalId?: string; status?: 'open' | 'done' | '
   useQuery({
     queryKey: ['tasks', params],
     queryFn: () => api<Task[]>('GET', `/tasks?status=${params.status ?? 'open'}${params.goalId ? `&goalId=${params.goalId}` : ''}`),
+  });
+
+/** What Seldon suggests for a task; asks again every couple of seconds while it is thinking. */
+export const useTaskFollowups = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: ['task-followups', id],
+    queryFn: () => api<TaskFollowups>('GET', `/tasks/${id}/followups`),
+    enabled,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.status === 'pending' ? 2000 : false),
   });
 
 export const useMetrics = () => useQuery({ queryKey: ['metrics'], queryFn: () => api<Metric[]>('GET', '/metrics') });
