@@ -35,10 +35,23 @@ export function TaskRow({ task, showSphere = true }: { task: Task; showSphere?: 
   );
 }
 
-export function AddTask({ sphereId, goalId, tripId, placeholder = 'Add a task…' }: { sphereId?: string; goalId?: string; tripId?: string; placeholder?: string }) {
+export function AddTask({
+  sphereId,
+  goalId,
+  tripId,
+  dueDate = '',
+  placeholder = 'Add a task…',
+}: {
+  sphereId?: string;
+  goalId?: string;
+  tripId?: string;
+  /** The due date a new task starts with (it can still be changed). */
+  dueDate?: string;
+  placeholder?: string;
+}) {
   const [title, setTitle] = useState('');
   const [sphere, setSphere] = useState<string | null>(null);
-  const [due, setDue] = useState('');
+  const [due, setDue] = useState(dueDate);
   const add = useWrite((body: object) => write.post('/tasks', body));
 
   const submit = (e: React.FormEvent) => {
@@ -46,7 +59,7 @@ export function AddTask({ sphereId, goalId, tripId, placeholder = 'Add a task…
     if (!title.trim()) return;
     add.mutate({ title, sphereId: sphereId ?? sphere, goalId: goalId ?? null, ...(tripId ? { tripId } : {}), dueDate: due || null });
     setTitle('');
-    setDue('');
+    setDue(dueDate);
   };
 
   return (

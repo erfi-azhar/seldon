@@ -8148,3 +8148,52 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   --b: 14px;
   --m: transparent 83%, #000 100%;
 }
+
+/* Today's to-dos: work beside everything else, one column on a phone. */
+.today-todos {
+  margin-bottom: 20px;
+  padding-bottom: 6px;
+}
+.todo-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.todo-split.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.todo-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.todo-split:not(.single) .todo-col + .todo-col {
+  border-left: 1px solid var(--line);
+}
+.todo-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 20px 6px;
+}
+.todo-col-head h3 {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 550;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.todo-col .add-row {
+  margin-top: auto;
+}
+@media (max-width: 720px) {
+  .todo-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .todo-split:not(.single) .todo-col + .todo-col {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 8px;
+  }
+}
