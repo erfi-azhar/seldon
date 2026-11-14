@@ -314,6 +314,23 @@ function locate(onFix: (fix: DeviceFix) => void): void {
     .catch(askOnce);
 }
 
+/**
+ * Keeps the phase moving where the app shell (and useSunClock) isn't mounted: sign-in and
+ * first-run setup. It uses the last place known, without asking for the device's location.
+ */
+export function useSunTick(): void {
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const marks = new Date(state.marks.day).toDateString() === now.toDateString() ? state.marks : marksFor(state.place, now);
+      update({ ...phaseAt(now.getTime(), marks), marks });
+    };
+    tick();
+    const timer = setInterval(tick, 30_000);
+    return () => clearInterval(timer);
+  }, []);
+}
+
 /** Keeps the phase current: mounted once, in the app shell. */
 export function useSunClock(): void {
   const { data: faith } = useFaith();

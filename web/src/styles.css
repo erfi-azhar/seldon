@@ -900,6 +900,23 @@ button.chip:hover {
   width: 100%;
   height: 100%;
 }
+/* The foot of the page: the shard over its hill, rising out of the page. Drawn by
+   components/Hill.tsx. Like the sky, it sits against .app, behind the agent panel too. */
+.app {
+  --hill-h: clamp(400px, 40vw, 580px);
+}
+.hill-band {
+  position: absolute;
+  inset: auto 0 0;
+  height: var(--hill-h);
+  z-index: -1;
+  pointer-events: none;
+}
+.hill-band canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .sky-tip {
   position: absolute;
   transform: translate(14px, -50%);
@@ -908,10 +925,13 @@ button.chip:hover {
 /* The page starts below the floating top bar (72px), so this puts the hero just under the band. */
 .page.page-today {
   padding-top: calc(var(--sky-h) - 72px + var(--sky-gap));
+  /* The page ends a little above the band, so its sky rises out of open page. */
+  padding-bottom: calc(var(--hill-h) + 24px);
 }
 @media (max-width: 720px) {
   .app {
     --sky-h: 180px;
+    --hill-h: 340px;
   }
   .page.page-today {
     padding-top: calc(var(--sky-h) - 64px + var(--sky-gap));
@@ -6463,51 +6483,13 @@ textarea.title-input {
 .watch-note.is-quiet {
   color: var(--ink-3);
 }
-/* ── The welcome stage: monochrome, with holographic light ─────────────── */
+/* ── The welcome stage: a shard over a hill, drawn by components/Vault.tsx ── */
 
 :root {
-  /* Light: graphite particles on a pale, cool grey, colour only where light catches. */
-  --vault-sky: radial-gradient(120% 90% at 50% 30%, #fbfbfc 0%, #ececee 52%, #d9dadd 100%);
-  --vault-ink: #23252b;
-  --vault-glow: rgb(255 255 255 / 0.97);
-  --vault-glow-edge: rgb(255 255 255 / 0);
-  --vault-holo-s: 78;
-  --vault-holo-l: 52;
-  --vault-blend: normal;
-  --vault-flash:
-    conic-gradient(from 210deg at 50% 46%, rgb(160 220 255 / 0.28), rgb(255 170 230 / 0.24), rgb(255 236 170 / 0.24), rgb(170 255 220 / 0.24), rgb(160 220 255 / 0.28)),
-    radial-gradient(circle at 50% 46%, rgb(255 255 255) 0%, rgb(250 250 252 / 0.96) 45%, rgb(240 241 245 / 0.92) 100%);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    /* Dark: silver particles in near-black space. */
-    --vault-sky: radial-gradient(120% 90% at 50% 30%, #1b1c20 0%, #0d0e11 55%, #050506 100%);
-    --vault-ink: #e8eaef;
-    --vault-glow: rgb(255 255 255 / 0.92);
-    --vault-glow-edge: rgb(255 255 255 / 0);
-    --vault-holo-s: 92;
-    --vault-holo-l: 74;
-    --vault-blend: lighter;
-  }
-}
-:root[data-theme='dark'] {
-  --vault-sky: radial-gradient(120% 90% at 50% 30%, #1b1c20 0%, #0d0e11 55%, #050506 100%);
-  --vault-ink: #e8eaef;
-  --vault-glow: rgb(255 255 255 / 0.92);
-  --vault-glow-edge: rgb(255 255 255 / 0);
-  --vault-holo-s: 92;
-  --vault-holo-l: 74;
-  --vault-blend: lighter;
+  /* The wash of light at the brightest moment of an unlock. */
+  --vault-flash: radial-gradient(circle at 50% 42%, rgb(255 251 244) 0%, rgb(255 247 236 / 0.97) 50%, rgb(250 242 232 / 0.94) 100%);
 }
 
-.stage-vault::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background: var(--vault-sky);
-  pointer-events: none;
-}
 .stage-vault .stage-inner {
   position: relative;
   z-index: 2;
@@ -6537,14 +6519,16 @@ textarea.title-input {
   width: 100%;
   flex: none;
 }
+/* The sky fills the box, the crest sits a third of the way up from its bottom, and the
+   near slope fades into the page where the text begins. */
 .vault-anchor-signin {
-  height: min(54vh, 520px);
+  height: min(62vh, 600px);
 }
-.vault-anchor-open {
-  height: min(44vh, 420px);
+.vault-anchor-names {
+  height: min(52vh, 500px);
 }
-.vault-anchor-figure {
-  height: min(38vh, 350px);
+.vault-anchor-setup {
+  height: min(40vh, 380px);
 }
 .stage-center {
   text-align: center;

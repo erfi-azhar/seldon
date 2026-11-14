@@ -8,7 +8,7 @@ import type { Settings } from '../../../shared/types.ts';
 import { useSettings, useWrite, write } from '../api.ts';
 import { ConnectionEditor } from '../components/Brains.tsx';
 import { Orb } from '../components/Orb.tsx';
-import { playUnlock, VaultAnchor, VaultStage } from '../components/Vault.tsx';
+import { playUnlock, pulseVault, VaultAnchor, VaultStage } from '../components/Vault.tsx';
 import { Field } from '../components/ui.tsx';
 import { hueStyle } from '../lib.ts';
 
@@ -27,7 +27,7 @@ export function SignIn() {
         onSubmit={(e) => {
           e.preventDefault();
           login.mutate(passphrase, {
-            // The vault drops and opens; the next screen appears behind its light.
+            // The shard comes down onto the hill; the next screen appears behind its light.
             onSuccess: () => {
               setOpening(true);
               void playUnlock().then(() => qc.invalidateQueries());
@@ -38,7 +38,10 @@ export function SignIn() {
         <VaultAnchor className="vault-anchor-signin" />
         <h1>Terminus</h1>
         <Field label="Passphrase">
-          <input className="input" type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoFocus autoComplete="current-password" disabled={opening} />
+          <input className="input" type="password" value={passphrase} onChange={(e) => {
+              setPassphrase(e.target.value);
+              pulseVault();
+            }} autoFocus autoComplete="current-password" disabled={opening} />
         </Field>
         {login.error && <p className="error-text">{login.error.message}</p>}
         <div>
@@ -70,8 +73,8 @@ export function Onboarding({ settings }: { settings: Settings }) {
 
   return (
     <main className="stage stage-vault">
-      {/* The vault stands open on the names step; after that its light becomes Seldon. */}
-      <VaultStage scene={step === 0 ? 'open' : 'figure'} />
+      {/* The shard rests open on the hill; the traveller climbs a little with each step. */}
+      <VaultStage scene="open" step={step} />
       <div className="stage-inner">
         <div className="steps stage-center" aria-hidden>
           {[0, 1, 2].map((i) => (
@@ -81,7 +84,7 @@ export function Onboarding({ settings }: { settings: Settings }) {
 
         {step === 0 && (
           <form className="stack" style={{ gap: 22 }} onSubmit={(e) => { e.preventDefault(); setStep(1); }}>
-            <VaultAnchor className="vault-anchor-open" />
+            <VaultAnchor className="vault-anchor-names" />
             <h1 className="stage-center">A place for your whole life — and someone to help you tend it.</h1>
             <p className="lede stage-center">Terminus runs on your machine and keeps everything in one file you own. An agent lives here with you: it can read what you track, capture what you tell it, and help you see what needs attention.</p>
             <div className="field-row">
@@ -102,7 +105,7 @@ export function Onboarding({ settings }: { settings: Settings }) {
 
         {step === 1 && (
           <>
-            <VaultAnchor className="vault-anchor-figure" />
+            <VaultAnchor className="vault-anchor-setup" />
             <h1 className="stage-center">Which parts of life do you want to tend?</h1>
             <p className="lede stage-center">These are your spheres. Each gets its own goals, habits and numbers. Start with the ones that matter now — you can add, rename or archive them whenever you like.</p>
             <div className="pick-grid">
@@ -129,7 +132,7 @@ export function Onboarding({ settings }: { settings: Settings }) {
 
         {step === 2 && (
           <>
-            <VaultAnchor className="vault-anchor-figure" />
+            <VaultAnchor className="vault-anchor-setup" />
             <h1 className="stage-center">Give {agentName.trim() || 'Seldon'} a mind.</h1>
             <p className="lede stage-center">Pick the model it thinks with. A local one keeps every word on this machine; a hosted one is sharper but sends your conversations to that provider. You can change this later, or skip it and use Terminus on its own.</p>
             <ConnectionEditor connection={live.connections[0]} />
