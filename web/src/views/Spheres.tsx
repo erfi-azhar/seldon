@@ -11,11 +11,10 @@ import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
-import { cx, hueStyle, pct, plural, shortDay, timeAgo, todayStr } from '../lib.ts';
+import { cx, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { normalise, useScreenings } from './Screenings.tsx';
-import { ActivityFeed } from './Today.tsx';
-import type { Activity } from '../../../shared/types.ts';
+import { Lately } from './Today.tsx';
 
 export function Spheres() {
   const { data: spheres } = useSpheres();
@@ -322,30 +321,6 @@ export function SphereDetail({ id }: { id: string }) {
       {/* What changed lately: a quiet footnote, the rest one click away. */}
       {activity.length > 0 && <Lately items={activity} />}
     </div>
-  );
-}
-
-/* A quiet footnote rather than a card: the latest change on one muted line, the rest one click away. */
-function Lately({ items }: { items: Activity[] }) {
-  const [latest] = items;
-  const more = items.length - 1;
-  const line = (
-    <span className="lately-line">
-      Last change <span className="lately-text">{latest.summary}</span>
-      <span aria-hidden="true">·</span>
-      <time dateTime={latest.ts}>{timeAgo(latest.ts)}</time>
-    </span>
-  );
-  // Only expandable when there is something behind it: older entries, or an Undo to reach.
-  if (more === 0 && !(latest.actor === 'agent' && latest.undoable)) return <p className="lately">{line}</p>;
-  return (
-    <details className="lately">
-      <summary>
-        {line}
-        <span className="lately-toggle" data-closed={more > 0 ? `${more} more` : 'Undo'} data-open="Hide" />
-      </summary>
-      <ActivityFeed items={items} />
-    </details>
   );
 }
 
