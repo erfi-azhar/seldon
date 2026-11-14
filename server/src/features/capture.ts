@@ -107,20 +107,32 @@ export function useOembedProvidersForTests(providers: OembedProvider[] | null): 
   OEMBED = providers ?? REAL_OEMBED;
 }
 
+/** A short, single-line look at what a site sent back, for the server log. */
+const glimpse = (body: Buffer | string, n = 300): string => String(body).slice(0, n * 4).replace(/\s+/g, ' ').trim().slice(0, n);
+// Why an embed or a page gave nothing useful shows up in the server log, so sites that
+// stop answering (TikTok short links, say) can be diagnosed from the deployment's logs.
+const why = (message: string): void => console.warn(`[capture] ${message}`);
+
 /** What a site's embed says about a post, or null when it has no embed or will not answer. */
 async function fromOembed(url: string): Promise<Extracted | null> {
   const known = OEMBED.find((o) => o.test.test(url));
   if (!known) return null;
   try {
     const res = await safeFetch(known.endpoint(url), { accept: 'application/json', maxBytes: 500_000 });
-    if (res.status !== 200) return null;
+    if (res.status !== 200) {
+      why(`${known.site} embed for ${url} answered ${res.status}: ${glimpse(res.body)}`);
+      return null;
+    }
     const o = JSON.parse(res.body.toString('utf8')) as { title?: string; author_name?: string; html?: string; thumbnail_url?: string };
     const words = o.html ? stripTags(o.html.replace(/<a[^>]*>(pic\.twitter\.com|https?:\/\/t\.co)[^<]*<\/a>/gi, '')) : '';
     // A tweet's embed ends with "— Name (@handle) date"; the words before it are the post.
     const text = known.kind === 'tweet' ? words.replace(/—\s*[^—]*$/, '').trim() : words;
     const author = o.author_name?.trim() ?? '';
     // TikTok answers a short link with an empty embed; that is no answer at all.
-    if (!o.title?.trim() && !author && !text) return null;
+    if (!o.title?.trim() && !author && !text) {
+      why(`${known.site} embed for ${url} was empty: ${glimpse(res.body)}`);
+      return null;
+    }
     return {
       kind: known.kind,
       title: o.title?.trim() || (author ? `${author} on ${known.site}` : known.kind === 'tweet' ? 'Post on X' : known.site),
@@ -131,9 +143,47 @@ async function fromOembed(url: string): Promise<Extracted | null> {
       text,
       imageUrl: o.thumbnail_url ?? null,
     };
-  } catch {
+  } catch (err) {
+    why(`${known.site} embed for ${url} failed: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
+}
+
+/**
+ * A TikTok video page carries the post in a JSON script (its embed no longer does):
+ * the caption, the author and a cover. Null when the page has no such data.
+ */
+function fromTikTokPage(html: string, url: string): Extracted | null {
+  const raw = html.match(/<script[^>]+id=["'](?:__UNIVERSAL_DATA_FOR_REHYDRATION__|SIGI_STATE)["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  if (!raw) return null;
+  type Item = { desc?: string; author?: { uniqueId?: string; nickname?: string } | string; nickname?: string; video?: { cover?: string; originCover?: string } };
+  let item: Item | undefined;
+  let detail: { itemInfo?: { itemStruct?: Item }; statusCode?: number; statusMsg?: string } | undefined;
+  try {
+    const data = JSON.parse(raw) as { __DEFAULT_SCOPE__?: Record<string, { itemInfo?: { itemStruct?: Item }; statusCode?: number; statusMsg?: string }>; ItemModule?: Record<string, Item> };
+    detail = data.__DEFAULT_SCOPE__?.['webapp.video-detail'];
+    item = detail?.itemInfo?.itemStruct ?? Object.values(data.ItemModule ?? {})[0];
+  } catch (err) {
+    why(`TikTok page data for ${url} did not parse: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+  if (!item?.desc && !item?.author) {
+    why(`TikTok page for ${url} had no video details (status ${detail?.statusCode ?? '-'} ${detail?.statusMsg ?? ''}); scopes: ${glimpse(raw.match(/"webapp\.[\w.-]+"/g)?.join(' ') ?? '-', 200)}`);
+    return null;
+  }
+  const author = typeof item.author === 'string' ? item.nickname || item.author : item.author?.nickname || item.author?.uniqueId || '';
+  const caption = item.desc?.trim() ?? '';
+  const cover = item.video?.cover || item.video?.originCover || '';
+  return {
+    kind: 'video',
+    title: author ? `${author} on TikTok` : 'TikTok',
+    description: '',
+    caption: caption.slice(0, 4000),
+    site: 'TikTok',
+    author,
+    text: caption,
+    imageUrl: cover ? new URL(cover, url).toString() : null,
+  };
 }
 
 /** A fetched file's name from its link, for a title. */
@@ -152,6 +202,13 @@ export async function extract(url: string): Promise<Extracted> {
   if (embedded) return embedded;
 
   const res = await safeFetch(url, { maxBytes: MAX_IMAGE });
+  // A link with an embed should not need its page read; say what the page was when it does.
+  if (OEMBED.some((o) => o.test.test(url) || o.test.test(res.url))) {
+    const page = res.body.toString('utf8', 0, 200_000);
+    const canonical = meta(page, 'og:url') || page.match(/<link[^>]+rel=["']canonical["'][^>]*href=["']([^"']+)["']/i)?.[1] || '-';
+    const title = glimpse(meta(page, 'og:title') || page.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '-', 120);
+    why(`page for ${url} landed on ${res.url} (${res.status}, ${res.contentType || 'no type'}), title "${title}", canonical ${canonical}, ${res.body.length} bytes: ${glimpse(readableText(page), 200)}`);
+  }
   // A short link (vt.tiktok.com/…) only has an embed under the address it leads to.
   if (res.url !== url) {
     const landed = await fromOembed(res.url);
@@ -165,6 +222,8 @@ export async function extract(url: string): Promise<Extracted> {
   if (!/html|xml|text\/plain/.test(type)) return { kind: 'link', title: host, description: '', site: host, author: '', text: '', imageUrl: null };
 
   const html = res.body.toString('utf8');
+  const tiktok = fromTikTokPage(html, res.url);
+  if (tiktok) return tiktok;
   if (type === 'text/plain') return { kind: 'article', title: host, description: '', site: host, author: '', text: html.slice(0, 15_000), imageUrl: null };
   const title = meta(html, 'og:title', 'twitter:title') || decodeEntities(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim() || host;
   const ogType = meta(html, 'og:type');
