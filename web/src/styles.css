@@ -7479,7 +7479,7 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 .opt-choose.is-added:hover .opt-added-icon {
   display: none;
-
+}
 
 /* ── Times of day ─────────────────────────────────────────────────────────────
    With "Follow the sun", sun.ts sets data-phase beside data-theme: day and evening
