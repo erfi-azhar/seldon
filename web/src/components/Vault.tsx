@@ -1,6 +1,7 @@
 // The welcome stage: a large shard made of particles turns slowly in open space. Unlock,
 // and it sinks, opens at its seam on a core of light, and the light carries you in; carry
-// on, and the same particles gather into a man's profile — Seldon, as a presence. One
+// on, and the same particles gather into an older man, head and shoulders, turned toward
+// you — Seldon, as a presence. One
 // canvas lives outside React so the particles carry on, unbroken, from sign-in through
 // every onboarding step.
 //
@@ -13,7 +14,6 @@ import { useEffect, useRef } from 'react';
 export type VaultScene = 'hover' | 'open' | 'figure';
 
 type V3 = [number, number, number];
-type V2 = [number, number];
 
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -82,91 +82,164 @@ function monolith(n: number): { points: V3[]; upper: boolean[]; accent: boolean[
   return { points, upper, accent };
 }
 
-// A man's head and shoulders in profile, facing right: an original, anonymous face with a
-// short, light beard along the jaw. x is forward, y up.
-const PROFILE: V2[] = [
-  [-1.02, -1.62], [-0.76, -1.4], [-0.36, -1.2], [-0.32, -0.8], [-0.4, -0.48], [-0.6, -0.12], [-0.66, 0.26],
-  [-0.58, 0.64], [-0.36, 0.9], [-0.06, 1.0], [0.24, 0.96], [0.44, 0.8], [0.53, 0.56], [0.56, 0.34],
-  [0.53, 0.22], [0.58, 0.14], [0.72, -0.08], [0.62, -0.16], [0.6, -0.22], [0.63, -0.29], [0.58, -0.34],
-  [0.61, -0.4], [0.56, -0.47], [0.6, -0.6], [0.5, -0.74], [0.27, -0.8], [0.19, -0.94], [0.2, -1.18],
-  [0.5, -1.38], [0.74, -1.62],
-];
-/** The jaw, from below the ear to the chin, where the beard grows. */
-const JAW: V2[] = [[-0.12, -0.2], [0.05, -0.5], [0.3, -0.7], [0.5, -0.72], [0.6, -0.6], [0.58, -0.45], [0.6, -0.36]];
+// An older man, head and upper shoulders, turned three-quarters toward the viewer: an
+// original, anonymous face with close-cropped hair, a short trimmed beard and dark
+// clothing that falls away into the background. The face is a sculpted height field
+// sampled evenly, with its features traced in fine strokes; the rest of the head is a
+// rougher shell. Every point carries a normal, so the face can be lit and its far side
+// hidden.
 
-function inside(p: V2, poly: V2[]): boolean {
-  let hit = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, yi] = poly[i]!;
-    const [xj, yj] = poly[j]!;
-    if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) hit = !hit;
-  }
-  return hit;
+type Kind = 0 | 1 | 2 | 3; // skin and hair, beard, cloth, feature stroke
+
+const HEAD_Y = 0.46;
+const HEAD: V3 = [0.56, 0.74, 0.64];
+
+/** A cheap, smooth 0–1 pattern, for weathered unevenness. */
+const grain = (x: number, y: number, z: number) => 0.5 + 0.5 * Math.sin(x * 13.1 + y * 7.7) * Math.sin(y * 11.3 - z * 9.1) * Math.sin(z * 8.3 + x * 5.9);
+
+const g = (v: number, w: number) => Math.exp(-((v / w) ** 2));
+const g2 = (x: number, y: number, wx: number, wy: number) => Math.exp(-((x / wx) ** 2) - (y / wy) ** 2);
+
+/** Half-width of the head at a height (narrower toward the chin). */
+function halfWidth(y: number): number {
+  const [RX, RY] = HEAD;
+  const base = RX * Math.sqrt(Math.max(0, 1 - (y / RY) ** 2));
+  return y < -0.1 ? base * (1 - 0.3 * Math.min(1, (-y - 0.1) / 0.64)) : base;
 }
 
-function nearPath(p: V2, path: V2[]): number {
-  let best = Infinity;
-  for (let i = 1; i < path.length; i++) {
-    const [ax, ay] = path[i - 1]!;
-    const [bx, by] = path[i]!;
-    const dx = bx - ax;
-    const dy = by - ay;
-    const t = Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / (dx * dx + dy * dy)));
-    best = Math.min(best, Math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy)));
-  }
-  return best;
+/** The front of the face as depth (z) over x and y, centred on the head. */
+function faceZ(x: number, y: number): number {
+  const [, RY, RZ] = HEAD;
+  const w = Math.max(0.05, halfWidth(y));
+  const q = Math.max(0, 1 - (x / w) ** 2 - (y / RY) ** 2 * 0.15);
+  let z = RZ * Math.sqrt(q) * (y < -0.1 ? 1 - 0.1 * Math.min(1, (-y - 0.1) / 0.64) : 1);
+  const ax = Math.abs(x);
+  // Nose: a bridge that rises toward a rounded tip, with wings either side, cut away beneath.
+  const bridge = Math.min(1, Math.max(0, (0.2 - y) / 0.32));
+  z += 0.15 * g(x, 0.055 + 0.03 * bridge) * bridge * (y > -0.15 ? 1 : g(y + 0.15, 0.035));
+  z += 0.045 * g2(x, y + 0.13, 0.055, 0.045);
+  z += 0.03 * g2(ax - 0.065, y + 0.155, 0.035, 0.03);
+  // Brow ridge and the sockets beneath it, with the eyes themselves.
+  z += 0.045 * g(y - 0.27, 0.05) * (ax < 0.36 ? 1 : g(ax - 0.36, 0.05));
+  z -= 0.07 * g2(ax - 0.19, y - 0.155, 0.085, 0.055);
+  z += 0.035 * g2(ax - 0.19, y - 0.15, 0.05, 0.03);
+  // Cheekbones, the folds beside the mouth, the lips and the chin.
+  z += 0.035 * g2(ax - 0.29, y + 0.02, 0.09, 0.07);
+  z -= 0.015 * g(ax - (0.09 + (-0.16 - y) * 0.4), 0.02) * (y < -0.15 && y > -0.38 ? 1 : 0);
+  z += 0.022 * g2(x, y + 0.31, 0.12, 0.025) + 0.025 * g2(x, y + 0.385, 0.1, 0.03);
+  z -= 0.012 * g2(x, y + 0.35, 0.12, 0.01);
+  z += 0.035 * g2(x, y + 0.56, 0.15, 0.09);
+  return z;
 }
 
-function onPath(path: V2[]): V2 {
-  const lengths = path.slice(1).map((p, i) => Math.hypot(p[0] - path[i]![0], p[1] - path[i]![1]));
-  let d = Math.random() * lengths.reduce((a, b) => a + b, 0);
-  for (let i = 0; i < lengths.length; i++) {
-    if (d <= lengths[i]!) {
-      const t = d / lengths[i]!;
-      return [path[i]![0] + (path[i + 1]![0] - path[i]![0]) * t, path[i]![1] + (path[i + 1]![1] - path[i]![1]) * t];
-    }
-    d -= lengths[i]!;
-  }
-  return path[path.length - 1]!;
+function faceNormal(x: number, y: number): V3 {
+  const e = 0.01;
+  const dx = (faceZ(x + e, y) - faceZ(x - e, y)) / (2 * e);
+  const dy = (faceZ(x, y + e) - faceZ(x, y - e)) / (2 * e);
+  const l = Math.hypot(dx, dy, 1);
+  return [-dx / l, -dy / l, 1 / l];
 }
 
-function profile(n: number): { points: V3[]; accent: boolean[] } {
+/** Feature lines: brows, lids, nostrils, the mouth, the folds beside it, forehead lines. */
+function strokes(): ((t: number) => [number, number])[] {
+  const arc = (cx: number, cy: number, w: number, h: number, from = -1, to = 1) => (t: number): [number, number] => {
+    const u = from + (to - from) * t;
+    return [cx + u * w, cy + (1 - u * u) * h];
+  };
+  const line = (x1: number, y1: number, x2: number, y2: number) => (t: number): [number, number] => [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t];
+  const out: ((t: number) => [number, number])[] = [];
+  for (const s of [-1, 1]) {
+    out.push(arc(s * 0.2, 0.275, 0.12, 0.035)); // brow
+    out.push(arc(s * 0.19, 0.16, 0.06, 0.022)); // upper lid
+    out.push(arc(s * 0.19, 0.14, 0.05, -0.012)); // lower lid
+    out.push(arc(s * 0.06, -0.165, 0.025, 0.01)); // nostril
+    out.push(line(s * 0.09, -0.16, s * 0.17, -0.37)); // fold beside the mouth
+  }
+  out.push(arc(0, -0.35, 0.12, 0.012)); // mouth
+  out.push(arc(0, 0.43, 0.24, 0.015)); // forehead lines
+  out.push(arc(0, 0.49, 0.2, 0.012));
+  return out;
+}
+
+function bust(n: number): { points: V3[]; normals: V3[]; kinds: Kind[] } {
   const points: V3[] = [];
-  const accent: boolean[] = [];
-  const depth = (y: number) => (y > -1.15 ? 0.32 : 0.55); // the head is narrower than the shoulders
+  const normals: V3[] = [];
+  const kinds: Kind[] = [];
+  const [RX, RY, RZ] = HEAD;
+  const lines = strokes();
+  const inFace = (x: number, y: number) => (x / 0.44) ** 2 + ((y + 0.03) / 0.64) ** 2 < 1;
   while (points.length < n) {
     const roll = Math.random();
-    if (roll < 0.34) {
-      // The outline: brow, nose, lips, chin. Some of it catches the holographic light.
-      const p = onPath(PROFILE.slice(2, -2));
-      points.push([p[0] + rand(-0.008, 0.008), p[1], rand(-0.03, 0.03)]);
-      accent.push(Math.random() < 0.18);
-    } else if (roll < 0.5) {
-      // A light beard: stubble along the jaw and chin, a little past the outline.
-      const p: V2 = [rand(-0.15, 0.68), rand(-0.82, -0.18)];
-      const d = nearPath(p, JAW);
-      if (d > 0.09 || (!inside(p, PROFILE) && d > 0.035)) continue;
-      points.push([p[0], p[1], rand(-0.2, 0.2)]);
-      accent.push(Math.random() < 0.12);
-    } else if (roll < 0.53) {
-      // The ear, and the eye.
-      if (Math.random() < 0.7) {
-        const a = rand(0, Math.PI * 2);
-        points.push([-0.1 + Math.cos(a) * 0.08, 0.06 + Math.sin(a) * 0.14, 0.12]);
-      } else {
-        points.push([0.43 + rand(-0.025, 0.025), 0.2 + rand(-0.012, 0.012), 0.2]);
-      }
-      accent.push(false);
+    if (roll < 0.46) {
+      // The face, sampled evenly over its front.
+      const x = rand(-0.44, 0.44);
+      const y = rand(-0.67, 0.61);
+      if (!inFace(x, y)) continue;
+      const N = faceNormal(x, y);
+      const z = faceZ(x, y);
+      const beard = y < -0.12 && !(y > -0.4 && y < -0.3 && Math.abs(x) < 0.11) && (Math.abs(x) > 0.16 || y < -0.42 || (y > -0.31 && y < -0.24));
+      const hairline = y > 0.5 && Math.abs(x) > 0.22; // a little hair at the temples
+      if (!beard && Math.random() > 0.72 + 0.28 * grain(x, y, z)) continue;
+      const out = beard ? rand(0.008, 0.04) : hairline ? rand(0, 0.015) : 0;
+      points.push([x + N[0] * out, y + HEAD_Y + N[1] * out, z + N[2] * out]);
+      normals.push(N);
+      kinds.push(beard ? 1 : 0);
+    } else if (roll < 0.56) {
+      // The features, traced in fine strokes on the face.
+      const f = lines[Math.floor(Math.random() * lines.length)]!;
+      const [x, y] = f(Math.random());
+      const N = faceNormal(x, y);
+      points.push([x + rand(-0.004, 0.004), y + HEAD_Y + rand(-0.004, 0.004), faceZ(x, y) + 0.006]);
+      normals.push(N);
+      kinds.push(3);
+    } else if (roll < 0.76) {
+      // The rest of the head: sides, crown and back, close-cropped, receding at the front.
+      const u = rand(-1, 1);
+      const a = rand(0, Math.PI * 2);
+      const r = Math.sqrt(1 - u * u);
+      const dx = r * Math.cos(a);
+      const dy = u;
+      const dz = r * Math.sin(a);
+      const y = dy * RY;
+      const w = halfWidth(y) / RX;
+      const x = dx * RX * w;
+      const z = dz * RZ * (y < -0.1 ? 1 - 0.1 * Math.min(1, (-y - 0.1) / 0.64) : 1);
+      if (dz > 0 && inFace(x, y)) continue; // the face is drawn above
+      if (Math.random() > 0.5 + 0.5 * grain(x, y, z)) continue;
+      const nl = Math.hypot(x / (RX * RX), y / (RY * RY), z / (RZ * RZ));
+      const N: V3 = [x / (RX * RX) / nl, y / (RY * RY) / nl, z / (RZ * RZ) / nl];
+      const beard = y < -0.12 && dz > -0.35;
+      const hair = dy > 0.25;
+      const out = beard ? rand(0.008, 0.045) : hair ? rand(0, 0.025) : 0;
+      points.push([x + N[0] * out, y + HEAD_Y + N[1] * out, z + N[2] * out]);
+      normals.push(N);
+      kinds.push(beard ? 1 : 0);
+    } else if (roll < 0.79) {
+      // Ears.
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const a = rand(0, Math.PI * 2);
+      const k = Math.sqrt(Math.random());
+      points.push([side * (RX * 0.98), HEAD_Y + 0.08 + Math.sin(a) * 0.13 * k, -0.04 + Math.cos(a) * 0.075 * k]);
+      normals.push([side, 0, 0]);
+      kinds.push(0);
+    } else if (roll < 0.85) {
+      // Neck.
+      const a = rand(0, Math.PI * 2);
+      points.push([Math.cos(a) * 0.27, HEAD_Y - rand(0.58, 1.1), Math.sin(a) * 0.25 - 0.04]);
+      normals.push([Math.cos(a), 0, Math.sin(a)]);
+      kinds.push(0);
     } else {
-      // The volume of the head and shoulders, sparser, so the profile reads as a form.
-      const p: V2 = [rand(-1.02, 0.74), rand(-1.62, 1.0)];
-      if (!inside(p, PROFILE)) continue;
-      const w = depth(p[1]);
-      points.push([p[0], p[1], rand(-w, w) * 0.6]);
-      accent.push(false);
+      // Upper shoulders and a dark collar, sloping from the neck and fading downward.
+      const t = Math.random();
+      const y = HEAD_Y - 0.86 - t * 0.62;
+      const rx = 0.4 + 1.0 * Math.pow(Math.min(1, t / 0.6), 0.7);
+      const a = rand(0, Math.PI * 2);
+      points.push([Math.cos(a) * rx, y, Math.sin(a) * rx * 0.48]);
+      normals.push([Math.cos(a), 0.35, Math.sin(a)]);
+      kinds.push(2);
     }
   }
-  return { points, accent };
+  return { points, normals, kinds };
 }
 
 // ── The engine ──────────────────────────────────────────────────────────────
@@ -184,7 +257,11 @@ interface Engine {
   monoAccent: boolean[];
   mono: V3[];
   fig: V3[];
-  figAccent: boolean[];
+  figNormals: V3[];
+  figKinds: Kind[];
+  /** Per frame, for the figure: how much each point faces the viewer, and how lit it is. */
+  figFace: Float32Array;
+  figLit: Float32Array;
   scene: VaultScene;
   /** How far the shard has sunk (0–1) and opened (0–1), and the core's brightness. */
   drop: number;
@@ -210,9 +287,9 @@ function engine(): Engine {
   flash.className = 'vault-flash';
   flash.setAttribute('aria-hidden', 'true');
   const ctx = canvas.getContext('2d')!;
-  const n = innerWidth < 640 ? 1600 : 2800;
+  const n = innerWidth < 640 ? 2400 : 4200;
   const m = monolith(n);
-  const f = profile(Math.round(n * 0.86));
+  const f = bust(Math.round(n * 0.92));
   const pos = new Float32Array(n * 3);
   const still = reduced();
   for (let i = 0; i < n; i++) {
@@ -233,7 +310,10 @@ function engine(): Engine {
     monoAccent: m.accent,
     mono: m.points,
     fig: f.points,
-    figAccent: f.accent,
+    figNormals: f.normals,
+    figKinds: f.kinds,
+    figFace: new Float32Array(f.points.length),
+    figLit: new Float32Array(f.points.length),
     scene: 'hover',
     drop: 0,
     open: 0,
@@ -270,24 +350,53 @@ function retarget(e: Engine, t: number) {
   const still = reduced();
   const bob = still ? 0 : Math.sin(t * 0.7) * 0.05;
   if (e.scene === 'figure') {
-    // The profile turns a little, as if looking out past the page.
-    const sway = still ? 0 : Math.sin(t * 0.25) * 0.22;
-    const c = Math.cos(sway);
-    const s = Math.sin(sway);
+    // Turned three-quarters toward the viewer; small, slow movements, as if listening.
+    const yaw = 0.44 + (still ? 0 : Math.sin(t * 0.21) * 0.06);
+    const nod = still ? 0 : Math.sin(t * 0.33 + 1) * 0.035;
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    const cs = Math.cos(yaw * 0.45);
+    const ss = Math.sin(yaw * 0.45);
+    const cn = Math.cos(nod);
+    const sn = Math.sin(nod);
+    // Light from above, in front, on the side the face turns toward: fixed to the viewer.
+    const L: V3 = [0.5, 0.5, 0.71];
     for (let i = 0; i < e.n; i++) {
-      const p = i < e.fig.length ? e.fig[i]! : null;
-      if (p) {
-        const k = 1.08;
-        e.tgt[i * 3] = (p[0] * c + p[2] * s) * k;
-        e.tgt[i * 3 + 1] = (p[1] + 0.22) * k + bob * 0.4;
-        e.tgt[i * 3 + 2] = (-p[0] * s + p[2] * c) * k;
-      } else {
-        // Spare particles drift as motes around the head.
+      if (i >= e.fig.length) {
+        // Spare particles drift as faint motes around the figure.
         const a = e.phase[i]! + t * 0.05;
-        e.tgt[i * 3] = Math.cos(a) * (1.8 + (i % 7) * 0.12);
+        e.tgt[i * 3] = Math.cos(a) * (1.9 + (i % 7) * 0.12);
         e.tgt[i * 3 + 1] = Math.sin(a * 1.7) * 1.4;
-        e.tgt[i * 3 + 2] = Math.sin(a) * 1.3;
+        e.tgt[i * 3 + 2] = Math.sin(a) * 1.3 - 1;
+        continue;
       }
+      const p = e.fig[i]!;
+      const q = e.figNormals[i]!;
+      // The shoulders turn less than the head.
+      const cloth = e.figKinds[i] === 2;
+      const cc = cloth ? cs : c;
+      const sc = cloth ? ss : s;
+      // Nod the head about the neck, then turn.
+      let y = p[1];
+      let z = p[2];
+      let ny = q[1];
+      let nz = q[2];
+      if (!cloth) {
+        const dy = y - (HEAD_Y - 0.6);
+        y = HEAD_Y - 0.6 + dy * cn - z * sn;
+        z = dy * sn + z * cn;
+        ny = q[1] * cn - q[2] * sn;
+        nz = q[1] * sn + q[2] * cn;
+      }
+      const k = 1.62;
+      // Centre the face, not the skull: turning moves it to one side.
+      e.tgt[i * 3] = (p[0] * cc + z * sc - 0.16) * k;
+      e.tgt[i * 3 + 1] = (y - 0.24) * k + bob * 0.3;
+      e.tgt[i * 3 + 2] = (-p[0] * sc + z * cc) * k;
+      const rnx = q[0] * cc + nz * sc;
+      const rnz = -q[0] * sc + nz * cc;
+      e.figFace[i] = rnz;
+      e.figLit[i] = Math.max(0, rnx * L[0] + ny * L[1] + rnz * L[2]);
     }
     return;
   }
@@ -335,7 +444,7 @@ function frame(now: number) {
   if (!still) e.spin += dt * (e.scene === 'hover' ? 0.1 : 0.04);
   const towards = (cur: number, goal: number, rate: number) => (still ? goal : cur + (goal - cur) * Math.min(1, dt * rate));
   if (e.scene === 'open') e.core = towards(e.core, 0.7 + (still ? 0 : Math.sin(t * 1.2) * 0.1), 3);
-  else if (e.scene === 'figure') e.core = towards(e.core, 0.22, 2);
+  else if (e.scene === 'figure') e.core = towards(e.core, 0, 2.5);
 
   retarget(e, t);
 
@@ -369,8 +478,8 @@ function frame(now: number) {
 
   // The core of light, where the shard opens: white at the centre, a band of shifting colour.
   if (e.core > 0.01) {
-    const [gx, gy] = e.scene === 'figure' ? project(0.45 * 1.08, 0.4, 0.3) : project(0, WAIST + HOVER_Y - SINK * e.drop + 0.24 * e.open, 0);
-    const r = unit * (e.scene === 'figure' ? 1.1 : 1.5 + e.open * 0.9);
+    const [gx, gy] = project(0, WAIST + HOVER_Y - SINK * e.drop + 0.24 * e.open, 0);
+    const r = unit * (1.5 + e.open * 0.9);
     const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
     g.addColorStop(0, pal.glow);
     g.addColorStop(0.35, holo(hueBase, 0.32));
@@ -390,8 +499,23 @@ function frame(now: number) {
     if (sx < -10 || sy < -10 || sx > W + 10 || sy > H + 10) continue;
     const tw = still ? 1 : 0.75 + 0.25 * Math.sin(t * 2 + e.phase[i]!);
     const mote = figure && i >= e.fig.length;
-    const lit = figure ? !mote && e.figAccent[i] : e.monoAccent[i];
-    ctx.globalAlpha = Math.min(1, (0.38 + (f - 0.8) * 1.2) * tw * (lit ? 1.5 : 1) * (mote ? 0.25 : 1));
+    if (figure && !mote) {
+      // Hide what faces away; shade what faces the light. Cloth fades into the dark below.
+      const vis = Math.max(0, Math.min(1, (e.figFace[i]! + 0.18) / 0.5));
+      if (vis <= 0.02) continue;
+      const kind = e.figKinds[i];
+      const shade = 0.2 + 0.95 * e.figLit[i]! ** 1.1;
+      const fade = kind === 2 ? Math.max(0, 0.5 - (HEAD_Y - 0.86 - e.fig[i]![1]) * 0.8) : 1;
+      // Feature strokes sit a little brighter than the skin around them.
+      const accent = kind === 3 ? 1.35 : kind === 1 ? 1.1 : 1;
+      ctx.globalAlpha = Math.min(1, (0.46 + (f - 0.8) * 1.2) * tw * vis * shade * fade * accent);
+      ctx.fillStyle = pal.ink;
+      const size = (kind === 1 ? 1.45 : kind === 3 ? 1.1 : 1.15) * f * (0.85 + 0.3 * ((e.phase[i]! * 3.7) % 1));
+      ctx.fillRect(sx - size / 2, sy - size / 2, size, size);
+      continue;
+    }
+    const lit = !figure && e.monoAccent[i];
+    ctx.globalAlpha = Math.min(1, (0.38 + (f - 0.8) * 1.2) * tw * (lit ? 1.5 : 1) * (mote ? 0.22 : 1));
     // Hue follows position, so colour sweeps across the shard like light on foil.
     ctx.fillStyle = lit ? holo(hueBase + sy * 0.9 + sx * 1.4) : pal.ink;
     const size = (lit ? 1.8 : 1.35) * f;
