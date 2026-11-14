@@ -28,6 +28,17 @@ export const PRESETS: ProviderPreset[] = [
     defaultModel: '',
   },
   {
+    id: 'ollama-cloud',
+    label: 'Ollama Cloud',
+    provider: 'openai-compatible',
+    baseUrl: 'https://ollama.com/v1',
+    local: false,
+    needsKey: true,
+    blurb: 'Open models run by Ollama, through your own API key. Works from a hosted Terminus.',
+    help: 'Create a key at ollama.com/settings/keys, then pick a model that supports tools, e.g. gpt-oss:120b.',
+    defaultModel: 'gpt-oss:120b',
+  },
+  {
     id: 'lmstudio',
     label: 'LM Studio',
     provider: 'openai-compatible',
