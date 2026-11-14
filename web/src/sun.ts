@@ -18,7 +18,7 @@ export type ThemePref = 'sun' | 'system' | 'light' | 'dark';
 export const PHASES: Phase[] = ['dawn', 'day', 'dusk', 'evening'];
 const SCHEME: Record<Phase, 'light' | 'dark'> = { dawn: 'light', day: 'light', dusk: 'dark', evening: 'dark' };
 /** Each phase's page colour, for the browser's own bar. Matches --bg in styles.css. */
-const PAGE_BG: Record<Phase, string> = { dawn: '#f5ede9', day: '#eef0f4', dusk: '#17111b', evening: '#0b0c10' };
+const PAGE_BG: Record<Phase, string> = { dawn: '#f5ede9', day: '#eef0f4', dusk: '#121820', evening: '#0b0c10' };
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;

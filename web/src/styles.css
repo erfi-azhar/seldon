@@ -8058,26 +8058,27 @@ button.layover-pill:hover .layover-lounge {
 }
 
 :root[data-phase='dusk'] {
-  --bg: #17111b;
-  --surface: #221924;
-  --surface-2: #2a1f2c;
-  --sunken: #0f0a12;
-  --ink: #f7ede9;
-  --ink-2: #c9b2b7;
-  --ink-3: #b8a1a8;
-  --ink-4: #8d7881;
-  --line: rgb(255 225 225 / 0.08);
-  --line-2: rgb(255 225 225 / 0.16);
-  --glass: linear-gradient(180deg, rgb(74 50 68 / 0.6), rgb(40 27 42 / 0.5));
-  --glass-strong: linear-gradient(180deg, rgb(48 34 48 / 0.92), rgb(30 21 32 / 0.88));
-  --glass-edge: rgb(255 230 230 / 0.12);
-  --glass-float: linear-gradient(180deg, rgb(92 62 84 / 0.5), rgb(44 30 46 / 0.42));
-  --tile: rgb(255 235 235 / 0.055);
-  --amb-1: oklch(0.32 0.1 330 / 0.6);
-  --amb-2: oklch(0.34 0.09 40 / 0.5);
-  --amb-3: oklch(0.3 0.08 20 / 0.45);
-  --amb-4: oklch(0.28 0.07 290 / 0.45);
-  --primary: linear-gradient(180deg, #fff8f4, #ecdcd6);
+  /* Blue-grey, under the steel-blue dusk sky; a little of its peach in the ambient light. */
+  --bg: #121820;
+  --surface: #1b222c;
+  --surface-2: #212a35;
+  --sunken: #0c1117;
+  --ink: #eef1f5;
+  --ink-2: #b6bfcb;
+  --ink-3: #a0aab7;
+  --ink-4: #76808d;
+  --line: rgb(220 232 255 / 0.08);
+  --line-2: rgb(220 232 255 / 0.16);
+  --glass: linear-gradient(180deg, rgb(58 72 92 / 0.6), rgb(30 38 50 / 0.5));
+  --glass-strong: linear-gradient(180deg, rgb(36 45 58 / 0.92), rgb(22 28 37 / 0.88));
+  --glass-edge: rgb(225 236 255 / 0.12);
+  --glass-float: linear-gradient(180deg, rgb(70 86 108 / 0.5), rgb(34 42 56 / 0.42));
+  --tile: rgb(230 240 255 / 0.055);
+  --amb-1: oklch(0.33 0.05 250 / 0.6);
+  --amb-2: oklch(0.36 0.07 55 / 0.42);
+  --amb-3: oklch(0.3 0.04 225 / 0.45);
+  --amb-4: oklch(0.28 0.04 265 / 0.45);
+  --primary: linear-gradient(180deg, #f8fafc, #dce2ea);
 }
 
 /* A phase change while you watch: the whole page cross-fades. */
