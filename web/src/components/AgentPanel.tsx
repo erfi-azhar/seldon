@@ -80,10 +80,12 @@ export function AgentPanel({ chat, settings, onClose }: { chat: AgentChat; setti
   const removeConversation = useWrite((id: string) => write.del(`/conversations/${id}`));
 
   const { agentName, userName } = settings.profile;
-  const model = settings.model;
-  const preset = model.preset ? PRESET_BY_ID[model.preset] : undefined;
-  const connected = !!model.provider && (model.provider !== 'anthropic' || model.hasApiKey);
-  const modelLabel = connected ? `${model.model || preset?.defaultModel || 'default model'}${preset?.local ? ' · on this machine' : ''}` : 'No model connected';
+  const { connections, brains } = settings;
+  const activeId = chat.connectionId ?? brains.chat ?? undefined;
+  const active = connections.find((c) => c.id === activeId);
+  const preset = active?.preset ? PRESET_BY_ID[active.preset] : undefined;
+  const connected = !!active && (active.provider !== 'anthropic' || active.hasApiKey);
+  const modelLabel = connected ? `${active.label} · ${active.model || preset?.defaultModel || 'default model'}${preset?.local ? ' · on this machine' : ''}` : 'No model connected';
 
   // Follow the reply as it streams, unless the person has scrolled up to read.
   useEffect(() => {
@@ -116,6 +118,22 @@ export function AgentPanel({ chat, settings, onClose }: { chat: AgentChat; setti
             <div className="name">{agentName}</div>
             <div className="model">{modelLabel}</div>
           </div>
+          {connections.length > 1 && (
+            <select
+              className="select agent-brain"
+              aria-label="Brain for this conversation"
+              title="Which brain answers in this conversation"
+              value={activeId}
+              onChange={(e) => chat.setBrain(e.target.value)}
+              disabled={chat.streaming}
+            >
+              {connections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          )}
           <button className="icon-btn" aria-label="Past conversations" aria-pressed={showHistory} onClick={() => setShowHistory((v) => !v)}>
             <History size={17} />
           </button>

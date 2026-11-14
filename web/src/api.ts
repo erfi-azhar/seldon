@@ -120,15 +120,6 @@ export const useSearch = (q: string) =>
     placeholderData: (prev) => prev,
   });
 
-export const useModels = (enabled: boolean, stamp: string) =>
-  useQuery({
-    queryKey: ['models', stamp],
-    queryFn: () => api<{ id: string; name: string }[]>('GET', '/models'),
-    enabled,
-    retry: false,
-    staleTime: 60_000,
-  });
-
 export const useConversations = (enabled: boolean) =>
   useQuery({ queryKey: ['conversations'], queryFn: () => api<ConversationSummary[]>('GET', '/conversations'), enabled });
 
@@ -159,7 +150,7 @@ export const write = {
 
 /** POST a message and read the event stream. Resolves when the stream ends. */
 export async function streamChat(
-  body: { conversationId?: string; message: string; context: ChatContext },
+  body: { conversationId?: string; connectionId?: string; message: string; context: ChatContext },
   onEvent: (event: AgentEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {

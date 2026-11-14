@@ -130,6 +130,17 @@ const S = {
   }),
   journal: z.object({ body: text(50_000) }),
   memory: z.object({ content: text(500) }),
+  connection: z.object({
+    label: text(40).optional(),
+    provider: z.enum(['anthropic', 'openai-compatible']),
+    preset: z.string().max(40).nullable().optional(),
+    baseUrl: text(300).optional(),
+    model: text(200).optional(),
+    effort: z.enum(['auto', 'low', 'medium', 'high']).optional(),
+    apiKey: z.string().max(500).nullable().optional(),
+  }),
+  brains: z.object({ chat: z.string().nullable(), background: z.string().nullable() }).partial(),
+  conversationPatch: z.object({ connectionId: z.string().nullable() }),
   settings: z.object({
     profile: z.object({ userName: text(80), agentName: text(40), onboarded: z.boolean() }).partial().optional(),
     model: z
@@ -146,6 +157,7 @@ const S = {
   }),
   chat: z.object({
     conversationId: z.string().optional(),
+    connectionId: z.string().optional(),
     message: z.string().min(1).max(20_000),
     context: z.object({
       date,
@@ -408,6 +420,22 @@ export function createApp(opts: AppOptions): Hono {
     return c.json(await listModels(cfg));
   });
 
+  // ── Brains ────────────────────────────────────────────────────────────────
+
+  app.get('/api/connections', (c) => c.json({ connections: store.listConnections(), brains: store.getBrains() }));
+  app.post('/api/connections', async (c) => c.json(store.addConnection(await read(c, S.connection)), 201));
+  app.patch('/api/connections/:id', async (c) => c.json(store.updateConnection(c.req.param('id'), await read(c, S.connection.partial()))));
+  app.delete('/api/connections/:id', (c) => {
+    store.removeConnection(c.req.param('id'));
+    return c.json({ ok: true });
+  });
+  app.get('/api/connections/:id/models', async (c) => {
+    const cfg = store.getConnectionConfig(c.req.param('id'));
+    if (!cfg) throw new NotFound('Connection');
+    return c.json(await listModels(cfg));
+  });
+  app.put('/api/brains', async (c) => c.json(store.setBrains(await read(c, S.brains))));
+
   app.get('/api/export', (c) => {
     c.header('content-disposition', `attachment; filename="terminus-${localDate()}.json"`);
     return c.json(store.exportAll());
@@ -421,6 +449,10 @@ export function createApp(opts: AppOptions): Hono {
 
   app.get('/api/conversations', (c) => c.json(store.listConversations()));
   app.get('/api/conversations/:id', (c) => c.json(store.getConversation(c.req.param('id'))));
+  app.patch('/api/conversations/:id', async (c) => {
+    store.setConversationConnection(c.req.param('id'), (await read(c, S.conversationPatch)).connectionId);
+    return c.json(store.getConversation(c.req.param('id')));
+  });
   app.delete('/api/conversations/:id', (c) => {
     store.deleteConversation(c.req.param('id'));
     return c.json({ ok: true });
@@ -428,12 +460,17 @@ export function createApp(opts: AppOptions): Hono {
 
   app.post('/api/agent/chat', async (c) => {
     const input = await read(c, S.chat);
-    const cfg = store.getModelConfig();
+    // Which brain: the one asked for, else the conversation's own, else the chat brain.
+    const saved = input.conversationId ? store.getConversationConnection(input.conversationId) : null;
+    const connectionId = input.connectionId ?? saved ?? store.getBrains().chat;
+    const cfg = connectionId ? store.getConnectionConfig(connectionId) : null;
     if (!cfg) return c.json({ error: 'No model is connected yet.', code: 'no_model' }, 409);
     if (cfg.provider === 'anthropic' && !cfg.apiKey) {
-      return c.json({ error: 'Add your Anthropic API key in Settings → Model.', code: 'no_model' }, 409);
+      return c.json({ error: 'Add your Anthropic API key in Settings → Brains.', code: 'no_model' }, 409);
     }
-    if (input.conversationId) store.getConversationSystem(input.conversationId);
+    if (input.conversationId && input.connectionId && input.connectionId !== saved) {
+      store.setConversationConnection(input.conversationId, input.connectionId);
+    }
     const provider = providerFor(cfg);
 
     return streamSSE(c, async (stream) => {
@@ -448,6 +485,7 @@ export function createApp(opts: AppOptions): Hono {
         store,
         provider,
         conversationId: input.conversationId,
+        connectionId,
         message: input.message,
         context: input.context,
         emit,

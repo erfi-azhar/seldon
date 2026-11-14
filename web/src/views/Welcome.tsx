@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { CATALOG } from '../../../shared/catalog.ts';
 import type { Settings } from '../../../shared/types.ts';
 import { useSettings, useWrite, write } from '../api.ts';
-import { ModelSetup } from '../components/ModelSetup.tsx';
+import { ConnectionEditor } from '../components/Brains.tsx';
 import { AgentOrb, Orb } from '../components/Orb.tsx';
 import { Field } from '../components/ui.tsx';
 import { hueStyle } from '../lib.ts';
@@ -119,14 +119,14 @@ export function Onboarding({ settings }: { settings: Settings }) {
           <>
             <h1>Give {agentName.trim() || 'Seldon'} a mind.</h1>
             <p className="lede">Pick the model it thinks with. A local one keeps every word on this machine; a hosted one is sharper but sends your conversations to that provider. You can change this later, or skip it and use Terminus on its own.</p>
-            <ModelSetup settings={live} />
+            <ConnectionEditor connection={live.connections[0]} />
             {finish.error && <p className="error-text">{finish.error.message}</p>}
             <div className="row">
               <button type="button" className="btn btn-ghost" onClick={() => setStep(1)}>
                 Back
               </button>
               <button type="button" className="btn btn-primary" disabled={finish.isPending} onClick={() => finish.mutate()}>
-                {live.model.provider ? 'Open Terminus' : 'Skip for now'} <ArrowRight size={15} />
+                {live.connections.length ? 'Open Terminus' : 'Skip for now'} <ArrowRight size={15} />
               </button>
             </div>
           </>

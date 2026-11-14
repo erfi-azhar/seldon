@@ -102,10 +102,10 @@ export function openAiProvider(cfg: ModelConfig): Provider {
           model: cfg.model,
           stream: true,
           messages: toMessages(req.system, req.turns),
-          tools: req.tools.map((t) => ({
-            type: 'function',
-            function: { name: t.name, description: t.description, parameters: t.schema },
-          })),
+          // Some servers reject an empty tools array.
+          ...(req.tools.length
+            ? { tools: req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.schema } })) }
+            : {}),
         }),
       });
       if (!res.body) throw new ProviderError('The model server sent an empty response.');

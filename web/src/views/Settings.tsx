@@ -1,7 +1,7 @@
 import { Download, Plus, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { api, useAuth, useMemories, useSettings, useSpheres, useWrite, write } from '../api.ts';
-import { ModelSetup } from '../components/ModelSetup.tsx';
+import { BrainsSection } from '../components/Brains.tsx';
 import { Orb } from '../components/Orb.tsx';
 import { Field, Loading, Seg } from '../components/ui.tsx';
 import { useApp } from '../state.tsx';
@@ -87,13 +87,13 @@ export function Settings() {
         </div>
       </section>
 
-      <section className="card settings-section" id="model">
+      <section className="card settings-section" id="brains">
         <header>
-          <h2>Model</h2>
-          <p>The mind behind {agentName}. Swap it any time — your data and history stay exactly where they are.</p>
+          <h2>Brains</h2>
+          <p>The models behind {agentName}. Connect more than one — say your Claude and your OpenAI — and give each a job. Swap them any time; your data and history stay where they are.</p>
         </header>
         <div className="settings-body">
-          <ModelSetup settings={settings} />
+          <BrainsSection settings={settings} />
         </div>
       </section>
 

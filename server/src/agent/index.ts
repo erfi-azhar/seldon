@@ -22,6 +22,8 @@ export function listModels(cfg: ModelConfig): Promise<{ id: string; name: string
 export interface ChatRequest {
   store: Store;
   provider: Provider;
+  /** Recorded on a new conversation so it keeps talking to the same brain. */
+  connectionId?: string | null;
   conversationId?: string;
   message: string;
   context: ChatContext;
@@ -48,7 +50,7 @@ export async function chat(req: ChatRequest): Promise<string> {
     system = buildSystemPrompt(store.getProfile());
     turns = [];
     userTurn = { role: 'user', text: firstUserText(store, context, message), display: message };
-    conversationId = store.createConversation(message.replace(/\s+/g, ' ').slice(0, 70), system);
+    conversationId = store.createConversation(message.replace(/\s+/g, ' ').slice(0, 70), system, req.connectionId ?? null);
   }
   turns.push(userTurn);
   store.appendTurn(conversationId, userTurn);

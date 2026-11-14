@@ -9,6 +9,8 @@ import { todayStr } from './lib.ts';
 
 export interface ChatState {
   conversationId: string | undefined;
+  /** The brain picked for this conversation; undefined means the chat brain. */
+  connectionId: string | undefined;
   messages: ChatMessage[];
   streaming: boolean;
   error: string | null;
@@ -18,7 +20,7 @@ export interface ChatState {
   undone: number[];
 }
 
-const EMPTY: ChatState = { conversationId: undefined, messages: [], streaming: false, error: null, needsModel: false, undone: [] };
+const EMPTY: ChatState = { conversationId: undefined, connectionId: undefined, messages: [], streaming: false, error: null, needsModel: false, undone: [] };
 
 export interface AgentChat extends ChatState {
   send: (text: string) => void;
@@ -26,6 +28,7 @@ export interface AgentChat extends ChatState {
   reset: () => void;
   load: (conversationId: string) => Promise<void>;
   undo: (activityId: number) => Promise<void>;
+  setBrain: (connectionId: string) => void;
 }
 
 function applyToReply(messages: ChatMessage[], change: (parts: ChatPart[]) => ChatPart[]): ChatMessage[] {
@@ -105,6 +108,7 @@ export function useAgentChat(viewing: () => string): AgentChat {
       streamChat(
         {
           conversationId: current.current.conversationId,
+          connectionId: current.current.connectionId,
           message: text,
           context: {
             date: todayStr(now),
@@ -148,7 +152,7 @@ export function useAgentChat(viewing: () => string): AgentChat {
   const load = useCallback(async (conversationId: string) => {
     abort.current?.abort();
     const conversation = await fetchConversation(conversationId);
-    setState({ ...EMPTY, conversationId, messages: conversation.messages });
+    setState({ ...EMPTY, conversationId, connectionId: conversation.connectionId ?? undefined, messages: conversation.messages });
   }, []);
 
   const undo = useCallback(
@@ -160,5 +164,8 @@ export function useAgentChat(viewing: () => string): AgentChat {
     [qc],
   );
 
-  return { ...state, send, stop, reset, load, undo };
+  // Takes effect with the next message; the server records it on the conversation.
+  const setBrain = useCallback((connectionId: string) => setState((s) => ({ ...s, connectionId })), []);
+
+  return { ...state, send, stop, reset, load, undo, setBrain };
 }

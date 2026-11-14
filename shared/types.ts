@@ -224,9 +224,42 @@ export interface ModelSettings {
   apiKeyHint: string;
 }
 
+/** One model you have connected — a "brain". Keys never leave the server. */
+export interface ConnectionView {
+  id: string;
+  label: string;
+  provider: ProviderKind;
+  preset: string | null;
+  baseUrl: string;
+  model: string;
+  effort: ModelSettings['effort'];
+  hasApiKey: boolean;
+  apiKeyHint: string;
+}
+
+/** Which brain does what: conversations, and quiet background work (mail, links, sync). */
+export interface Brains {
+  chat: string | null;
+  background: string | null;
+}
+
+export interface ConnectionInput {
+  label?: string;
+  provider: ProviderKind;
+  preset?: string | null;
+  baseUrl?: string;
+  model?: string;
+  effort?: ModelSettings['effort'];
+  /** Omit to keep the saved key; null clears it. */
+  apiKey?: string | null;
+}
+
 export interface Settings {
   profile: Profile;
+  /** The chat brain, in the shape older clients expect. */
   model: ModelSettings;
+  connections: ConnectionView[];
+  brains: Brains;
 }
 
 export interface SettingsUpdate {
@@ -259,6 +292,8 @@ export interface ConversationSummary {
   id: string;
   title: string;
   updatedAt: string;
+  /** The brain this conversation talks to; null means the current chat brain. */
+  connectionId: string | null;
 }
 
 export interface Conversation extends ConversationSummary {

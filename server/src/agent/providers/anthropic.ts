@@ -119,7 +119,7 @@ export function anthropicProvider(cfg: ModelConfig, apiBase: string = API): Prov
             // request caches the growing message history behind it.
             system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
             cache_control: { type: 'ephemeral' },
-            tools,
+            ...(tools.length ? { tools } : {}),
             messages: toMessages(req.turns, stripThinking),
             ...(cfg.effort !== 'auto' ? { output_config: { effort: cfg.effort } } : {}),
             ...(firstParty ? { betas: [FALLBACK_BETA], fallbacks: 'default' as const } : {}),

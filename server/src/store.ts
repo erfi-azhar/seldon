@@ -23,6 +23,9 @@ import type {
   MetricEntry,
   Milestone,
   ModelSettings,
+  Brains,
+  ConnectionInput,
+  ConnectionView,
   Note,
   NoteKind,
   Overview,
@@ -134,6 +137,22 @@ const DEFAULT_MODEL: StoredModel = {
 
 export interface ModelConfig extends StoredModel {
   provider: ProviderKind;
+}
+
+interface StoredConnection extends ModelConfig {
+  id: string;
+  label: string;
+}
+
+/** Anthropic falls back to ANTHROPIC_API_KEY from the environment when no key is saved. */
+function withEnvKey(c: ModelConfig): ModelConfig {
+  const apiKey = c.apiKey || (c.provider === 'anthropic' ? (process.env.ANTHROPIC_API_KEY ?? '') : '');
+  return { provider: c.provider, preset: c.preset, baseUrl: c.baseUrl, model: c.model, effort: c.effort, apiKey };
+}
+
+function defaultLabel(provider: ProviderKind, preset: string | null): string {
+  const names: Record<string, string> = { anthropic: 'Claude', openai: 'OpenAI', openrouter: 'OpenRouter', ollama: 'Ollama', lmstudio: 'LM Studio', custom: 'Custom model' };
+  return names[preset ?? ''] ?? (provider === 'anthropic' ? 'Claude' : 'Model');
 }
 
 // ── Store ───────────────────────────────────────────────────────────────────
@@ -1176,28 +1195,134 @@ export class Store {
     return this.readSetting('profile', DEFAULT_PROFILE);
   }
 
-  /** The model settings as stored, key included. Never send this to the client. */
-  getModelConfig(): ModelConfig | null {
-    const m = this.readSetting('model', DEFAULT_MODEL);
-    if (!m.provider) return null;
-    const apiKey = m.apiKey || (m.provider === 'anthropic' ? (process.env.ANTHROPIC_API_KEY ?? '') : '');
-    return { ...m, provider: m.provider, apiKey };
+  // ── Brains (model connections) ────────────────────────────────────────────
+
+  private readRaw<T>(key: string): T | null {
+    const r = this.get('SELECT value FROM settings WHERE key = ?', key);
+    return r ? (JSON.parse(r.value) as T) : null;
+  }
+
+  /** Every connection as stored, keys included. Never send these to the client. */
+  private storedConnections(): StoredConnection[] {
+    const list = this.readRaw<StoredConnection[]>('connections');
+    if (list) return list;
+    // Before brains, there was one "model" setting: carry it over as the first brain.
+    const legacy = this.readSetting('model', DEFAULT_MODEL);
+    if (!legacy.provider) return [];
+    const first: StoredConnection = { ...legacy, provider: legacy.provider, id: newId(), label: defaultLabel(legacy.provider, legacy.preset) };
+    this.writeSetting('connections', [first]);
+    this.writeSetting('brains', { chat: first.id, background: first.id });
+    return [first];
+  }
+
+  private saveConnections(list: StoredConnection[]): void {
+    this.writeSetting('connections', list);
+  }
+
+  getBrains(): Brains {
+    const list = this.storedConnections();
+    const saved = this.readRaw<Brains>('brains') ?? { chat: null, background: null };
+    const valid = (id: string | null) => (id && list.some((c) => c.id === id) ? id : (list[0]?.id ?? null));
+    return { chat: valid(saved.chat), background: valid(saved.background) };
+  }
+
+  setBrains(next: Partial<Brains>): Brains {
+    const list = this.storedConnections();
+    for (const id of Object.values(next)) if (id && !list.some((c) => c.id === id)) throw new NotFound('Connection');
+    this.writeSetting('brains', { ...this.getBrains(), ...next });
+    return this.getBrains();
+  }
+
+  private viewConnection(c: StoredConnection): ConnectionView {
+    const key = withEnvKey(c).apiKey;
+    return {
+      id: c.id,
+      label: c.label,
+      provider: c.provider,
+      preset: c.preset,
+      baseUrl: c.baseUrl,
+      model: c.model,
+      effort: c.effort,
+      hasApiKey: key.length > 0,
+      apiKeyHint: key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : key ? '••••' : '',
+    };
+  }
+
+  listConnections(): ConnectionView[] {
+    return this.storedConnections().map((c) => this.viewConnection(c));
+  }
+
+  /** A connection as the providers need it, key included. */
+  getConnectionConfig(id: string): ModelConfig | null {
+    const c = this.storedConnections().find((x) => x.id === id);
+    return c ? withEnvKey(c) : null;
+  }
+
+  /** The brain for a job: "chat" for conversations, "background" for quiet work. */
+  getModelConfig(role: keyof Brains = 'chat'): ModelConfig | null {
+    const id = this.getBrains()[role];
+    return id ? this.getConnectionConfig(id) : null;
+  }
+
+  addConnection(input: ConnectionInput): ConnectionView {
+    const list = this.storedConnections();
+    const c: StoredConnection = {
+      id: newId(),
+      label: input.label?.trim() || defaultLabel(input.provider, input.preset ?? null),
+      provider: input.provider,
+      preset: input.preset ?? null,
+      baseUrl: (input.baseUrl ?? '').trim().replace(/\/+$/, ''),
+      model: (input.model ?? '').trim(),
+      effort: input.effort ?? 'auto',
+      apiKey: input.apiKey ?? '',
+    };
+    this.saveConnections([...list, c]);
+    // The first brain does everything until there is a second.
+    if (list.length === 0) this.writeSetting('brains', { chat: c.id, background: c.id });
+    return this.viewConnection(c);
+  }
+
+  updateConnection(id: string, patch: Partial<ConnectionInput>): ConnectionView {
+    const list = this.storedConnections();
+    const i = list.findIndex((c) => c.id === id);
+    if (i < 0) throw new NotFound('Connection');
+    const current = list[i]!;
+    const { apiKey, ...rest } = patch;
+    const next: StoredConnection = { ...current, ...Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) };
+    next.baseUrl = next.baseUrl.trim().replace(/\/+$/, '');
+    next.model = next.model.trim();
+    next.label = next.label.trim() || defaultLabel(next.provider, next.preset);
+    // A key must never follow a change of provider or endpoint to a different host.
+    if (apiKey !== undefined) next.apiKey = apiKey ?? '';
+    else if (next.provider !== current.provider || next.baseUrl !== current.baseUrl.trim().replace(/\/+$/, '')) next.apiKey = '';
+    list[i] = next;
+    this.saveConnections(list);
+    return this.viewConnection(next);
+  }
+
+  removeConnection(id: string): void {
+    const list = this.storedConnections();
+    if (!list.some((c) => c.id === id)) throw new NotFound('Connection');
+    const brains = this.getBrains();
+    this.saveConnections(list.filter((c) => c.id !== id));
+    this.run('UPDATE conversations SET connection_id = NULL WHERE connection_id = ?', id);
+    this.writeSetting('brains', {
+      chat: brains.chat === id ? null : brains.chat,
+      background: brains.background === id ? null : brains.background,
+    });
   }
 
   getSettings(): Settings {
-    const m = this.readSetting('model', DEFAULT_MODEL);
-    const key = this.getModelConfig()?.apiKey ?? '';
+    const brains = this.getBrains();
+    const connections = this.listConnections();
+    const chat = connections.find((c) => c.id === brains.chat);
     return {
       profile: this.getProfile(),
-      model: {
-        provider: m.provider,
-        preset: m.preset,
-        baseUrl: m.baseUrl,
-        model: m.model,
-        effort: m.effort,
-        hasApiKey: key.length > 0,
-        apiKeyHint: key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : key ? '••••' : '',
-      },
+      model: chat
+        ? { provider: chat.provider, preset: chat.preset, baseUrl: chat.baseUrl, model: chat.model, effort: chat.effort, hasApiKey: chat.hasApiKey, apiKeyHint: chat.apiKeyHint }
+        : { provider: null, preset: null, baseUrl: '', model: '', effort: 'auto', hasApiKey: false, apiKeyHint: '' },
+      connections,
+      brains,
     };
   }
 
@@ -1209,15 +1334,16 @@ export class Store {
       this.writeSetting('profile', next);
     }
     if (update.model) {
-      const { apiKey, ...rest } = update.model;
-      const current = this.readSetting('model', DEFAULT_MODEL);
-      const next: StoredModel = { ...current, ...rest };
-      // Switching provider or endpoint must never carry a key over to a different host.
-      if (apiKey !== undefined) next.apiKey = apiKey ?? '';
-      else if (next.provider !== current.provider || next.baseUrl !== current.baseUrl) next.apiKey = '';
-      next.baseUrl = next.baseUrl.trim().replace(/\/+$/, '');
-      next.model = next.model.trim();
-      this.writeSetting('model', next);
+      // Older clients edit "the model": that is the chat brain.
+      const { provider, ...rest } = update.model;
+      const chat = this.getBrains().chat;
+      if (provider === null) {
+        if (chat) this.removeConnection(chat);
+      } else if (chat) {
+        this.updateConnection(chat, { ...rest, ...(provider ? { provider } : {}) });
+      } else if (provider) {
+        this.addConnection({ ...rest, provider });
+      }
     }
     return this.getSettings();
   }
@@ -1235,11 +1361,31 @@ export class Store {
 
   // ── Conversations ─────────────────────────────────────────────────────────
 
-  createConversation(title: string, systemPrompt: string): string {
+  createConversation(title: string, systemPrompt: string, connectionId: string | null = null): string {
     const id = newId();
     const now = nowIso();
-    this.run('INSERT INTO conversations (id, title, system_prompt, created_at, updated_at) VALUES (?,?,?,?,?)', id, title, systemPrompt, now, now);
+    this.run(
+      'INSERT INTO conversations (id, title, system_prompt, created_at, updated_at, connection_id) VALUES (?,?,?,?,?,?)',
+      id,
+      title,
+      systemPrompt,
+      now,
+      now,
+      connectionId,
+    );
     return id;
+  }
+
+  getConversationConnection(id: string): string | null {
+    const r = this.get('SELECT connection_id FROM conversations WHERE id = ?', id);
+    if (!r) throw new NotFound('Conversation');
+    return r.connection_id;
+  }
+
+  setConversationConnection(id: string, connectionId: string | null): void {
+    if (connectionId && !this.getConnectionConfig(connectionId)) throw new NotFound('Connection');
+    this.getConversationConnection(id);
+    this.run('UPDATE conversations SET connection_id = ? WHERE id = ?', connectionId, id);
   }
 
   getConversationSystem(id: string): string {
@@ -1261,17 +1407,18 @@ export class Store {
   }
 
   listConversations(limit = 30): ConversationSummary[] {
-    return this.all('SELECT id, title, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ?', limit).map((r) => ({
+    return this.all('SELECT id, title, updated_at, connection_id FROM conversations ORDER BY updated_at DESC LIMIT ?', limit).map((r) => ({
       id: r.id,
       title: r.title,
       updatedAt: r.updated_at,
+      connectionId: r.connection_id,
     }));
   }
 
   getConversation(id: string): Conversation {
-    const r = this.get('SELECT id, title, updated_at FROM conversations WHERE id = ?', id);
+    const r = this.get('SELECT id, title, updated_at, connection_id FROM conversations WHERE id = ?', id);
     if (!r) throw new NotFound('Conversation');
-    return { id: r.id, title: r.title, updatedAt: r.updated_at, messages: this.viewTurns(this.getTurns(id)) };
+    return { id: r.id, title: r.title, updatedAt: r.updated_at, connectionId: r.connection_id, messages: this.viewTurns(this.getTurns(id)) };
   }
 
   deleteConversation(id: string): void {
