@@ -278,7 +278,7 @@ registerSnapshotSection<Store>('Prayer', (store, today) => {
   if (owedTotal) lines.push(`Missed prayers still to make up: ${PRAYERS.filter((p) => f.owed[p]).map((p) => `${cap(p)} ${f.owed[p]}`).join(', ')}.`);
   if (f.autoMissed.length) lines.push(`${f.autoMissed.length} prayers this week passed without being marked, so were counted as missed (the person can still mark them prayed).`);
   lines.push(`Hijri date: ${f.hijri}.`);
-  if (f.ramadan) lines.push(f.ramadan.inRamadan ? `It is Ramadan, day ${f.ramadan.day}.` : `Ramadan expected to begin around ${f.ramadan.start} (${f.ramadan.daysUntil} days, Umm al-Qura estimate; subject to local moon sighting).`);
+  if (f.ramadan) lines.push(f.ramadan.inRamadan ? `It is Ramadan, day ${f.ramadan.day}.` : `Ramadan expected to begin around ${f.ramadan.start} (${f.ramadan.daysUntil} days, Umm al-Qura estimate; subject to local moon sighting): first tarawih the evening of ${addDays(f.ramadan.start, -1)} after Isha, first fast ${f.ramadan.start}.`);
   return lines.join('\n');
 });
 
