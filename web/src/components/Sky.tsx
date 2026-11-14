@@ -59,7 +59,7 @@ const FADE = 0.42;
 const CELL = 5;
 const CELL_PHONE = 3;
 const PHONE_WIDTH = 720;
-const SUN_R = 0.06;
+const SUN_R = 0.08;
 const MOON_R = 0.11;
 
 // ── Maths ─────────────────────────────────────────────────────────────────────
