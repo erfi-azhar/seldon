@@ -297,13 +297,13 @@ ul {
 /* ── Shell ──────────────────────────────────────────────────────────────── */
 
 .app {
+  /* The Today sky is placed against this, so it runs behind the agent panel too. */
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 100dvh;
 }
 .app-main {
-  /* The Today sky is placed against this. */
-  position: relative;
   min-width: 0;
   /* A backstop: nothing too wide inside may widen the page (on a phone that zooms the whole UI out). */
   overflow-x: clip;
@@ -877,9 +877,10 @@ button.chip:hover {
 
 /* ── Today ──────────────────────────────────────────────────────────────── */
 
-/* The sky: a band across the top of the page, behind the floating top bar, that
-   dissolves into the page just above the date. Drawn by components/Sky.tsx. */
-.app-main {
+/* The sky: a band across the top of the window, behind the floating top bar and the
+   agent panel, that dissolves into the page just above the date. Drawn by
+   components/Sky.tsx. */
+.app {
   --sky-h: clamp(200px, 19vw, 270px);
   /* Space between the bottom of the band (where the last, faintest dots are) and the day above the date. */
   --sky-gap: 0px;
@@ -907,7 +908,7 @@ button.chip:hover {
   padding-top: calc(var(--sky-h) - 72px + var(--sky-gap));
 }
 @media (max-width: 720px) {
-  .app-main {
+  .app {
     --sky-h: 180px;
   }
   .page.page-today {
@@ -3665,6 +3666,12 @@ body::before {
     radial-gradient(52% 44% at 92% 100%, var(--amb-3), transparent 72%),
     radial-gradient(48% 40% at 0% 96%, var(--amb-4), transparent 72%);
   pointer-events: none;
+}
+/* Under the Today sky, no glows at the top: the sky is the colour there. */
+body:has(.sky)::before {
+  background:
+    radial-gradient(52% 44% at 92% 100%, var(--amb-3), transparent 72%),
+    radial-gradient(48% 40% at 0% 96%, var(--amb-4), transparent 72%);
 }
 
 .card,
