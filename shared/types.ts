@@ -691,6 +691,8 @@ export interface OptionLeg {
   endTz: string;
   startUtc: string;
   endUtc: string;
+  /** Great-circle distance in statute miles: what frequent-flyer programmes credit. */
+  miles: number;
 }
 
 /** A way to make a journey, before it is booked: its flights, and what speaks for and against it. */

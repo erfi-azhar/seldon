@@ -902,10 +902,31 @@ function TripSummary({ trip }: { trip: Trip }) {
   );
 }
 
+/**
+ * KrisFlyer elite miles: a share of the distance flown, set by the fare. On Singapore Airlines Economy that is
+ * 50% (Lite, Value), 75% (Standard) or 100% (Flexi); Star Alliance partners such as Lufthansa and SWISS credit on a
+ * similar scale by booking class. Other airlines (LATAM, say) credit nothing. The estimate uses Standard, with the
+ * range from Lite to Flexi.
+ */
+const KRISFLYER_ELITE = new Set(['SQ', 'TR', 'A3', 'AC', 'AI', 'AV', 'BR', 'CA', 'CM', 'ET', 'LH', 'LO', 'LX', 'MS', 'NH', 'NZ', 'OS', 'OU', 'OZ', 'SA', 'SK', 'SN', 'TG', 'TK', 'TP', 'UA', 'ZH']);
+const earnsElite = (carrier: string) => KRISFLYER_ELITE.has(carrier.toUpperCase());
+function eliteMiles(o: FlightOption) {
+  const flown = o.legs.reduce((n, l) => n + (earnsElite(l.carrier) ? l.miles : 0), 0);
+  return { low: Math.round(flown * 0.5), mid: Math.round(flown * 0.75), high: flown };
+}
+const roughly = (n: number) => (n >= 1000 ? `${(Math.round(n / 100) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : String(n));
+
 /** Ways to make the journey, to weigh before booking: each option's flights, connections and trade-offs. */
 function FlightOptions({ trip }: { trip: Trip }) {
+  const { data: t } = useTravel();
   const choose = useWrite((id: string) => travelWrite.post(`/options/${id}/choose`));
   const remove = useWrite((id: string) => travelWrite.del(`/options/${id}`));
+  // How far there is still to go for the next KrisFlyer tier, to show what each option does for it.
+  const kf = t?.loyalty.find((a) => a.program === 'KrisFlyer');
+  const toGo = kf && kf.progress !== null && kf.progressTarget ? Math.max(0, kf.progressTarget - kf.progress) : null;
+  const goal = kf?.progressLabel?.match(/to (Elite \w+|PPS Club)/i)?.[1] ?? 'the next tier';
+  // The recommended option first, then the ones that earn the most elite miles.
+  const ordered = [...trip.options].sort((a, b) => Number(b.recommended) - Number(a.recommended) || eliteMiles(b).mid - eliteMiles(a).mid);
   return (
     <div className="trip-options">
       <div className="card-head">
@@ -915,8 +936,8 @@ function FlightOptions({ trip }: { trip: Trip }) {
         <span className="trip-section-count">{plural(trip.options.length, 'option')} · not booked</span>
       </div>
       <div className="opt-grid trip-section-body">
-        {trip.options.map((o) => (
-          <OptionCard key={o.id} o={o} onChoose={() => choose.mutate(o.id)} onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)} busy={choose.isPending && choose.variables === o.id} />
+        {ordered.map((o) => (
+          <OptionCard key={o.id} o={o} toGo={toGo} goal={goal} onChoose={() => choose.mutate(o.id)} onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)} busy={choose.isPending && choose.variables === o.id} />
         ))}
       </div>
       {choose.error && <p className="error-text">{choose.error.message}</p>}
@@ -925,7 +946,8 @@ function FlightOptions({ trip }: { trip: Trip }) {
 }
 
 /** One way to make the journey: three numbers that decide it, the route as a timeline of airports, then the fine print. */
-function OptionCard({ o, onChoose, onRemove, busy }: { o: FlightOption; onChoose: () => void; onRemove: () => void; busy: boolean }) {
+function OptionCard({ o, toGo, goal, onChoose, onRemove, busy }: { o: FlightOption; toGo: number | null; goal: string; onChoose: () => void; onRemove: () => void; busy: boolean }) {
+  const elite = eliteMiles(o);
   const first = o.legs[0]!;
   const last = o.legs[o.legs.length - 1]!;
   const total = minutesBetween(first.startUtc, last.endUtc);
@@ -934,10 +956,7 @@ function OptionCard({ o, onChoose, onRemove, busy }: { o: FlightOption; onChoose
   return (
     <article className={cx('opt-card', o.recommended && 'is-recommended', o.chosenAt && 'is-chosen')}>
       <header className="opt-head">
-        <div className="opt-head-text">
-          <span className="opt-title">{o.title}</span>
-          {o.summary && <p className="opt-summary">{o.summary}</p>}
-        </div>
+        <span className="opt-title">{o.title}</span>
         {o.chosenAt ? (
           <span className="opt-badge is-chosen">
             <CheckIcon size={12} /> Added
@@ -950,6 +969,7 @@ function OptionCard({ o, onChoose, onRemove, busy }: { o: FlightOption; onChoose
           )
         )}
       </header>
+      {o.summary && <p className="opt-summary">{o.summary}</p>}
 
       <dl className="opt-stats">
         <div>
@@ -968,6 +988,15 @@ function OptionCard({ o, onChoose, onRemove, busy }: { o: FlightOption; onChoose
           <dd className="opt-stat-sub">{stops.length ? `${hm(stops.reduce((n, x) => n + x.wait, 0))} wait` : '—'}</dd>
         </div>
       </dl>
+
+      <div className="opt-elite">
+        <span className="opt-elite-label">KrisFlyer elite miles</span>
+        <b>≈ {elite.mid.toLocaleString()}</b>
+        <span className="opt-elite-sub">
+          {elite.high ? `${roughly(elite.low)}–${roughly(elite.high)} by fare (Lite to Flexi)` : 'None: these airlines don’t credit KrisFlyer elite miles'}
+          {toGo !== null && elite.mid > 0 && (toGo - elite.mid > 0 ? ` · ${roughly(toGo - elite.mid)} to ${goal} after` : ` · enough for ${goal}`)}
+        </span>
+      </div>
 
       <ol className="opt-journey">
         {o.legs.map((l, i) => (
@@ -996,7 +1025,9 @@ function OptionCard({ o, onChoose, onRemove, busy }: { o: FlightOption; onChoose
                 <AirlineTail code={l.carrier} size={22} />
                 <span>
                   {`${l.carrier} ${l.number}`.trim()} · {hm(minutesBetween(l.startUtc, l.endUtc))}
+                  {l.miles > 0 && ` · ${l.miles.toLocaleString()} mi`}
                 </span>
+                {!earnsElite(l.carrier) && <span className="opt-no-elite">no elite miles</span>}
               </span>
             </div>
             <div className="opt-stop is-arrival">
