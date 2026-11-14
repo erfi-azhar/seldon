@@ -107,20 +107,32 @@ export function useOembedProvidersForTests(providers: OembedProvider[] | null): 
   OEMBED = providers ?? REAL_OEMBED;
 }
 
+/** A short, single-line look at what a site sent back, for the server log. */
+const glimpse = (body: Buffer | string, n = 300): string => String(body).slice(0, n * 4).replace(/\s+/g, ' ').trim().slice(0, n);
+// Why an embed or a page gave nothing useful shows up in the server log, so sites that
+// stop answering (TikTok short links, say) can be diagnosed from the deployment's logs.
+const why = (message: string): void => console.warn(`[capture] ${message}`);
+
 /** What a site's embed says about a post, or null when it has no embed or will not answer. */
 async function fromOembed(url: string): Promise<Extracted | null> {
   const known = OEMBED.find((o) => o.test.test(url));
   if (!known) return null;
   try {
     const res = await safeFetch(known.endpoint(url), { accept: 'application/json', maxBytes: 500_000 });
-    if (res.status !== 200) return null;
+    if (res.status !== 200) {
+      why(`${known.site} embed for ${url} answered ${res.status}: ${glimpse(res.body)}`);
+      return null;
+    }
     const o = JSON.parse(res.body.toString('utf8')) as { title?: string; author_name?: string; html?: string; thumbnail_url?: string };
     const words = o.html ? stripTags(o.html.replace(/<a[^>]*>(pic\.twitter\.com|https?:\/\/t\.co)[^<]*<\/a>/gi, '')) : '';
     // A tweet's embed ends with "— Name (@handle) date"; the words before it are the post.
     const text = known.kind === 'tweet' ? words.replace(/—\s*[^—]*$/, '').trim() : words;
     const author = o.author_name?.trim() ?? '';
     // TikTok answers a short link with an empty embed; that is no answer at all.
-    if (!o.title?.trim() && !author && !text) return null;
+    if (!o.title?.trim() && !author && !text) {
+      why(`${known.site} embed for ${url} was empty: ${glimpse(res.body)}`);
+      return null;
+    }
     return {
       kind: known.kind,
       title: o.title?.trim() || (author ? `${author} on ${known.site}` : known.kind === 'tweet' ? 'Post on X' : known.site),
@@ -131,7 +143,8 @@ async function fromOembed(url: string): Promise<Extracted | null> {
       text,
       imageUrl: o.thumbnail_url ?? null,
     };
-  } catch {
+  } catch (err) {
+    why(`${known.site} embed for ${url} failed: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
@@ -152,6 +165,13 @@ export async function extract(url: string): Promise<Extracted> {
   if (embedded) return embedded;
 
   const res = await safeFetch(url, { maxBytes: MAX_IMAGE });
+  // A link with an embed should not need its page read; say what the page was when it does.
+  if (OEMBED.some((o) => o.test.test(url) || o.test.test(res.url))) {
+    const page = res.body.toString('utf8', 0, 200_000);
+    const canonical = meta(page, 'og:url') || page.match(/<link[^>]+rel=["']canonical["'][^>]*href=["']([^"']+)["']/i)?.[1] || '-';
+    const title = glimpse(meta(page, 'og:title') || page.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '-', 120);
+    why(`page for ${url} landed on ${res.url} (${res.status}, ${res.contentType || 'no type'}), title "${title}", canonical ${canonical}, ${res.body.length} bytes: ${glimpse(readableText(page), 200)}`);
+  }
   // A short link (vt.tiktok.com/…) only has an embed under the address it leads to.
   if (res.url !== url) {
     const landed = await fromOembed(res.url);
