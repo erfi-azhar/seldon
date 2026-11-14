@@ -10,7 +10,7 @@ import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
 import { Loading } from '../components/ui.tsx';
-import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
+import { cx, hueStyle, monthDay, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
 
 /** Today's to-dos (due today or overdue, and done today), split into work and the rest. */
@@ -259,13 +259,9 @@ export function Today() {
   const { data: o } = useOverview();
   const skyTrip = useSkyTrip();
   const { openSheet, sphere } = useApp();
-  const [showAll, setShowAll] = useState(false);
   if (!o) return <Loading />;
 
   const today = todayStr();
-  const habitsOpen = o.habits.filter((h) => !h.doneToday && (h.cadence === 'daily' || h.weekCount < h.targetPerWeek)).length;
-  const due = o.tasks.due.length;
-  const anytime = showAll ? o.tasks.anytime : o.tasks.anytime.slice(0, 5);
   const horizon = o.goalsDue.length + o.tasks.upcoming.length > 0;
 
   return (
@@ -275,19 +271,6 @@ export function Today() {
         <div>
           <div className="hero-day">{weekdayLong(today)}</div>
           <h1 className="hero-date">{monthDay(today)}</h1>
-          <p className="hero-line">
-            {greeting()}
-            {o.profile.userName ? `, ${o.profile.userName}` : ''}.{' '}
-            {due === 0 && habitsOpen === 0 ? (
-              'Nothing is waiting on you — a good day to move something that matters.'
-            ) : (
-              <>
-                {due > 0 && <b>{plural(due, 'task')} due</b>}
-                {due > 0 && habitsOpen > 0 && ' and '}
-                {habitsOpen > 0 && <b>{plural(habitsOpen, 'habit')} still open</b>}.
-              </>
-            )}
-          </p>
         </div>
         <div className="hero-side">
           <NextPrayerPill />
@@ -301,30 +284,6 @@ export function Today() {
         <div className="col">
           <TravelModeCard />
           <SignalsCard />
-          <section className="card">
-            <div className="card-head">
-              <h2 className="card-title">Anytime</h2>
-              <span className="hint">no date set</span>
-            </div>
-            {o.tasks.anytime.length === 0 ? (
-              <p className="empty">Nothing waiting without a date.</p>
-            ) : (
-              <>
-                <ul>
-                  {anytime.map((t) => (
-                    <TaskRow key={t.id} task={t} />
-                  ))}
-                </ul>
-                {o.tasks.anytime.length > 5 && (
-                  <button type="button" className="link" style={{ margin: '6px 20px 0', fontSize: 13 }} onClick={() => setShowAll((v) => !v)}>
-                    {showAll ? 'Show fewer' : `Show all ${o.tasks.anytime.length}`}
-                  </button>
-                )}
-              </>
-            )}
-            <AddTask />
-          </section>
-
           <Journal key={o.date} date={o.date} initial={o.journal?.body ?? ''} />
         </div>
 
