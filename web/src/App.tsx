@@ -144,7 +144,7 @@ function Shell({ settings }: { settings: SettingsData }) {
                 <AgentOrb size={28} thinking={chat.streaming} />
                 <span>{agentName}</span>
               </button>
-              <Link href="/" className="wordmark display">
+              <Link href="/" className="wordmark serif">
                 Terminus
               </Link>
             </div>

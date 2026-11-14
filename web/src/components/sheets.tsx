@@ -426,7 +426,7 @@ function NoteForm({ note, sphereId, onClose }: { note: Note | null; sphereId?: s
       )}
       <AutoTextarea
         className="textarea"
-        style={{ minHeight: 200, border: 0, padding: 0, boxShadow: 'none', ...(journal ? { fontFamily: 'var(--sans)', fontSize: 19 } : {}) }}
+        style={{ minHeight: 200, border: 0, padding: 0, boxShadow: 'none', ...(journal ? { fontFamily: 'var(--serif)', fontSize: 19 } : {}) }}
         value={body}
         onChange={setBody}
         placeholder={journal ? 'What happened? What is on your mind?' : 'Write, paste, think…'}
