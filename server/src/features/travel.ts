@@ -120,7 +120,7 @@ function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store)): Trip 
     segments: (store.db.prepare('SELECT * FROM trip_segments WHERE trip_id = ? ORDER BY start_utc').all(r.id) as Row[]).map((x) => segmentFromRow(x, accounts)),
     itinerary: (store.db.prepare("SELECT * FROM itinerary_items WHERE trip_id = ? ORDER BY date, COALESCE(time, '99:99'), created_at").all(r.id) as Row[]).map(itemFromRow),
     todos: store.listTasks({ tripId: r.id, status: 'all', limit: 100 }),
-    options: (store.db.prepare('SELECT * FROM trip_options WHERE trip_id = ? ORDER BY position, created_at').all(r.id) as Row[]).map(optionFromRow),
+    options: (store.db.prepare('SELECT * FROM trip_options WHERE trip_id = ? ORDER BY recommended DESC, position, created_at').all(r.id) as Row[]).map(optionFromRow),
   };
 }
 
@@ -429,16 +429,21 @@ export function addOption(store: Store, tripId: string, input: OptionInput, quie
   return optionFromRow(store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row);
 }
 
-export function updateOption(store: Store, id: string, p: Partial<Omit<OptionInput, 'legs'>>): FlightOption {
+export function updateOption(store: Store, id: string, p: Partial<OptionInput>): FlightOption {
   const r = store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Option');
+  if (p.legs !== undefined && !p.legs.length) throw new Invalid('An option needs at least one flight');
+  // New legs are resolved the same way as when the option was made; a changed routing is no longer the one chosen.
+  const legs = p.legs ? JSON.stringify(p.legs.map((l) => optionLeg(l, travelSettings(store)))) : r.legs;
   store.db
-    .prepare('UPDATE trip_options SET title = ?, summary = ?, notes = ?, recommended = ? WHERE id = ?')
+    .prepare('UPDATE trip_options SET title = ?, summary = ?, notes = ?, recommended = ?, legs = ?, chosen_at = ? WHERE id = ?')
     .run(
       p.title !== undefined ? clean(p.title, 80) || r.title : r.title,
       p.summary !== undefined ? clean(p.summary, 300) : r.summary,
       p.notes !== undefined ? JSON.stringify(p.notes.map((x) => clean(x, 300)).filter(Boolean).slice(0, 8)) : r.notes,
       p.recommended !== undefined ? Number(p.recommended) : r.recommended,
+      legs,
+      p.legs ? null : r.chosen_at,
       id,
     );
   return optionFromRow(store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row);
@@ -1132,7 +1137,7 @@ registerFeature({
       return c.json(state(c), 201);
     });
     app.patch('/api/travel/options/:id', async (c) => {
-      updateOption(store, c.req.param('id'), await read(c, optionInput.omit({ legs: true }).partial()));
+      updateOption(store, c.req.param('id'), await read(c, optionInput.partial()));
       return c.json(state(c));
     });
     app.post('/api/travel/options/:id/choose', (c) => {
