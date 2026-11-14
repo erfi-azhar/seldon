@@ -396,6 +396,18 @@ const MIGRATIONS: string[] = [
   ALTER TABLE tasks ADD COLUMN trip_id TEXT REFERENCES trips(id) ON DELETE SET NULL;
   CREATE INDEX tasks_by_trip ON tasks(trip_id, done);
   `,
+  // What Seldon suggests doing next for a task: who to see, what to bring, what it can do for you.
+  `
+  CREATE TABLE task_followups (
+    task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+    fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    steps TEXT NOT NULL DEFAULT '[]',
+    error TEXT,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
