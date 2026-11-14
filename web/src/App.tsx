@@ -145,10 +145,6 @@ function Shell({ settings }: { settings: SettingsData }) {
         <div className="app-main">
           <header className="topbar">
             <div className="topbar-left">
-              <button type="button" className="agent-button" aria-pressed={agentOpen} onClick={() => setAgentOpen((v) => !v)} title={`Talk to ${agentName} (⌘J)`}>
-                <AgentOrb size={28} thinking={chat.streaming} />
-                <span>{agentName}</span>
-              </button>
               <Link href="/" className="wordmark serif">
                 Terminus
               </Link>
