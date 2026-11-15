@@ -2,8 +2,8 @@
 // up, and a countdown to Ramadan when it is near.
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronRight, Clock, LocateFixed, MapPin, MoonStar, Pencil, Plus, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Check, ChevronRight, Clock, LoaderCircle, LocateFixed, MapPin, MoonStar, Pause, Pencil, Play, Plus, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
 import { addDays, cx, parseDay, plural, todayStr } from '../lib.ts';
@@ -414,11 +414,74 @@ function NiyyahCard({ fast, now, tz }: { fast: { date: string; day: number; fajr
 
 const arabicDigits = (n: number) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]!);
 
+// Verse-by-verse recitation by Mishary Rashid Alafasy. quran.com's audio host comes first;
+// everyayah.com serves the same files and is tried if it fails.
+const RECITER = 'Mishary Alafasy';
+const audioSources = (surah: number, ayah: number): string[] => {
+  const file = `${String(surah).padStart(3, '0')}${String(ayah).padStart(3, '0')}.mp3`;
+  return [`https://verses.quran.com/Alafasy/mp3/${file}`, `https://everyayah.com/data/Alafasy_128kbps/${file}`];
+};
+
+type Playback = { state: 'idle' } | { state: 'loading' | 'playing' | 'paused'; ayah: number } | { state: 'error' };
+
+/** Plays a run of ayat one after another, falling back to the second host if the first fails. */
+function useRecitation(surah: number, first: number, last: number) {
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const [pb, setPb] = useState<Playback>({ state: 'idle' });
+
+  const stop = () => {
+    const a = audio.current;
+    if (a) {
+      a.onended = a.onerror = a.onplaying = a.onwaiting = null;
+      a.pause();
+      a.removeAttribute('src');
+      a.load();
+    }
+    audio.current = null;
+  };
+  // A different verse, or leaving the page, stops what is playing.
+  useEffect(() => {
+    setPb({ state: 'idle' });
+    return stop;
+  }, [surah, first, last]);
+
+  const play = (ayah: number, source = 0) => {
+    stop();
+    const a = new Audio(audioSources(surah, ayah)[source]);
+    audio.current = a;
+    setPb({ state: 'loading', ayah });
+    a.onplaying = () => setPb({ state: 'playing', ayah });
+    a.onwaiting = () => setPb({ state: 'loading', ayah });
+    a.onended = () => (ayah < last ? play(ayah + 1) : (stop(), setPb({ state: 'idle' })));
+    a.onerror = () => (source === 0 ? play(ayah, 1) : (stop(), setPb({ state: 'error' })));
+    a.play().catch((e: unknown) => {
+      // Autoplay refusals are reported here; load failures arrive via onerror.
+      if (e instanceof DOMException && e.name === 'NotAllowedError') (stop(), setPb({ state: 'idle' }));
+    });
+  };
+
+  const toggle = () => {
+    const a = audio.current;
+    if (pb.state === 'playing' && a) {
+      a.pause();
+      setPb({ state: 'paused', ayah: pb.ayah });
+    } else if (pb.state === 'paused' && a) {
+      void a.play().catch(() => setPb({ state: 'error' }));
+    } else if (pb.state !== 'loading') play(first);
+  };
+
+  return { pb, toggle };
+}
+
 /** Outside Ramadan: a verse of encouragement and calm, a new one each day. */
 function VerseCard({ date }: { date: string }) {
   const [offset, setOffset] = useState(0);
   const v = VERSES[(verseIndexFor(date) + offset) % VERSES.length]!;
-  const first = Number(v.ref.split(':')[1]!.split('-')[0]);
+  const [surah, range] = v.ref.split(':') as [string, string];
+  const first = Number(range.split('-')[0]);
+  const last = first + v.arabic.length - 1;
+  const { pb, toggle } = useRecitation(Number(surah), first, last);
+  const current = pb.state === 'playing' || pb.state === 'paused' || pb.state === 'loading' ? pb.ayah : null;
   // The translation is kept verbatim; only a trailing dash or comma, left where the
   // sentence runs on into the next ayah, is dropped for display.
   const english = v.english.replace(/[\s,;:\-–—]+$/, '');
@@ -432,17 +495,33 @@ function VerseCard({ date }: { date: string }) {
       </div>
       <p className="verse-arabic" lang="ar" dir="rtl">
         {v.arabic.map((a, i) => (
-          <span key={i}>
+          <span key={i} className={cx(v.arabic.length > 1 && current === first + i && 'is-reciting')}>
             {a} <span className="verse-end">﴿{arabicDigits(first + i)}﴾</span>{' '}
           </span>
         ))}
       </p>
       <p className="verse-english">{english.charAt(0).toUpperCase() + english.slice(1)}</p>
       <div className="verse-foot">
-        <a href={`https://quran.com/${v.ref}`} target="_blank" rel="noreferrer">
-          {v.surah} {v.ref.replace('-', '–')}
-        </a>
-        <span>Abdel Haleem translation</span>
+        <button
+          type="button"
+          className={cx('verse-play', pb.state === 'playing' && 'is-playing')}
+          onClick={toggle}
+          aria-label={pb.state === 'playing' ? 'Pause recitation' : 'Play recitation'}
+        >
+          {pb.state === 'loading' ? (
+            <LoaderCircle size={15} className="spin" />
+          ) : pb.state === 'playing' ? (
+            <Pause size={15} fill="currentColor" strokeWidth={0} />
+          ) : (
+            <Play size={15} fill="currentColor" strokeWidth={0} />
+          )}
+        </button>
+        <div className="verse-meta">
+          <a href={`https://quran.com/${v.ref}`} target="_blank" rel="noreferrer">
+            {v.surah} {v.ref.replace('-', '–')}
+          </a>
+          <span>{pb.state === 'error' ? 'Recitation couldn’t load — try again' : `Recited by ${RECITER} · Abdel Haleem translation`}</span>
+        </div>
       </div>
     </section>
   );

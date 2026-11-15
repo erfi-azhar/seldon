@@ -4633,23 +4633,58 @@ button.chip-ask:hover {
   color: var(--ink);
   text-wrap: pretty;
 }
+.verse-arabic .is-reciting {
+  background: color-mix(in oklch, var(--ink) 8%, transparent);
+  border-radius: 8px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
 .verse-foot {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 12px;
-  padding-top: 10px;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
   font-size: 12.5px;
   color: var(--ink-2);
 }
-.verse-foot a {
-  color: inherit;
-  font-weight: 500;
+.verse-play {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  padding-left: 2px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--surface);
+  background: var(--ink);
+  cursor: pointer;
+  transition: transform 0.15s ease;
 }
-.verse-foot a:hover {
+.verse-play:hover {
+  transform: scale(1.06);
+}
+.verse-play.is-playing {
+  padding-left: 0;
+}
+.verse-play:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.verse-meta {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.verse-meta a {
   color: var(--ink);
+  font-weight: 500;
+  font-size: 13px;
+}
+.verse-meta a:hover {
+  text-decoration: underline;
 }
 @media (max-width: 520px) {
   .niyyah-arabic {
