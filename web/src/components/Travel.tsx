@@ -1369,8 +1369,18 @@ function FlightOptions({ trip }: { trip: Trip }) {
       /* remembered for this visit only */
     }
   };
+  // Options that land back at the home airport are the way home; the rest are the way out.
+  const home = t?.settings.homeAirport ?? 'SIN';
+  const isReturn = (o: FlightOption) => o.legs[o.legs.length - 1]?.toCode === home;
+  const outCount = trip.options.filter((o) => !isReturn(o)).length;
+  const backCount = trip.options.length - outCount;
+  const split = outCount > 0 && backCount > 0;
+  // Which way is shown, remembered per trip; once the way out is chosen, the way home comes first.
+  const [dir, setDir] = useStored<'out' | 'back'>(`terminus.options.dir.${trip.id}`, () =>
+    trip.options.some((o) => !isReturn(o) && o.chosenAt) && !trip.options.some((o) => isReturn(o) && o.chosenAt) ? 'back' : 'out',
+  );
   const peek = useScrollEdges<HTMLDivElement>('x', [open, trip.options.length]);
-  const grid = useScrollEdges<HTMLDivElement>('x', [open, trip.options.length]);
+  const grid = useScrollEdges<HTMLDivElement>('x', [open, trip.options.length, dir]);
   const chosen = trip.options.filter((o) => o.chosenAt).length;
   const best = [...trip.options].sort((a, b) => eliteMiles(b).mid - eliteMiles(a).mid)[0];
   // How far there is still to go for the next KrisFlyer tier, to show what each option does for it.
@@ -1379,6 +1389,23 @@ function FlightOptions({ trip }: { trip: Trip }) {
   const goal = kf?.progressLabel?.match(/to (Elite \w+|PPS Club)/i)?.[1] ?? 'the next tier';
   // The recommended option first, then the ones that earn the most elite miles.
   const ordered = [...trip.options].sort((a, b) => Number(b.recommended) - Number(a.recommended) || eliteMiles(b).mid - eliteMiles(a).mid);
+  const departing = ordered.filter((o) => !isReturn(o));
+  const returning = ordered.filter(isReturn);
+  const shown = !split ? ordered : dir === 'back' ? returning : departing;
+  const added = (list: FlightOption[]) => list.some((o) => o.chosenAt);
+  const chip = (o: FlightOption) => {
+    const last = o.legs[o.legs.length - 1]!;
+    return (
+      <button key={o.id} type="button" className={cx('opt-peek-chip', o.chosenAt && 'is-added')} onClick={() => { if (split) setDir(isReturn(o) ? 'back' : 'out'); setOpen(true); }}>
+        <span className={cx('opt-peek-dot', `is-${mainCabin(o)}`)} aria-hidden />
+        <b>{CABIN_NAME[mainCabin(o)]}</b>
+        <span>
+          lands {weekday(dayOf(last.endLocal))} {time(last.endLocal)} · ≈ {roughly(eliteMiles(o).mid)}
+        </span>
+        {o.chosenAt && <CheckIcon size={12} className="opt-peek-check" aria-label="added to the trip" />}
+      </button>
+    );
+  };
   return (
     <section className={cx('card trip-section fold-card trip-options', !open && 'is-folded')}>
       <div className="card-head fold-head">
@@ -1387,7 +1414,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
             <Route size={15} /> Flight options
           </span>
           <span className="fold-peek opt-fold-peek">
-            {plural(trip.options.length, 'option')} · {chosen ? `${chosen} added to the trip` : 'nothing booked yet'}
+            {split ? `${outCount} departing · ${backCount} returning` : plural(trip.options.length, 'option')} · {chosen ? `${chosen} added to the trip` : 'nothing booked yet'}
             {best && <span className="opt-bar-best"> · most elite miles: {CABIN_NAME[mainCabin(best)]}, ≈ {roughly(eliteMiles(best).mid)}</span>}
           </span>
         </button>
@@ -1398,28 +1425,38 @@ function FlightOptions({ trip }: { trip: Trip }) {
       {!open && (
         <div className="blur-wrap">
         <div ref={peek.ref} onScroll={peek.onScroll} className="opt-peek">
-          {ordered.map((o) => {
-            const last = o.legs[o.legs.length - 1]!;
-            return (
-              <button key={o.id} type="button" className={cx('opt-peek-chip', o.chosenAt && 'is-added')} onClick={() => setOpen(true)}>
-                <span className={cx('opt-peek-dot', `is-${mainCabin(o)}`)} aria-hidden />
-                <b>{CABIN_NAME[mainCabin(o)]}</b>
-                <span>
-                  lands {weekday(dayOf(last.endLocal))} {time(last.endLocal)} · ≈ {roughly(eliteMiles(o).mid)}
-                </span>
-                {o.chosenAt && <CheckIcon size={12} className="opt-peek-check" aria-label="added to the trip" />}
-              </button>
-            );
-          })}
+          {split ? (
+            <>
+              <span className="opt-peek-group">Departing</span>
+              {departing.map(chip)}
+              <span className="opt-peek-group">Returning</span>
+              {returning.map(chip)}
+            </>
+          ) : (
+            ordered.map(chip)
+          )}
         </div>
         <ScrollBlur axis="x" edges={peek.edges} />
         </div>
       )}
       {open && (
         <div className="trip-section-body">
+          {split && (
+            <div className="opt-dir">
+              <Seg
+                label="Which way"
+                value={dir}
+                onChange={setDir}
+                options={[
+                  { value: 'out', label: `Departing · ${outCount}${added(departing) ? ' ✓' : ''}` },
+                  { value: 'back', label: `Returning · ${backCount}${added(returning) ? ' ✓' : ''}` },
+                ]}
+              />
+            </div>
+          )}
           <div className="blur-wrap opt-grid-wrap">
           <div ref={grid.ref} onScroll={grid.onScroll} className="opt-grid">
-            {ordered.map((o) => (
+            {shown.map((o) => (
               <OptionCard
                 key={o.id}
                 o={o}
