@@ -90,6 +90,8 @@ function segmentFromRow(r: Row, accounts: LoyaltyAccount[], stays?: MarriottStay
     cabin: r.cabin,
     seat: r.seat,
     confirmation: r.confirmation,
+    fromTerminal: r.from_terminal ?? '',
+    toTerminal: r.to_terminal ?? '',
     address: r.address,
     notes: r.notes,
     source: r.source,
@@ -248,6 +250,8 @@ export interface SegmentInput {
   cabin?: string;
   seat?: string;
   confirmation?: string;
+  fromTerminal?: string;
+  toTerminal?: string;
   address?: string;
   notes?: string;
 }
@@ -298,6 +302,8 @@ function normalise(s: SegmentInput, settings: TravelSettings) {
     cabin: clean(s.cabin, 40),
     seat: clean(s.seat, 8),
     confirmation: clean(s.confirmation, 20),
+    fromTerminal: clean(s.fromTerminal, 12).replace(/^terminal\s*/i, ''),
+    toTerminal: clean(s.toTerminal, 12).replace(/^terminal\s*/i, ''),
     address: clean(s.address, 300),
     notes: clean(s.notes, 1000),
   };
@@ -345,8 +351,8 @@ export function addSegment(store: Store, tripId: string | null, input: SegmentIn
     // Fill gaps (a seat assigned at check-in, a terminal) without overwriting what is there.
     const fill = (k: string, v: string) => (v && !same[k] ? v : same[k]);
     store.db
-      .prepare('UPDATE trip_segments SET cabin = ?, seat = ?, confirmation = ?, address = ?, from_name = ?, to_name = ? WHERE id = ?')
-      .run(fill('cabin', n.cabin), fill('seat', n.seat), fill('confirmation', n.confirmation), fill('address', n.address), fill('from_name', n.fromName), fill('to_name', n.toName), same.id);
+      .prepare('UPDATE trip_segments SET cabin = ?, seat = ?, confirmation = ?, address = ?, from_name = ?, to_name = ?, from_terminal = ?, to_terminal = ? WHERE id = ?')
+      .run(fill('cabin', n.cabin), fill('seat', n.seat), fill('confirmation', n.confirmation), fill('address', n.address), fill('from_name', n.fromName), fill('to_name', n.toName), fill('from_terminal', n.fromTerminal), fill('to_terminal', n.toTerminal), same.id);
     return { segment: segmentFromRow(store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(same.id) as Row, accounts), created: false };
   }
   if (tripId && !store.db.prepare('SELECT 1 AS x FROM trips WHERE id = ?').get(tripId)) throw new NotFound('Trip');
@@ -354,9 +360,9 @@ export function addSegment(store: Store, tripId: string | null, input: SegmentIn
   store.db
     .prepare(
       `INSERT INTO trip_segments (id, trip_id, kind, title, carrier, number, from_code, from_name, to_code, to_name, start_local, start_tz, end_local, end_tz,
-        start_utc, end_utc, cabin, seat, confirmation, address, notes, source, external_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        start_utc, end_utc, cabin, seat, confirmation, address, notes, source, external_id, created_at, from_terminal, to_terminal) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
-    .run(id, tripId, n.kind, n.title, n.carrier, n.number, n.fromCode, n.fromName, n.toCode, n.toName, n.startLocal, n.startTz, n.endLocal, n.endTz, n.startUtc, n.endUtc, n.cabin, n.seat, n.confirmation, n.address, n.notes, source, externalId, nowIso());
+    .run(id, tripId, n.kind, n.title, n.carrier, n.number, n.fromCode, n.fromName, n.toCode, n.toName, n.startLocal, n.startTz, n.endLocal, n.endTz, n.startUtc, n.endUtc, n.cabin, n.seat, n.confirmation, n.address, n.notes, source, externalId, nowIso(), n.fromTerminal, n.toTerminal);
   if (tripId) cover(store, tripId, n.startLocal.slice(0, 10), n.endLocal.slice(0, 10));
   const label = n.kind === 'flight' ? `${n.title}${n.fromCode && n.toCode ? `, ${n.fromCode} → ${n.toCode}` : ''}` : n.title || n.kind;
   const trip = tripId ? (store.db.prepare('SELECT purpose FROM trips WHERE id = ?').get(tripId) as Row) : null;
@@ -413,9 +419,9 @@ export function updateSegment(store: Store, id: string, p: Partial<SegmentInput>
   store.db
     .prepare(
       `UPDATE trip_segments SET kind = ?, title = ?, carrier = ?, number = ?, from_code = ?, from_name = ?, to_code = ?, to_name = ?, start_local = ?, start_tz = ?,
-        end_local = ?, end_tz = ?, start_utc = ?, end_utc = ?, cabin = ?, seat = ?, confirmation = ?, address = ?, notes = ? WHERE id = ?`,
+        end_local = ?, end_tz = ?, start_utc = ?, end_utc = ?, cabin = ?, seat = ?, confirmation = ?, address = ?, notes = ?, from_terminal = ?, to_terminal = ? WHERE id = ?`,
     )
-    .run(n.kind, n.title, n.carrier, n.number, n.fromCode, n.fromName, n.toCode, n.toName, n.startLocal, n.startTz, n.endLocal, n.endTz, n.startUtc, n.endUtc, n.cabin, n.seat, n.confirmation, n.address, n.notes, id);
+    .run(n.kind, n.title, n.carrier, n.number, n.fromCode, n.fromName, n.toCode, n.toName, n.startLocal, n.startTz, n.endLocal, n.endTz, n.startUtc, n.endUtc, n.cabin, n.seat, n.confirmation, n.address, n.notes, n.fromTerminal, n.toTerminal, id);
   if (r.trip_id) cover(store, r.trip_id, n.startLocal.slice(0, 10), n.endLocal.slice(0, 10));
   return segmentFromRow(store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row, listLoyalty(store));
 }
@@ -1058,7 +1064,68 @@ export async function prepareTravel(store: Store, now: Date = new Date()): Promi
         failed(`draft:${trip.id}`, err, now);
       }
     }
+    // Every stop at a place gets its route and details, however it got onto the plan.
+    if (startsIn <= 30 && due(`complete:${trip.id}`, now)) {
+      try {
+        await completeItinerary(store, trip.id);
+      } catch (err) {
+        failed(`complete:${trip.id}`, err, now);
+      }
+    }
   }
+}
+
+const Completion = z.object({
+  items: z.array(z.object({ id: z.string(), route: routeInput.nullable(), details: z.array(detailInput).max(10) })).max(15),
+});
+
+/** Not a place you go to: a call, an online meeting, a rest at the hotel with nowhere named. */
+const placeless = (place: string) => !place.trim() || /^(online|remote|zoom|teams|google meet|call|hotel room)$/i.test(place.trim());
+
+/**
+ * Fill in the route and details of plan items at a place that have neither (added by hand, from a
+ * calendar, before this existed): up to 12 at a time, each asked about once (the ids asked about are
+ * kept, so one the model can't place isn't asked about every half hour).
+ */
+export async function completeItinerary(store: Store, tripId: string): Promise<number> {
+  const trip = getTrip(store, tripId);
+  const asked = new Set(JSON.parse((store.db.prepare("SELECT value FROM settings WHERE key = 'itinerary_completed'").get() as { value: string } | undefined)?.value ?? '[]') as string[]);
+  const todo = trip.itinerary.filter((i) => !i.done && !placeless(i.place) && !i.route && i.details.length === 0 && !asked.has(i.id)).slice(0, 12);
+  if (todo.length === 0) return 0;
+  const stays = trip.segments.filter((x) => x.kind === 'stay');
+  const res = await think({
+    store,
+    task: `For each plan item below, give everything the traveller needs for it, as they will be on that day.
+- "route": from where they will be just before (the previous item that day, given as "before"; else the hotel for that night; else the airport they land at): {"from", "mode": "walk"|"transit"|"taxi"|"drive", "minutes", "steps": [2–5 short steps naming lines, directions, changes and where to get off]}; null if there is no place to go.
+- "details": modules {"kind": "hours"|"cost"|"booking"|"bring"|"dress"|"contact"|"food"|"prayer"|"heads-up"|"tip", "label": a few words, "text": a sentence, "url" if there is a reliable one}: opening hours that day, cost, booking, what to bring or wear, halal food or prayer nearby, heads-ups (closures, entry rules, safety, luggage), tips.
+They are Muslim. Use what you know of these real places; where you are unsure (hours, prices), say so in the text rather than guess. Reply {"items": [{"id", "route", "details"}]} with the ids given.`,
+    input: [
+      wrapUntrusted('trip', `Trip: ${trip.title} (${trip.destination || 'destination not given'}), ${trip.startDate} to ${trip.endDate}`, 400),
+      stays.length ? wrapUntrusted('hotels', stays.map(describeSegment).join('\n'), 1500) : 'No hotel on file.',
+      wrapUntrusted(
+        'plan items',
+        todo
+          .map((i) => {
+            const day = trip.itinerary.filter((x) => x.date === i.date && x.id !== i.id && (x.time ?? '99:99') < (i.time ?? '99:99') && !placeless(x.place));
+            const before = day[day.length - 1];
+            return `id ${i.id} · ${i.date} ${i.time ?? '(any time)'} · ${i.title} · at: ${i.place}${before ? ` · before: ${before.title} at ${before.place}` : ''}${i.notes ? ` · notes: ${i.notes}` : ''}`;
+          })
+          .join('\n'),
+        6000,
+      ),
+    ].join('\n'),
+    schema: Completion,
+  });
+  let filled = 0;
+  for (const r of res.items) {
+    const item = todo.find((i) => i.id === r.id);
+    if (!item) continue;
+    updateItem(store, item.id, { route: r.route, details: r.details });
+    filled++;
+  }
+  for (const i of todo) asked.add(i.id);
+  store.db.prepare("INSERT INTO settings (key, value) VALUES ('itinerary_completed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify([...asked].slice(-2000)));
+  return filled;
 }
 
 // A model that is down or answering badly should not hold up the rule-based flight signal
@@ -1090,6 +1157,8 @@ const ExtractedSegment = z.object({
   cabin: z.string().max(40),
   seat: z.string().max(8),
   confirmation: z.string().max(20),
+  from_terminal: z.string().max(12).optional().describe('Departure terminal if the booking says, e.g. "3"'),
+  to_terminal: z.string().max(12).optional().describe('Arrival terminal if the booking says'),
   address: z.string().max(300),
 });
 
@@ -1138,6 +1207,8 @@ const toSegmentInput = (s: Extracted['segments'][number]): SegmentInput => ({
   cabin: s.cabin,
   seat: s.seat,
   confirmation: s.confirmation,
+  fromTerminal: s.from_terminal,
+  toTerminal: s.to_terminal,
   address: s.address,
 });
 
@@ -1298,6 +1369,8 @@ const segmentInput = z.object({
   cabin: z.string().max(40).optional(),
   seat: z.string().max(8).optional(),
   confirmation: z.string().max(20).optional(),
+  fromTerminal: z.string().max(12).optional(),
+  toTerminal: z.string().max(12).optional(),
   address: z.string().max(300).optional(),
   notes: z.string().max(1000).optional(),
 });

@@ -5805,26 +5805,6 @@ textarea.title-input {
   font-weight: 550;
   color: oklch(0.52 0.12 245);
 }
-.fc-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-size: 13px;
-  color: var(--ink-3);
-}
-.fc-ref {
-  flex: none;
-  font-size: 12.5px;
-}
-.fc-ref b {
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  color: var(--ink);
-}
 :root[data-theme='dark'] .fc-badge {
   color: oklch(0.85 0.08 250);
   background: oklch(0.3 0.06 250);
@@ -11006,4 +10986,43 @@ button.fin-rec-main:disabled {
   .im {
     padding-left: 0;
   }
+}
+
+/* A flight card at a glance: the terminal under each airport, and the times and references that matter. */
+.fc-terminal {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.fc-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.fc-fact {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.fc-fact small {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.fc-fact b {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-add {
+  font-weight: 450;
+  color: var(--ink-3);
 }

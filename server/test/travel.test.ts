@@ -44,6 +44,8 @@ const flight = (over: Partial<Segment> = {}): Segment => ({
   cabin: 'Economy',
   seat: '',
   confirmation: '',
+  fromTerminal: '',
+  toTerminal: '',
   address: '',
   notes: '',
   source: 'manual',
@@ -232,7 +234,8 @@ test('ahead of a trip Seldon drafts the plan and prepares the airport; without a
     ],
   };
   store.db.prepare('DELETE FROM signals').run();
-  const model = await fakeModel([reply(companion), reply(plan)]);
+  // The companion, the draft, then filling in the drafted stops' routes and details.
+  const model = await fakeModel([reply(companion), reply(plan), reply({ items: [] })]);
   store.addConnection({ provider: 'anthropic', baseUrl: model.url, apiKey: 'k' });
   await prepareTravel(store, now);
   const t = getTrip(store, trip.id);
@@ -246,9 +249,9 @@ test('ahead of a trip Seldon drafts the plan and prepares the airport; without a
   assert.ok(listSignals(store).some((s) => s.kind === 'itinerary'));
   assert.match(model.seen[1]!.body.messages[0].content, /halal|Muslim/i);
 
-  // Running again does not ask the model again or re-draft.
+  // Running again does not ask the model again, re-draft, or ask about the same stops again.
   await prepareTravel(store, now);
-  assert.equal(model.seen.length, 2);
+  assert.equal(model.seen.length, 3);
 
   // The draft is one undoable step; items the person ticked off survive it.
   const done = t.itinerary[0]!;
