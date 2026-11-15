@@ -6290,6 +6290,34 @@ textarea.title-input {
   color: oklch(0.48 0.13 60);
   background: oklch(0.95 0.05 75);
 }
+/* In the air: a live dot that pulses before the time to go. */
+.fc-badge.is-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fc-badge.is-live::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: fc-live 1.6s ease-out infinite;
+}
+@keyframes fc-live {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, currentColor 55%, transparent);
+  }
+  80%,
+  100% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, currentColor 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fc-badge.is-live::before {
+    animation: none;
+  }
+}
 .fc-route {
   display: grid;
   grid-template-columns: auto minmax(60px, 1fr) auto;
@@ -7728,11 +7756,19 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 
 /* In the Travels sphere: the route globe beside the flight cards, as tall as they are together. */
+/* A trip's flights: the globe on the card itself, the flights beneath it. */
 .flight-pair {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
-  align-items: stretch;
+}
+.flight-globe {
+  display: flex;
+  height: 340px;
+  min-width: 0;
+}
+.flight-globe .route-globe {
+  flex: 1;
 }
 .flight-stack {
   display: grid;
@@ -7791,17 +7827,6 @@ button.layover-pill:hover .layover-lounge {
 }
 .layover-gap.is-long .layover-pill {
   color: oklch(0.55 0.1 250);
-}
-.globe-card {
-  display: flex;
-  min-width: 0;
-  padding: 12px 6px 14px;
-  border-radius: 18px;
-  background: var(--surface);
-  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(16 18 30 / 0.04), 0 10px 24px -18px rgb(16 18 30 / 0.25);
-}
-.globe-card .route-globe {
-  flex: 1;
 }
 .rg-stage {
   position: relative;

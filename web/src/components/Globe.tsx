@@ -19,6 +19,15 @@ export interface GlobeLeg {
   minutes?: number;
   /** The operating airline's code, to paint the plane in its livery. */
   carrier?: string;
+  /** The booking it comes from, to find the flight that's in the air. */
+  id?: string;
+}
+
+/** A flight in the air now: which leg, and when it really left and lands (ms). The globe tracks it. */
+export interface GlobeLive {
+  leg: number;
+  start: number;
+  end: number;
 }
 
 type V3 = [number, number, number];
@@ -143,9 +152,10 @@ const flyTime = (km: number) => Math.min(4200, 2400 + km / 6);
 /**
  * The globe and a caption for the flight being drawn. By default it is a dome 210px tall, as on
  * Today's trip card; with `fill` it takes the height its container gives it and shows the whole
- * globe, as beside the flight cards in the Travels sphere.
+ * globe, as on a trip's page. With `live`, it stops touring the flights: it turns once to the one
+ * in the air and tracks it, the way flown solid, the way left dashed, the plane where it really is.
  */
-export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: boolean }) {
+export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg[]; fill?: boolean; live?: GlobeLive | null }) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 520, h: DEFAULT_H });
@@ -383,6 +393,84 @@ export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: bo
     const cycle = spans.reduce((s, d) => s + d, 0);
     let shownLeg = -1;
 
+    const tracked = live && plan[live.leg] ? live : null;
+    const INTRO = T_FOCUS + T_FRAME + T_DRAW;
+
+    /** Tracking the flight in the air: once in to it, then the plane where it really is, each frame. */
+    const liveFrame = (time: number) => {
+      const p = plan[tracked!.leg]!;
+      if (shownLeg !== tracked!.leg) {
+        shownLeg = tracked!.leg;
+        setLegIndex(tracked!.leg);
+      }
+      const t = Math.min(time, INTRO);
+      let view: View;
+      let destIn = 1;
+      if (t < T_FOCUS) {
+        view = p.focus;
+        destIn = 0;
+      } else if (t < T_FOCUS + T_FRAME) {
+        const k = easeInOut((t - T_FOCUS) / T_FRAME);
+        view = { centre: norm(slerp(p.focus.centre, p.frame.centre, k)), R: p.focus.R + (p.frame.R - p.focus.R) * k };
+        destIn = clamp01((t - T_FOCUS - T_FRAME * 0.4) / (T_FRAME * 0.5));
+      } else view = p.frame;
+      if (!drawn || angle(drawn.centre, view.centre) > 1e-5 || Math.abs(drawn.R - view.R) > 0.01) paintGlobe(view);
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, H);
+      ctx.drawImage(layer, 0, 0, w, H);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, oy * dpr);
+
+      // The share of the flight behind it, by the clock; on the way in it sweeps out to there.
+      const drawK = easeOut(clamp01((t - T_FOCUS - T_FRAME) / T_DRAW));
+      const real = clamp01((Date.now() - tracked!.start) / Math.max(1, tracked!.end - tracked!.start));
+      const k = real * drawK;
+      const pts = routePoints(p.a, p.b, view);
+      const at = k * (pts.length - 1);
+      const i = Math.min(pts.length - 2, Math.floor(at));
+      const q0 = pts[i]!;
+      const q1 = pts[i + 1]!;
+      const x = q0.x + (q1.x - q0.x) * (at - i);
+      const y = q0.y + (q1.y - q0.y) * (at - i);
+      if (drawK > 0) {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        // The way left: dashed, marching on towards the arrival.
+        ctx.strokeStyle = theme.route;
+        ctx.globalAlpha = 0.45 * drawK;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 6]);
+        ctx.lineDashOffset = -(time / 60) % 9;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        pts.slice(i + 1).forEach((q) => ctx.lineTo(q.x, q.y));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // The way flown: solid, up to the plane.
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 2.6;
+        ctx.shadowColor = 'rgba(15, 45, 95, 0.28)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetY = 1;
+        ctx.beginPath();
+        pts.slice(0, i + 1).forEach((q, n) => (n ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.shadowColor = 'transparent';
+      }
+      const A = project(p.a, view);
+      const B = project(p.b, view);
+      const pulse = 0.5 + 0.5 * Math.sin(time / 380);
+      marker(A.x, A.y, 1, 0.6);
+      marker(B.x, B.y, destIn, destIn * (0.6 + 0.4 * pulse));
+      label(p.leg.from.code, A.x, A.y, 1);
+      label(p.leg.to.code, B.x, B.y, destIn);
+      if (drawK > 0) {
+        const size = Math.max(0.75, Math.min(1.15, view.R / 170));
+        plane(x, y, Math.atan2(q1.y - q0.y, q1.x - q0.x), size * 1.02, 0.7, planePaint(p.leg.carrier));
+      }
+    };
+
     const frame = (time: number) => {
       if (time - themeAt > 1000) {
         const next = readTheme(cv);
@@ -390,6 +478,7 @@ export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: bo
         theme = next;
         themeAt = time;
       }
+      if (tracked) return liveFrame(time);
       let t = ((time % cycle) + cycle) % cycle;
       let li = 0;
       while (li < plan.length - 1 && t >= spans[li]!) t -= spans[li++]!;
@@ -477,7 +566,13 @@ export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: bo
     };
 
     if (reduced()) {
-      // Still: the first flight framed, its route drawn, the plane part-way along.
+      // Still: the flight in the air where it is (redrawn each half minute), or the first flight
+      // framed, its route drawn, the plane part-way along.
+      if (tracked) {
+        frame(INTRO);
+        const tick = setInterval(() => frame(INTRO), 30_000);
+        return () => clearInterval(tick);
+      }
       frame(T_FOCUS + T_FRAME + T_DRAW + plan[0]!.fly * 0.5);
       return;
     }
@@ -513,7 +608,7 @@ export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: bo
       io?.disconnect();
       document.removeEventListener('visibilitychange', sync);
     };
-  }, [plan, w, H, L, oy]);
+  }, [plan, w, H, L, oy, live?.leg, live?.start, live?.end]);
 
   const current = plan[Math.min(legIndex, plan.length - 1)];
   const minutes = current?.leg.minutes;
@@ -533,11 +628,17 @@ export function RouteGlobe({ legs, fill = false }: { legs: GlobeLeg[]; fill?: bo
             {current.leg.from.code} → {current.leg.to.code} · {current.km.toLocaleString()} km
             {minutes ? ` · ${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m` : ''}
           </span>
-          <span className="rg-caption-end">Nonstop</span>
+          <span className="rg-caption-end">{live && live.leg === legIndex ? `In flight · ${remaining(live.end)} to go` : 'Nonstop'}</span>
         </div>
       )}
     </div>
   );
+}
+
+/** "3h 25m" until a moment. */
+function remaining(end: number): string {
+  const m = Math.max(0, Math.round((end - Date.now()) / 60_000));
+  return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
 }
 
 // A twin-engined airliner seen from above, nose to +x, about 44 units long and 42 across.

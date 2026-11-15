@@ -16,7 +16,7 @@ import { AirlineTail } from './Tails.tsx';
 import { NowPanel, RouteCard, WelcomeTitle } from './Journey.tsx';
 import { ItemModules } from './ItemModules.tsx';
 import { TripGuideBody } from './TripGuide.tsx';
-import { activeJourney, boardsAt, checkInCloses, clock, delayOf, departs, span, journeys, leaveBy, reachAirportBy, type Journey } from '../../../shared/journey.ts';
+import { activeJourney, boardsAt, checkInCloses, clock, delayOf, departs, lands, span, journeys, leaveBy, reachAirportBy, type Journey } from '../../../shared/journey.ts';
 import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
@@ -581,6 +581,7 @@ function globeLegs(flights: Segment[]): GlobeLeg[] {
       to: { code: s.toCode, lat: s.toGeo![0], lon: s.toGeo![1] },
       minutes: Math.max(0, Math.round((Date.parse(s.endUtc) - Date.parse(s.startUtc)) / 60_000)) || undefined,
       carrier: s.carrier,
+      id: s.id,
     }));
 }
 
@@ -609,13 +610,15 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
  * A flight as the trip page shows it: the airline and its tail, the times and places at each end,
  * then check-in, boarding, cabin and booking reference. The badge says when it is, unless given.
  */
-function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: 'soon' | 'past' | 'late' | '' } }) {
+function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: 'soon' | 'past' | 'late' | 'live' | '' } }) {
   const today = todayStr();
   const day = dayOf(s.startLocal);
   const plus = daysFrom(day, dayOf(s.endLocal));
   const until = daysFrom(today, day);
   const late = until >= 0 ? delayOf(s) : 0;
-  const when = late > 0 ? { label: `Delayed ${span(late / 60_000)}`, tone: 'late' as const } : (badge ?? { label: until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day), tone: until < 0 ? 'past' : until <= 1 ? 'soon' : '' });
+  const now = Date.now();
+  const flying = now >= departs(s) && now < lands(s);
+  const when = flying ? { label: `In flight · ${span((lands(s) - now) / 60_000)} to go`, tone: 'live' as const } : late > 0 ? { label: `Delayed ${span(late / 60_000)}`, tone: 'late' as const } : (badge ?? { label: until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day), tone: until < 0 ? 'past' : until <= 1 ? 'soon' : '' });
   // A late flight shows its new times, the booked ones struck through beside them.
   const shown = (local: string, tz: string, utc: string) =>
     late > 0 ? (
@@ -639,7 +642,7 @@ function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: '
           <b>{airline}</b>
           <span>{`${s.carrier} ${s.number}`.trim()}</span>
         </span>
-        <span className={cx('fc-badge', when.tone === 'past' ? 'is-past' : when.tone === 'soon' ? 'is-soon' : when.tone === 'late' ? 'is-late' : '')}>{when.label}</span>
+        <span className={cx('fc-badge', when.tone === 'past' ? 'is-past' : when.tone === 'soon' ? 'is-soon' : when.tone === 'late' ? 'is-late' : when.tone === 'live' ? 'is-live' : '')}>{when.label}</span>
       </span>
       <span className="fc-route">
         <span className="fc-end">
@@ -1257,14 +1260,20 @@ function tripStage(trip: Trip, state: TravelState, homeward: Set<string>, now: n
   return { stage: daysFrom(today, trip.startDate) <= 14 ? 'soon' : 'planning', journey: null, live };
 }
 
-/** The trip's card from Today, in the same state, at the top of its page: on a travel day, as cards of their own. */
+/**
+ * Today's travel-day card, as cards of their own, at the top of the trip's page: only while there is
+ * something to do before a flight (getting there, the airport, a connection). In the air the Flights
+ * card tracks it on the globe; once you've landed, and while you're away, the page's own cards serve.
+ */
 function TripNow({ trip, journey }: { trip: Trip; journey: Journey | null }) {
   const { data: t } = useTravel();
   if (!t) return null;
   const c = t.context;
-  if (journey || (c.mode === 'departing' && c.trip?.id === trip.id)) return <TripDayCards trip={trip} journey={journey} />;
-  if (c.mode === 'away' && c.trip?.id === trip.id) return <TravelNowCard inPage />;
-  return null;
+  if (journey) {
+    const kind = journey.phases[Math.max(journey.current, 0)]!.kind;
+    return kind === 'before' || kind === 'airport' || kind === 'connection' ? <TripDayCards trip={trip} journey={journey} /> : null;
+  }
+  return c.mode === 'departing' && c.trip?.id === trip.id ? <TripDayCards trip={trip} journey={null} /> : null;
 }
 
 /**
@@ -1300,6 +1309,10 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
   const [way, setWay] = useState<'out' | 'back'>(() => (landed ? 'back' : 'out'));
   const flights = !twoWays ? allFlights : way === 'back' ? inbound : outbound;
   const legs = globeLegs(flights);
+  // The flight in the air now, if it's one of these: the globe tracks it.
+  const airborne = flights.find((f) => now >= departs(f) && now < lands(f));
+  const airborneLeg = airborne ? legs.findIndex((l) => l.id === airborne.id) : -1;
+  const live = airborne && airborneLeg >= 0 ? { leg: airborneLeg, start: departs(airborne), end: lands(airborne) } : null;
   const openTodos = trip.todos.filter((x) => !x.done).length;
   const bonvoyTier = state.loyalty.find((a) => /bonvoy|marriott/i.test(a.program))?.tier ?? '';
   // Each day folds on its own; days already past start folded. Choices are remembered per trip on this device.
@@ -1381,8 +1394,8 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
             <p className="empty">{trip.options.length ? 'Nothing booked yet. Compare the options below.' : 'No flights yet. Add them, paste a confirmation, or let Gmail bring them in.'}</p>
           ) : legs.length ? (
             <div className="flight-pair">
-              <div className="globe-card">
-                <RouteGlobe key={way} legs={legs} fill />
+              <div className="flight-globe">
+                <RouteGlobe key={way} legs={legs} fill live={live} />
               </div>
               <div className="flight-stack">{flights.map(row)}</div>
             </div>
@@ -2736,7 +2749,7 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
   );
 }
 
-function TravelNowCard({ inPage = false }: { inPage?: boolean }) {
+function TravelNowCard() {
   const { data: t } = useTravel();
   const { agentName, ask } = useApp();
   const openTrip = useOpenTrip();
@@ -2752,15 +2765,13 @@ function TravelNowCard({ inPage = false }: { inPage?: boolean }) {
   const hhmmNow = new Date(now).toTimeString().slice(0, 5);
   const nextItem = items.find((i) => !i.done && (i.time ?? '99:99') >= hhmmNow);
   return (
-    <section className={cx('card travel-mode tm-away', !inPage && 'is-link')} onClick={(e) => !inPage && onCardItself(e) && openTrip(trip)}>
-      {!inPage && (
-        <div className="tm-head">
-          <span className="tm-kicker">
-            <Palmtree size={13} /> {trip.title} · day {c.dayOfTrip} of {c.tripDays}
-          </span>
-          <PurposeChip purpose={trip.purpose} />
-        </div>
-      )}
+    <section className="card travel-mode tm-away is-link" onClick={(e) => onCardItself(e) && openTrip(trip)}>
+      <div className="tm-head">
+        <span className="tm-kicker">
+          <Palmtree size={13} /> {trip.title} · day {c.dayOfTrip} of {c.tripDays}
+        </span>
+        <PurposeChip purpose={trip.purpose} />
+      </div>
       <div className="journey-now tm-welcome">
         <WelcomeTitle tz={c.here?.tz ?? c.stay?.startTz} city={c.here?.city || trip.destination || trip.title} />
       </div>
@@ -2797,7 +2808,7 @@ function TravelNowCard({ inPage = false }: { inPage?: boolean }) {
         )}
       </Block>
       {/* Once every trip to-do is done, the section goes; the trip's page still has them. */}
-      {!inPage && trip.todos.some((x) => !x.done) && (
+      {trip.todos.some((x) => !x.done) && (
         <Block icon={<ListChecks size={13} />} title="Trip to-dos">
           <TripTodos trip={trip} />
         </Block>
