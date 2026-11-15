@@ -754,3 +754,25 @@ test('net worth splits into liquid and illiquid: by kind, unless you say otherwi
   updateHolding(store, rsu.id as string, { liquid: null });
   assert.equal(financeState(store, TODAY).holdings.find((h) => h.name === 'Employer RSUs')!.liquid, true, 'null goes back to the kind');
 });
+
+test("tax relief never leans on savings that aren't there, and only blames late pay in December", () => {
+  // No cash at all: the room goes unused this year, the cushion first, and no December reminder.
+  const broke = sgEarner('2026-11-10');
+  broke.db.prepare("UPDATE fin_holdings SET quantity = 0 WHERE kind = 'cash'").run();
+  let p = reliefOf(broke, '2026-11-10');
+  assert.ok(p.notes.some((n) => /goes unused this year: with less than a month of essentials in cash/.test(n)));
+  assert.ok(!p.notes.some((n) => /from savings|mid-December/.test(n)));
+  assert.ok(!p.buckets.some((b) => b.action && /from savings/.test(b.action)));
+  const brokeInDecember = sgEarner('2026-12-02');
+  brokeInDecember.db.prepare("UPDATE fin_holdings SET quantity = 0 WHERE kind = 'cash'").run();
+  assert.equal(reliefReminder(brokeInDecember, '2026-12-02'), false);
+
+  // Savings in hand, but a 25% card takes everything spare in November: savings can make up the
+  // relief, and late pay isn't given as the reason.
+  const spent = sgEarner('2026-11-10');
+  addDebt(spent, { name: 'Card', kind: 'credit_card', balance: 50_000, apr: 25 });
+  p = reliefOf(spent, '2026-11-10');
+  assert.equal(p.buckets.find((b) => b.key === 'relief'), undefined);
+  assert.ok(p.notes.some((n) => /^Nothing is spare from this month's pay after the steps above/.test(n)));
+  assert.ok(!p.notes.some((n) => /mid-December/.test(n)));
+});
