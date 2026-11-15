@@ -2,12 +2,13 @@
 // up, and a countdown to Ramadan when it is near.
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, Clock, LocateFixed, MapPin, MoonStar, Pencil, Plus, X } from 'lucide-react';
+import { Check, ChevronRight, Clock, LocateFixed, MapPin, MoonStar, Pencil, Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
 import { addDays, cx, parseDay, plural, todayStr } from '../lib.ts';
 import { Field, Modal } from './ui.tsx';
+import { VERSES, verseIndexFor } from './verses.ts';
 
 const NAME: Record<PrayerName, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
 
@@ -328,6 +329,125 @@ function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramada
   );
 }
 
+/**
+ * The fast a niyyah can be made for right now: from Maghrib on the eve of a Ramadan
+ * day until that day's Fajr, since the Islamic day begins at sunset.
+ */
+export function niyyahFast(faith: FaithState, now: number): { date: string; day: number; fajr: string | null } | null {
+  const r = faith.ramadan;
+  const today = faith.today;
+  if (!faith.configured || !r || !today) return null;
+  const t = today.times;
+  let date: string;
+  let fajr: string | null;
+  if (now < Date.parse(t.fajr)) [date, fajr] = [today.date, t.fajr];
+  // Tomorrow's Fajr isn't known here; a day after today's is near enough, and the
+  // data is refetched each minute, so past midnight the branch above takes over.
+  else if (now >= Date.parse(t.maghrib) && now < Date.parse(t.fajr) + 86_400_000) [date, fajr] = [addDays(today.date, 1), null];
+  else return null;
+  if (date < r.start || date > r.end) return null;
+  return { date, day: Math.round((parseDay(date).getTime() - parseDay(r.start).getTime()) / 86_400_000) + 1, fajr };
+}
+
+const NIYYAH = {
+  arabic: 'نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هٰذِهِ السَّنَةِ لِلّٰهِ تَعَالَى',
+  transliteration: 'Nawaitu ṣauma ghadin ʿan adāʾi farḍi shahri Ramaḍāna hādhihis-sanati lillāhi taʿālā.',
+  meaning: 'I intend to fast tomorrow, fulfilling the obligation of the month of Ramadan this year, for the sake of Allah the Most High.',
+};
+
+const niyyahKey = (date: string) => `niyyah-done:${date}`;
+function readDone(date: string): boolean {
+  try {
+    return localStorage.getItem(niyyahKey(date)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** On each night before a Ramadan fast: the intention for tomorrow's fast. */
+function NiyyahCard({ fast, now, tz }: { fast: { date: string; day: number; fajr: string | null }; now: number; tz: string }) {
+  const [done, setDone] = useState(() => readDone(fast.date));
+  useEffect(() => setDone(readDone(fast.date)), [fast.date]);
+  const mark = (v: boolean) => {
+    setDone(v);
+    try {
+      if (v) localStorage.setItem(niyyahKey(fast.date), '1');
+      else localStorage.removeItem(niyyahKey(fast.date));
+    } catch {
+      /* the card still works for this visit */
+    }
+  };
+  const when = fast.fajr ? `Before Fajr at ${hhmm(fast.fajr, tz)} · in ${untilLabel(fast.fajr, now)}` : 'Tonight, before Fajr';
+  if (done)
+    return (
+      <div className="niyyah is-done">
+        <Check size={15} strokeWidth={2.6} />
+        <span>Niyyah made for the fast of {fast.day} Ramadan</span>
+        <button type="button" className="link" onClick={() => mark(false)}>
+          Show again
+        </button>
+      </div>
+    );
+  return (
+    <section className="niyyah" aria-labelledby="niyyah-title">
+      <div className="niyyah-head">
+        <div>
+          <span className="niyyah-eyebrow">{when}</span>
+          <h2 id="niyyah-title">Niyyah for the fast of {fast.day} Ramadan</h2>
+        </div>
+        <MoonStar size={20} className="niyyah-moon" />
+      </div>
+      <p className="niyyah-arabic" lang="ar" dir="rtl">
+        {NIYYAH.arabic}
+      </p>
+      <p className="niyyah-translit">{NIYYAH.transliteration}</p>
+      <p className="niyyah-meaning">“{NIYYAH.meaning}”</p>
+      <div className="niyyah-foot">
+        <span>The intention is made in the heart; saying it is recommended.</span>
+        <button type="button" className="btn btn-sm niyyah-done" onClick={() => mark(true)}>
+          <Check size={14} strokeWidth={2.6} /> Done
+        </button>
+      </div>
+    </section>
+  );
+}
+
+const arabicDigits = (n: number) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]!);
+
+/** Outside Ramadan: a verse of encouragement and calm, a new one each day. */
+function VerseCard({ date }: { date: string }) {
+  const [offset, setOffset] = useState(0);
+  const v = VERSES[(verseIndexFor(date) + offset) % VERSES.length]!;
+  const first = Number(v.ref.split(':')[1]!.split('-')[0]);
+  // The translation is kept verbatim; only a trailing dash or comma, left where the
+  // sentence runs on into the next ayah, is dropped for display.
+  const english = v.english.replace(/[\s,;:\-–—]+$/, '');
+  return (
+    <section className="card verse-card" aria-label="Verse of the day">
+      <div className="verse-head">
+        <span className="verse-eyebrow">{offset ? 'Another verse' : 'Verse for today'}</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOffset((o) => (o + 1) % VERSES.length)}>
+          Another <ChevronRight size={13} />
+        </button>
+      </div>
+      <p className="verse-arabic" lang="ar" dir="rtl">
+        {v.arabic.map((a, i) => (
+          <span key={i}>
+            {a} <span className="verse-end">﴿{arabicDigits(first + i)}﴾</span>{' '}
+          </span>
+        ))}
+      </p>
+      <p className="verse-english">{english.charAt(0).toUpperCase() + english.slice(1)}</p>
+      <div className="verse-foot">
+        <a href={`https://quran.com/${v.ref}`} target="_blank" rel="noreferrer">
+          {v.surah} {v.ref.replace('-', '–')}
+        </a>
+        <span>Abdel Haleem translation</span>
+      </div>
+    </section>
+  );
+}
+
 export function PrayerCard() {
   const { data: faith } = useFaith();
   const now = useNow();
@@ -337,10 +457,13 @@ export function PrayerCard() {
   const travelling = faith.configured && tz !== deviceTz();
   const curDay = currentDay(faith);
   const lastNight = curDay && curDay !== faith.today ? curDay : undefined;
+  const fast = niyyahFast(faith, now);
 
   return (
     <>
+      {fast && <NiyyahCard fast={fast} now={now} tz={tz} />}
       {faith.ramadan && (faith.ramadan.inRamadan || faith.ramadan.daysUntil <= 100) && <RamadanCountdown ramadan={faith.ramadan} />}
+      {!faith.ramadan?.inRamadan && !fast && <VerseCard date={faith.today?.date ?? todayStr()} />}
       <section className="card prayer-card">
         <div className="card-head">
           <div>

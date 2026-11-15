@@ -38,10 +38,11 @@ test('methods follow the time zone; Ramadan is counted from the Umm al-Qura cale
   assert.equal(methodForTimezone('Asia/Riyadh'), 'UmmAlQura');
   assert.equal(methodForTimezone('America/New_York'), 'NorthAmerica');
   assert.equal(methodForTimezone('Europe/London'), 'MuslimWorldLeague');
-  assert.deepEqual(ramadanFrom('2026-11-14'), { start: '2027-02-08', daysUntil: 86, inRamadan: false, day: null });
+  assert.deepEqual(ramadanFrom('2026-11-14'), { start: '2027-02-08', end: '2027-03-08', daysUntil: 86, inRamadan: false, day: null });
   const during = ramadanFrom('2027-02-20')!;
   assert.equal(during.inRamadan, true);
   assert.equal(during.start, '2027-02-08');
+  assert.equal(during.end, '2027-03-08');
   assert.equal(during.day, 13);
 });
 
