@@ -450,8 +450,10 @@ function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; 
     ...projects.map((p) => ({ id: p.id, project: p as Project | null, name: p.name, list: work.filter((t) => t.projectId === p.id).sort(byDue) })),
     { id: 'none', project: null, name: 'No project', list: work.filter((t) => !t.projectId || !known.has(t.projectId)).sort(byDue) },
   ]
-    .filter((g) => g.project || g.list.length)
-    // Most urgent first: the earliest due date leads; undated work, then empty projects, go last.
+    // Projects with nothing open stay out of the way (they can still be picked when adding
+    // a to-do), except the one being added to, such as a project just made.
+    .filter((g) => g.list.length > 0 || g.id === adding)
+    // Most urgent first: the earliest due date leads; undated work, then an empty project, go last.
     .sort((a, b) => {
       const ka = a.list.length ? (a.list[0]!.dueDate ?? '9999') : '~';
       const kb = b.list.length ? (b.list[0]!.dueDate ?? '9999') : '~';
@@ -465,7 +467,7 @@ function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; 
         const due = next ? dueLabel(next, today) : null;
         const late = g.list.filter((t) => t.dueDate && t.dueDate < today).length;
         return (
-          <details key={g.id} className={cx('todo-group', !g.list.length && 'is-empty')} open={g.list.length > 0}>
+          <details key={g.id} className={cx('todo-group', !g.list.length && 'is-empty')} open={g.list.length > 0 || adding === g.id}>
             <summary>
               <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
               <span className="todo-group-name clamp-1">{g.name}</span>
@@ -489,7 +491,13 @@ function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; 
         );
       })}
       {naming ? (
-        <NewProject sphereId={sphereId} onDone={() => setNaming(false)} />
+        <NewProject
+          sphereId={sphereId}
+          onDone={(created) => {
+            setNaming(false);
+            if (created) setAdding(created.id);
+          }}
+        />
       ) : (
         <button type="button" className="todo-new-project" onClick={() => setNaming(true)}>
           <Plus size={13} /> New project
@@ -540,16 +548,16 @@ function ProjectActions({ project, onAdd }: { project: Project; onAdd: () => voi
   );
 }
 
-function NewProject({ sphereId, onDone }: { sphereId: string; onDone: () => void }) {
+function NewProject({ sphereId, onDone }: { sphereId: string; onDone: (created?: Project) => void }) {
   const [name, setName] = useState('');
-  const create = useWrite((n: string) => write.post('/projects', { sphereId, name: n }));
+  const create = useWrite((n: string) => write.post<Project>('/projects', { sphereId, name: n }));
   return (
     <form
       className="add-row todo-new-project-form"
       onSubmit={(e) => {
         e.preventDefault();
         const n = name.trim();
-        if (n) create.mutate(n, { onSuccess: onDone });
+        if (n) create.mutate(n, { onSuccess: (p) => onDone(p) });
       }}
     >
       <Plus size={16} className="faint" aria-hidden />
@@ -557,7 +565,7 @@ function NewProject({ sphereId, onDone }: { sphereId: string; onDone: () => void
       <button type="submit" className="btn btn-primary btn-sm" disabled={!name.trim() || create.isPending}>
         Add
       </button>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={onDone}>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => onDone()}>
         Cancel
       </button>
     </form>
