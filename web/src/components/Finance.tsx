@@ -1308,6 +1308,8 @@ export function CryptoDesk() {
   const refresh = useWrite(() => financeWrite.post('/refresh'));
   const removeTrade = useWrite((id: string) => financeWrite.del(`/trades/${id}`));
   const removeAlert = useWrite((id: string) => financeWrite.del(`/alerts/${id}`));
+  // The trades list starts folded; open it once and it stays open.
+  const folds = useFolds('fin-desk-open', (k) => k === 'trades', false);
   if (!f) return null;
   const v = cryptoView(f);
   const openAlerts = f.alerts.filter((a) => !a.triggeredAt);
@@ -1349,7 +1351,7 @@ export function CryptoDesk() {
       )}
 
       {f.trades.length > 0 && (
-        <details className="todo-fold fin-trades">
+        <details className="todo-fold fin-trades" open={folds.isOpen('trades')} onToggle={(e) => folds.toggle('trades', e.currentTarget.open)}>
           <summary>
             <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
             <span className="grow">Trades</span>
