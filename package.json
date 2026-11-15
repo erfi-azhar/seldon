@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A self-hosted Terminus: your spheres, goals, habits and a personal agent \u2014 on your own machine.",
+  "description": "A self-hosted Terminus: your spheres, goals, habits and a personal agent — on your own machine.",
   "engines": {
     "node": ">=22.18"
   },
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
+    "@fontsource-variable/eb-garamond": "^5.3.0",
     "@hono/node-server": "^2.1.8",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "adhan": "^4.4.6",
@@ -39,7 +40,6 @@
     "@vitejs/plugin-react": "^6.3.0",
     "concurrently": "^9.2.0",
     "dompurify": "^3.4.17",
-    "geist": "^1.9.2",
     "lucide-react": "^1.72.0",
     "marked": "^18.2.0",
     "react": "^19.3.1",
