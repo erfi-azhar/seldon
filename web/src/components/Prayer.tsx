@@ -527,6 +527,14 @@ function VerseCard({ date }: { date: string }) {
   );
 }
 
+/** The verse card for the Faith sphere: outside Ramadan, and not while the niyyah card is up. */
+export function FaithVerse() {
+  const { data: faith } = useFaith();
+  const now = useNow();
+  if (!faith || faith.ramadan?.inRamadan || niyyahFast(faith, now)) return null;
+  return <VerseCard date={faith.today?.date ?? todayStr()} />;
+}
+
 export function PrayerCard() {
   const { data: faith } = useFaith();
   const now = useNow();
@@ -542,7 +550,6 @@ export function PrayerCard() {
     <>
       {fast && <NiyyahCard fast={fast} now={now} tz={tz} />}
       {faith.ramadan && (faith.ramadan.inRamadan || faith.ramadan.daysUntil <= 100) && <RamadanCountdown ramadan={faith.ramadan} />}
-      {!faith.ramadan?.inRamadan && !fast && <VerseCard date={faith.today?.date ?? todayStr()} />}
       <section className="card prayer-card">
         <div className="card-head">
           <div>

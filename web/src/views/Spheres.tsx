@@ -7,7 +7,7 @@ import { useHealth, useSphere, useSpheres, useTravel, useWrite, write } from '..
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
-import { PrayerCard } from '../components/Prayer.tsx';
+import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
@@ -214,6 +214,7 @@ export function SphereDetail({ id }: { id: string }) {
           )}
         </div>
         <div className="col">
+          {s.key === 'faith' && <FaithVerse />}
           {s.key === 'work' ? <JobAlertsCard /> : habitsCard}
           {hasDaily && s.key !== 'work' && (
             <section className="card">
