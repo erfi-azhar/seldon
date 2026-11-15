@@ -140,12 +140,13 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   month. Without a brain, crypto words in bios and $tickers in posts do the sorting.
 - **A bankruptcy case, kept straight.** For anyone in bankruptcy or a court repayment plan: the
   case reference and trustee, and contributions paid with their receipts. One bar runs to the
-  full contribution term and marks the amount that settles the estate (the trustee's quote once
-  given, an estimate from the declared liabilities until then). A calendar of the term, a row per
+  contribution target (what discharge looks to) and marks the amount that settles the estate for
+  an annulment (the trustee's quote once given, an estimate from the declared liabilities until
+  then). A calendar of the term, a row per
   year, shows which months the money paid covers and which are behind, with the overdue amount
   kept apart from this month's. Travel approvals are checked against your trips, counting the
   evening before an early-morning flight, in a section that folds away; a one-tap email asks the
-  trustee for a statement of account. It sits beside Debts in the Finances sphere's Liabilities
+  trustee what it takes to annul. It sits beside Debts in the Finances sphere's Liabilities
   band, and only appears once a case is set up (from the Debts card, or by telling Seldon).
 - **Hide amounts.** The eye on the net worth card (and on Today's crypto card) masks every
   amount of yours: balances, pay, bills, the plan, positions, quantities and P&L. Market

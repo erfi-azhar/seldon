@@ -15,20 +15,25 @@ const S = (n: number) => money(n, 'SGD').replace(/\.00$/, '');
 const numOrNull = (s: string) => (s.trim() === '' ? null : parseNumber(s));
 const bad = (...xs: string[]) => xs.some((s) => s.trim() !== '' && Number.isNaN(parseNumber(s)));
 
-/** A ready-to-send email asking the trustee for the figures that decide the way out. */
+/**
+ * A ready-to-send email asking the trustee for what decides the way out: the proved debts and the
+ * bankruptcy expenses, which are what an annulment on full payment needs paid (section 393 IRDA),
+ * net of what the estate already holds.
+ */
 function statementRequest(c: BankruptcyCase): string {
-  const subject = `Statement of account${c.reference ? ` – ${c.reference}` : ''}`;
+  const ref = c.reference ? ` – ${c.reference}` : '';
+  const subject = `Request for full-payment annulment assessment (section 393 IRDA)${ref}`;
   const body = [
     'Dear Sir/Madam,',
     '',
-    `I would like a statement of account for my bankruptcy${c.reference ? ` (${c.reference})` : ''} as at today, showing:`,
+    `I would like to know what is needed to annul my bankruptcy${c.reference ? ` (${c.reference})` : ''} on full payment under section 393 of the Insolvency, Restructuring and Dissolution Act 2018. Could you please let me have:`,
     '',
-    '1. All contributions credited to the estate, with dates and amounts.',
-    '2. Any contribution arrears.',
-    '3. The admitted creditor claims.',
-    '4. Trustee remuneration and estate expenses to date.',
-    '5. The amount needed to fund an annulment application, and the steps and timing after payment.',
-    '6. Any restrictions currently recorded against the case.',
+    '1. The creditors who have filed proofs of debt, with the amounts claimed and admitted.',
+    '2. Trustee remuneration and other bankruptcy expenses, incurred and expected.',
+    '3. A statement of all contributions received and credited to the estate, and any other funds it holds.',
+    '4. The exact amount still needed for the proved debts and expenses to be paid in full.',
+    '5. Anything else outstanding that would hold up an annulment, including any contribution arrears.',
+    '6. The steps and timing once that amount is paid, and how removal from the Insolvency Search will be confirmed.',
     '',
     'Thank you.',
   ].join('\n');
@@ -124,10 +129,10 @@ export function BankruptcyCard() {
           <div className="bk-foot">
             {c.trusteeEmail ? (
               <a className="btn btn-ghost btn-sm" href={statementRequest(c)}>
-                <Mail size={13} /> Ask {c.trustee || 'the trustee'} for a statement of account
+                <Mail size={13} /> Ask {c.trustee || 'the trustee'} what it takes to annul
               </a>
             ) : (
-              <span className="hint">Add your trustee's email to ask for a statement of account in one tap.</span>
+              <span className="hint">Add your trustee's email to ask what it takes to annul, in one tap.</span>
             )}
           </div>
         </>
@@ -168,9 +173,9 @@ function Settle({ b }: { b: BankruptcyState }) {
         <div className="bk-bar">
           <div className="bk-bar-row is-top">
             <Mark at={pct(settleAt)} label={s.estimated ? (c.feesKnown === null ? 'Declared' : 'Declared + fees') : 'Settlement'} value={S(settleAt)} />
-            <Mark at={100} label={`Full term${end ? ` · ${monthName(end.year, end.month, 'short')}` : ''}`} value={S(full)} />
+            <Mark at={100} label={`Target${end ? ` · ${monthName(end.year, end.month, 'short')}` : ''}`} value={S(full)} />
           </div>
-          <div className="bk-track" role="img" aria-label={`${S(b.paid)} paid. ${S(settleAt)} settles the estate; the full contribution term is ${S(full)}.`}>
+          <div className="bk-track" role="img" aria-label={`${S(b.paid)} paid. ${S(settleAt)} settles the estate; the contribution target for discharge is ${S(full)}.`}>
             <i className="bk-fill" style={{ width: `${pct(b.paid)}%` }} />
             <i className="bk-tick" style={{ left: `${pct(settleAt)}%` }} />
           </div>
@@ -182,7 +187,8 @@ function Settle({ b }: { b: BankruptcyState }) {
         <ProgressBar value={s.target ? Math.min(1, b.paid / s.target) : 0} />
       )}
       <span className="hint">
-        Paying {s.estimated ? 'the declared debts' : 'the quote'} ends the case by annulment{full > 0 ? `; otherwise contributions run the full ${c.targetMonths} months` : ''}.
+        Paying the proved debts and expenses ends the case by annulment{s.estimated ? ' (the declared figure stands in until the trustee confirms them)' : ''}.
+        {full > 0 && ` The ${S(full)} target is for discharge instead, which comes no sooner than three years in.`}
       </span>
     </div>
   );
