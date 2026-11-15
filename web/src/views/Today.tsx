@@ -10,7 +10,7 @@ import { HillBand } from '../components/Hill.tsx';
 import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
-import { CryptoDesk } from '../components/Finance.tsx';
+import { TodayCrypto } from '../components/Finance.tsx';
 import { Loading } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -341,7 +341,7 @@ export function Today() {
         </div>
 
         <div className="col">
-          <CryptoDesk compact />
+          <TodayCrypto />
           <section className="card" style={{ paddingBottom: 10 }}>
             <div className="card-head">
               <h2 className="card-title">Habits</h2>

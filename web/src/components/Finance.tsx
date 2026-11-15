@@ -753,143 +753,170 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
 }
 
 // ── Crypto desk ─────────────────────────────────────────────────────────────
+// Two cards share these parts: the whole desk on the Finances sphere, and a smaller one on Today.
 
-/**
- * The crypto card. On the Finances sphere it is the whole desk; `compact` (on Today) keeps the
- * live prices, positions and quick actions, leaves the watchlist box and trade log to Finances,
- * and stays away entirely until a coin is held or watched.
- */
-export function CryptoDesk({ compact = false }: { compact?: boolean }) {
+interface CryptoView {
+  market: MarketState;
+  /** Coins held, by ticker. */
+  held: Map<string, Holding>;
+  /** Held coins first, then the watchlist. */
+  symbols: string[];
+  quotes: Map<string, Quote>;
+}
+
+function cryptoView(f: FinanceState): CryptoView {
+  const held = new Map(f.holdings.filter((h) => h.live && h.quantity > 0).map((h) => [h.symbol, h]));
+  return { market: f.market, held, symbols: [...new Set([...held.keys(), ...f.watchlist])], quotes: new Map(f.market.quotes.map((q) => [q.symbol, q])) };
+}
+
+type TradeInit = { symbol?: string; side?: 'buy' | 'sell' };
+
+/** An alert for a coin with no quote yet starts from a blank one. */
+const noQuote = (symbol: string): Quote => ({ symbol, price: 0, open: 0, high: 0, low: 0, changePct: 0, volume: 0, source: 'binance', at: 0 });
+
+/** The trade and alert sheets a crypto card opens. */
+function useCryptoSheets() {
+  const [trade, setTrade] = useState<TradeInit | null>(null);
+  const [alert, setAlert] = useState<Quote | null | undefined>(undefined);
+  return {
+    openTrade: (init: TradeInit = {}) => setTrade(init),
+    openAlert: (quote: Quote | null = null) => setAlert(quote),
+    render: (v: CryptoView) => (
+      <>
+        {trade && <TradeSheet init={trade} quotes={v.quotes} held={v.held} onClose={() => setTrade(null)} />}
+        {alert !== undefined && <AlertSheet quote={alert} onClose={() => setAlert(undefined)} />}
+      </>
+    ),
+  };
+}
+
+type CryptoSheets = ReturnType<typeof useCryptoSheets>;
+
+/** Title, live status, Trade and Alert; `children` fills the corner. */
+function CryptoHead({ market, sheets, children }: { market: MarketState; sheets: CryptoSheets; children: ReactNode }) {
+  return (
+    <div className="card-head">
+      <h2 className="card-title">
+        Crypto <LiveDot m={market} />
+      </h2>
+      <div className="row" style={{ gap: 4 }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => sheets.openTrade()}>
+          <Plus size={13} /> Trade
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => sheets.openAlert()}>
+          <Bell size={13} /> Alert
+        </button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function CryptoSummary({ crypto }: { crypto: FinanceState['crypto'] }) {
+  if (!crypto) return null;
+  const cells: [string, number, boolean][] = [
+    ['Holdings', crypto.value, false],
+    ['Unrealized', crypto.gain, true],
+    ['Realized', crypto.realized, true],
+    ['24h', crypto.change24h, true],
+  ];
+  return (
+    <div className="fin-desk-sum">
+      {cells.map(([label, n, delta]) => (
+        <div key={label}>
+          <span className="fin-label">{label}</span>
+          {delta ? <Delta n={n}>{signed(usd(Math.abs(n)), n)}</Delta> : <b className="num">{usd(n)}</b>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A row per coin: price as it ticks, the day's line, the position. `onUnwatch` adds a way off the watchlist. */
+function CryptoTicker({ v, sheets, onUnwatch }: { v: CryptoView; sheets: CryptoSheets; onUnwatch?: (symbol: string) => void }) {
+  return (
+    <ul className="fin-ticker">
+      {v.symbols.map((s) => {
+        const q = v.quotes.get(s);
+        const h = v.held.get(s);
+        return (
+          <li key={s}>
+            <span className="fin-sym">
+              <b>{s}</b>
+              {h ? <span className="faint num">{qty(h.quantity)}</span> : <span className="faint">watching</span>}
+            </span>
+            <Spark values={v.market.sparks[s]} up={(q?.changePct ?? 0) >= 0} />
+            <span className="fin-quote">
+              {q ? <TickPrice price={q.price} /> : <b className="faint">{v.market.unknown.includes(s) ? 'not listed' : '…'}</b>}
+              {q && <Delta n={q.changePct}>{pctText(q.changePct)}</Delta>}
+            </span>
+            <span className="fin-pos">
+              {h && h.value !== null && (
+                <>
+                  <span className="num">{usd(h.value)}</span>
+                  {h.gain !== null && <Delta n={h.gain}>{signed(usd(Math.abs(h.gain)), h.gain)}</Delta>}
+                </>
+              )}
+            </span>
+            <span className="fin-row-acts">
+              <button type="button" className="icon-btn icon-btn-sm" aria-label={`Trade ${s}`} title="Log a trade" onClick={() => sheets.openTrade({ symbol: s })}>
+                <Plus size={13} />
+              </button>
+              <button type="button" className="icon-btn icon-btn-sm" aria-label={`Alert on ${s}`} title="Price alert" onClick={() => sheets.openAlert(q ?? noQuote(s))}>
+                <Bell size={13} />
+              </button>
+              {onUnwatch && !h && (
+                <button type="button" className="icon-btn icon-btn-sm" aria-label={`Stop watching ${s}`} title="Stop watching" onClick={() => onUnwatch(s)}>
+                  <X size={13} />
+                </button>
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The whole desk, on the Finances sphere: prices, positions, the watchlist, alerts and the trade log. */
+export function CryptoDesk() {
   const f = useLiveFinance();
   const { toast } = useApp();
-  const { data: spheres } = useSpheres();
-  const financesId = spheres?.find((x) => x.key === 'finances')?.id;
+  const sheets = useCryptoSheets();
   const [coin, setCoin] = useState('');
-  const [trade, setTrade] = useState<{ symbol?: string; side?: 'buy' | 'sell' } | null>(null);
-  const [alert, setAlert] = useState<Quote | null | undefined>(undefined);
   const watch = useWrite((symbol: string) => financeWrite.post('/watchlist', { symbol }));
   const unwatch = useWrite((symbol: string) => financeWrite.del(`/watchlist/${symbol}`));
   const refresh = useWrite(() => financeWrite.post('/refresh'));
   const removeTrade = useWrite((id: string) => financeWrite.del(`/trades/${id}`));
   const removeAlert = useWrite((id: string) => financeWrite.del(`/alerts/${id}`));
   if (!f) return null;
-  const m = f.market;
-  const held = new Map(f.holdings.filter((h) => h.live && h.quantity > 0).map((h) => [h.symbol, h]));
-  const symbols = [...new Set([...held.keys(), ...f.watchlist])];
-  const quotes = new Map(m.quotes.map((q) => [q.symbol, q]));
+  const v = cryptoView(f);
   const openAlerts = f.alerts.filter((a) => !a.triggeredAt);
-  if (compact && symbols.length === 0) return null;
 
   return (
-    <section className={cx('card fin-desk', compact && 'is-compact')}>
-      <div className="card-head">
-        <h2 className="card-title">
-          Crypto <LiveDot m={m} />
-        </h2>
-        <div className="row" style={{ gap: 4 }}>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTrade({})}>
-            <Plus size={13} /> Trade
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAlert(null)}>
-            <Bell size={13} /> Alert
-          </button>
-          {compact ? (
-            financesId && (
-              <Link href={`/spheres/${financesId}`} className="icon-btn icon-btn-sm" aria-label="Open the crypto desk in Finances" title="Watchlist, trades and alerts in Finances">
-                <ArrowUpRight size={14} />
-              </Link>
-            )
-          ) : (
-            <button type="button" className="icon-btn icon-btn-sm" aria-label="Refresh prices" title="Refresh prices" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-              {refresh.isPending ? <Spinner /> : <RefreshCw size={13} />}
-            </button>
-          )}
-        </div>
-      </div>
+    <section className="card fin-desk">
+      <CryptoHead market={v.market} sheets={sheets}>
+        <button type="button" className="icon-btn icon-btn-sm" aria-label="Refresh prices" title="Refresh prices" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+          {refresh.isPending ? <Spinner /> : <RefreshCw size={13} />}
+        </button>
+      </CryptoHead>
+      <CryptoSummary crypto={f.crypto} />
+      {v.symbols.length === 0 ? <p className="empty">Add a coin to watch its price live.</p> : <CryptoTicker v={v} sheets={sheets} onUnwatch={(s) => unwatch.mutate(s)} />}
 
-      {f.crypto && (
-        <div className="fin-desk-sum">
-          <div>
-            <span className="fin-label">Holdings</span>
-            <b className="num">{usd(f.crypto.value)}</b>
-          </div>
-          <div>
-            <span className="fin-label">Unrealized</span>
-            <Delta n={f.crypto.gain}>{signed(usd(Math.abs(f.crypto.gain)), f.crypto.gain)}</Delta>
-          </div>
-          <div>
-            <span className="fin-label">Realized</span>
-            <Delta n={f.crypto.realized}>{signed(usd(Math.abs(f.crypto.realized)), f.crypto.realized)}</Delta>
-          </div>
-          <div>
-            <span className="fin-label">24h</span>
-            <Delta n={f.crypto.change24h}>{signed(usd(Math.abs(f.crypto.change24h)), f.crypto.change24h)}</Delta>
-          </div>
-        </div>
-      )}
+      <form
+        className="describe"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (coin.trim()) watch.mutate(coin.trim(), { onSuccess: () => setCoin(''), onError: (err) => toast({ message: err.message }) });
+        }}
+      >
+        <input value={coin} onChange={(e) => setCoin(e.target.value.toUpperCase())} placeholder="Watch a coin — PEPE, SUI, LINK…" aria-label="Coin to watch" maxLength={12} />
+        <button type="submit" className="btn btn-primary btn-sm" disabled={!coin.trim() || watch.isPending}>
+          Watch
+        </button>
+      </form>
 
-      {symbols.length === 0 ? (
-        <p className="empty">Add a coin to watch its price live.</p>
-      ) : (
-        <ul className="fin-ticker">
-          {symbols.map((s) => {
-            const q = quotes.get(s);
-            const h = held.get(s);
-            const unknown = m.unknown.includes(s);
-            return (
-              <li key={s}>
-                <span className="fin-sym">
-                  <b>{s}</b>
-                  {h ? <span className="faint num">{qty(h.quantity)}</span> : <span className="faint">watching</span>}
-                </span>
-                <Spark values={m.sparks[s]} up={(q?.changePct ?? 0) >= 0} />
-                <span className="fin-quote">
-                  {q ? <TickPrice price={q.price} /> : <b className="faint">{unknown ? 'not listed' : '…'}</b>}
-                  {q && <Delta n={q.changePct}>{pctText(q.changePct)}</Delta>}
-                </span>
-                <span className="fin-pos">
-                  {h && h.value !== null ? (
-                    <>
-                      <span className="num">{usd(h.value)}</span>
-                      {h.gain !== null && <Delta n={h.gain}>{signed(usd(Math.abs(h.gain)), h.gain)}</Delta>}
-                    </>
-                  ) : null}
-                </span>
-                <span className="fin-row-acts">
-                  <button type="button" className="icon-btn icon-btn-sm" aria-label={`Trade ${s}`} title="Log a trade" onClick={() => setTrade({ symbol: s })}>
-                    <Plus size={13} />
-                  </button>
-                  <button type="button" className="icon-btn icon-btn-sm" aria-label={`Alert on ${s}`} title="Price alert" onClick={() => setAlert(q ?? { symbol: s, price: 0, open: 0, high: 0, low: 0, changePct: 0, volume: 0, source: 'binance', at: 0 })}>
-                    <Bell size={13} />
-                  </button>
-                  {!compact && !h && f.watchlist.includes(s) && (
-                    <button type="button" className="icon-btn icon-btn-sm" aria-label={`Stop watching ${s}`} title="Stop watching" onClick={() => unwatch.mutate(s)}>
-                      <X size={13} />
-                    </button>
-                  )}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {!compact && (
-        <form
-          className="describe"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (coin.trim()) watch.mutate(coin.trim(), { onSuccess: () => setCoin(''), onError: (err) => toast({ message: err.message }) });
-          }}
-        >
-          <input value={coin} onChange={(e) => setCoin(e.target.value.toUpperCase())} placeholder="Watch a coin — PEPE, SUI, LINK…" aria-label="Coin to watch" maxLength={12} />
-          <button type="submit" className="btn btn-primary btn-sm" disabled={!coin.trim() || watch.isPending}>
-            Watch
-          </button>
-        </form>
-      )}
-
-      {!compact && openAlerts.length > 0 && (
+      {openAlerts.length > 0 && (
         <div className="fin-alerts">
           {openAlerts.map((a) => (
             <span key={a.id} className="chip chip-outline">
@@ -902,7 +929,7 @@ export function CryptoDesk({ compact = false }: { compact?: boolean }) {
         </div>
       )}
 
-      {!compact && f.trades.length > 0 && (
+      {f.trades.length > 0 && (
         <details className="todo-fold fin-trades">
           <summary>
             <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
@@ -926,10 +953,37 @@ export function CryptoDesk({ compact = false }: { compact?: boolean }) {
           </ul>
         </details>
       )}
-      {!compact && <p className="fin-foot hint">Prices in US dollars from {m.source ?? 'Binance, or Coinbase where Binance is unavailable'}.</p>}
+      <p className="fin-foot hint">Prices in US dollars from {v.market.source ?? 'Binance, or Coinbase where Binance is unavailable'}.</p>
+      {sheets.render(v)}
+    </section>
+  );
+}
 
-      {trade && <TradeSheet init={trade} quotes={quotes} held={held} onClose={() => setTrade(null)} />}
-      {alert !== undefined && <AlertSheet quote={alert} onClose={() => setAlert(undefined)} />}
+/**
+ * The desk at a glance, on Today: live prices, positions and quick Trade and Alert. The watchlist
+ * box, alerts and trade log stay on Finances, a tap away. Absent until a coin is held or watched.
+ */
+export function TodayCrypto() {
+  const f = useLiveFinance();
+  const sheets = useCryptoSheets();
+  const { data: spheres } = useSpheres();
+  const financesId = spheres?.find((x) => x.key === 'finances')?.id;
+  if (!f) return null;
+  const v = cryptoView(f);
+  if (v.symbols.length === 0) return null;
+
+  return (
+    <section className="card fin-desk fin-desk-today">
+      <CryptoHead market={v.market} sheets={sheets}>
+        {financesId && (
+          <Link href={`/spheres/${financesId}`} className="icon-btn icon-btn-sm" aria-label="Open the crypto desk in Finances" title="Watchlist, trades and alerts in Finances">
+            <ArrowUpRight size={14} />
+          </Link>
+        )}
+      </CryptoHead>
+      <CryptoSummary crypto={f.crypto} />
+      <CryptoTicker v={v} sheets={sheets} />
+      {sheets.render(v)}
     </section>
   );
 }
