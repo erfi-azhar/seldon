@@ -8,6 +8,7 @@ import { SIGNED_OUT, useAuth, useSettings, useSpheres } from './api.ts';
 import { AgentPanel } from './components/AgentPanel.tsx';
 import { Palette } from './components/Palette.tsx';
 import { Sheets } from './components/sheets.tsx';
+import { WeatherChip } from './components/WeatherChip.tsx';
 import { AgentOrb, Orb } from './components/Orb.tsx';
 import { Loading } from './components/ui.tsx';
 import { cx } from './lib.ts';
@@ -17,9 +18,11 @@ import { AppContext, type AppState, type Sheet, type Toast } from './state.tsx';
 import { Goals } from './views/Goals.tsx';
 import { Library } from './views/Library.tsx';
 import { Screenings } from './views/Screenings.tsx';
+import { CryptoMonitor } from './components/CryptoTwitter.tsx';
 import { Settings } from './views/Settings.tsx';
 import { SphereDetail, Spheres } from './views/Spheres.tsx';
 import { TripPage } from './components/Travel.tsx';
+import { QuranStudyPage } from './components/QuranStudy.tsx';
 import { Today } from './views/Today.tsx';
 import { Onboarding, SignIn } from './views/Welcome.tsx';
 
@@ -87,7 +90,7 @@ function Shell({ settings }: { settings: SettingsData }) {
     const tripId = location.match(/^\/trips\/([^/]+)/)?.[1];
     if (tripId) return `The page for trip [${tripId}]`;
     if (location === '/') return 'Today';
-    return { '/spheres': 'All spheres', '/goals': 'Goals', '/library': 'Library', '/settings': 'Settings' }[location] ?? 'Terminus';
+    return { '/quran': 'The Quran study page (the ayah there is in the Quran study line of the snapshot)', '/spheres': 'All spheres', '/goals': 'Goals', '/library': 'Library', '/settings': 'Settings' }[location] ?? 'Terminus';
   }, [location, spheres]);
   const chat = useAgentChat(useCallback(() => where.current, []));
   const { send } = chat;
@@ -167,6 +170,7 @@ function Shell({ settings }: { settings: SettingsData }) {
               )}
             </nav>
             <div className="topbar-right">
+              {location === '/' && <WeatherChip />}
               <button type="button" className="icon-btn only-mobile" onClick={() => setPaletteOpen(true)} aria-label="Search and commands">
                 <Search size={18} />
               </button>
@@ -181,8 +185,10 @@ function Shell({ settings }: { settings: SettingsData }) {
               <Route path="/" component={Today} />
               <Route path="/spheres" component={Spheres} />
               <Route path="/spheres/:id/screenings">{(params) => <Screenings sphereId={params.id} />}</Route>
+              <Route path="/spheres/:id/crypto">{(params) => <CryptoMonitor sphereId={params.id} />}</Route>
               <Route path="/spheres/:id">{(params) => <SphereDetail key={params.id} id={params.id} />}</Route>
               <Route path="/trips/:id">{(params) => <TripPage key={params.id} id={params.id} />}</Route>
+              <Route path="/quran" component={QuranStudyPage} />
               <Route path="/goals" component={Goals} />
               <Route path="/library" component={Library} />
               <Route path="/settings" component={Settings} />

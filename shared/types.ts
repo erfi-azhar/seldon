@@ -515,6 +515,19 @@ export interface PrayerDay {
 
 export type WeatherKind = 'clear' | 'cloudy' | 'overcast' | 'fog' | 'drizzle' | 'rain' | 'showers' | 'snow' | 'storm';
 
+/** One hour ahead, for the weather card. */
+export interface WeatherHour {
+  /** The start of the hour (ISO). */
+  at: string;
+  kind: WeatherKind;
+  code: number;
+  /** °C. */
+  temperature: number;
+  /** Chance of rain or snow, 0–100. */
+  rainChance: number;
+  isDay: boolean;
+}
+
 /** The weather now at a place, from Open-Meteo. */
 export interface Weather {
   kind: WeatherKind;
@@ -525,6 +538,14 @@ export interface Weather {
   /** Rain, showers and snow in the last hour, in mm. */
   precipitation: number;
   windKmh: number;
+  /** °C, and what it feels like with humidity and wind. */
+  temperature: number;
+  feelsLike: number;
+  /** Relative humidity, 0–100. */
+  humidity: number;
+  isDay: boolean;
+  /** The next few hours, after this one. */
+  hours: WeatherHour[];
   /** When Open-Meteo last updated it (ISO). */
   observedAt: string;
 }
@@ -706,6 +727,10 @@ export interface Holding {
   gainPct: number | null;
   valueBase: number | null;
   change24hPct: number | null;
+  /** Can be turned into cash within days (cash, coins, listed shares); CPF, property and the like can't. */
+  liquid: boolean;
+  /** Your own call on liquidity; null when it follows the kind. */
+  liquidSet: boolean | null;
 }
 
 export interface Trade {
@@ -874,7 +899,7 @@ export interface FinanceState {
   debts: Debt[];
   alerts: PriceAlert[];
   watchlist: string[];
-  netWorth: { assets: number; debts: number; net: number; unpriced: string[] };
+  netWorth: { assets: number; debts: number; net: number; unpriced: string[]; liquid: number; illiquid: number };
   market: MarketState;
   /** This month's recommended split of pay; null until there's income to plan. */
   plan: SalaryPlan | null;
@@ -926,6 +951,10 @@ export interface Segment {
   /** Flights: the terminals it leaves from and lands at ("3", "1", "T2"), empty when unknown. */
   fromTerminal: string;
   toTerminal: string;
+  /** Flights: when you said you'd checked in (ISO), so Today sends you to the gate. */
+  checkedInAt?: string | null;
+  /** Flights: how many minutes late it leaves (and so lands); 0 or missing when on time. */
+  delayMin?: number;
   address: string;
   notes: string;
   source: string;
@@ -1282,3 +1311,126 @@ export interface GuideSection {
   title: string;
   tips: string[];
 }
+
+// ── Quran study ─────────────────────────────────────────────────────────────
+
+export interface QuranChapter {
+  id: number;
+  name: string;
+  nameArabic: string;
+  /** "The Opener". */
+  meaning: string;
+  verses: number;
+}
+
+/** A paragraph of tafsir: a heading, plain text, or a line of Arabic. */
+export interface TafsirBlock {
+  kind: 'h' | 'p' | 'ar';
+  text: string;
+}
+
+export interface QuranVerse {
+  key: string;
+  surah: number;
+  ayah: number;
+  arabic: string;
+  translation: string;
+  translator: string;
+  tafsir: { id: number; name: string; covers: string[]; blocks: TafsirBlock[] } | null;
+}
+
+export interface QuranStudy {
+  surah: number;
+  ayah: number;
+  key: string;
+  tafsir: number;
+  tafsirs: { id: number; name: string }[];
+  studiedToday: boolean;
+  /** Ayat marked studied since Monday, and ever. */
+  week: number;
+  total: number;
+  /** Days in a row with at least one ayah studied, up to today or yesterday. */
+  streak: number;
+}
+
+// ── Crypto Twitter ──────────────────────────────────────────────────────────
+
+export type XPostKind = 'trade_idea' | 'news' | 'warning' | 'launch' | 'airdrop' | 'macro' | 'analysis' | 'opinion' | 'other';
+
+export interface XAccount {
+  id: string;
+  username: string;
+  name: string;
+  bio: string;
+  followers: number;
+  /** null until classified. */
+  crypto: boolean | null;
+  tags: string[];
+  why: string;
+  monitored: boolean;
+}
+
+export interface XPost {
+  id: string;
+  url: string;
+  text: string;
+  createdAt: string;
+  likes: number;
+  reposts: number;
+  author: { id: string; username: string; name: string };
+  /** The background brain's read of it; null until triaged. */
+  triage: {
+    relevant: boolean;
+    kind: XPostKind;
+    coins: string[];
+    sentiment: 'bullish' | 'bearish' | 'neutral';
+    summary: string;
+    importance: number;
+  } | null;
+  /** Coins it mentions that you hold or watch. */
+  mine: string[];
+}
+
+export interface XCoinBuzz {
+  symbol: string;
+  mentions: number;
+  bullish: number;
+  bearish: number;
+  /** Held or watched. */
+  mine: boolean;
+  lastAt: string;
+}
+
+export interface XWatchState {
+  configured: boolean;
+  username: string;
+  budgetUsd: number;
+  pollMinutes: number;
+  spentUsd: number;
+  /** What today may still spend, pacing the budget over the month. */
+  todayLeftUsd: number;
+  followingCount: number | null;
+  followingSyncedAt: string | null;
+  /** What reading the whole following list once would cost. */
+  followingCostUsd: number | null;
+  lastPollAt: string | null;
+  lastError: string | null;
+  running: boolean;
+  accounts: XAccount[];
+  counts: { following: number; crypto: number; monitored: number; unclassified: number };
+  posts: XPost[];
+  /** Coins mentioned in the last day, most-mentioned first. */
+  buzz: XCoinBuzz[];
+}
+
+/** One theme of a tafsir passage, summarised by the background model from that passage alone. */
+export interface QuranTheme {
+  kind: 'meaning' | 'context' | 'lesson' | 'virtue' | 'language' | 'ruling';
+  title: string;
+  summary: string;
+}
+
+export type QuranThemes =
+  | { status: 'ready'; tafsir: string; covers: string[]; themes: QuranTheme[] }
+  /** No tafsir passage for this ayah, or no model to read it: nothing to show. */
+  | { status: 'none'; reason: string };

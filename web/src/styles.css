@@ -1601,8 +1601,9 @@ p.lately {
 .todo-group summary:focus-within .todo-group-actions {
   display: flex;
 }
-.todo-group summary:hover .todo-fold-meta,
-.todo-group summary:focus-within .todo-fold-meta {
+/* Only a project's row has actions to make room for; a day's count stays put. */
+.todo-group summary:has(.todo-group-actions):hover .todo-fold-meta,
+.todo-group summary:has(.todo-group-actions):focus-within .todo-fold-meta {
   display: none;
 }
 @media (hover: none) {
@@ -1639,28 +1640,8 @@ p.lately {
 .todo-new-project-form {
   border-top: 1px solid var(--line);
 }
-.todo-day + .todo-day {
-  border-top: 1px solid var(--line);
-}
-.todo-days {
-  border-top: 1px solid var(--line);
-}
-.todo-day-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 12px 20px 2px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-2);
-}
-.todo-day-head.late {
+.todo-group.is-late .todo-group-name {
   color: var(--bad);
-}
-.todo-day ul {
-  padding-bottom: 6px;
 }
 .task-tag {
   max-width: 180px;
@@ -4836,6 +4817,577 @@ button.chip-ask:hover {
     font-size: 22px;
   }
 }
+/* The Quran study card in Faith: a summary that opens the study page. */
+.quran-today {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--good, var(--ink-2));
+  background: color-mix(in oklch, var(--good, var(--ink-2)) 12%, transparent);
+}
+.quran-card-body {
+  display: grid;
+  gap: 8px;
+  margin: 0 12px;
+  padding: 12px 12px 14px;
+  border-radius: 16px;
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.quran-card-body:hover {
+  background: var(--surface-2);
+}
+.quran-card-place {
+  display: grid;
+  gap: 1px;
+}
+.quran-card-place b {
+  font-size: 17px;
+  font-weight: 600;
+}
+.quran-card-place span {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.quran-card-arabic {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: 'Amiri Quran', 'Amiri', 'KFGQPC Uthmanic Script HAFS', 'Noto Naskh Arabic', 'Geeza Pro', 'Traditional Arabic', serif;
+  font-size: 21px;
+  line-height: 1.9;
+  color: var(--ink-2);
+}
+.quran-card-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.quran-card-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sphere, var(--ink-2));
+}
+.quran-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 20px 14px;
+}
+
+/* The study page. */
+.quran-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 8px 0 18px;
+}
+.quran-page-head h1 {
+  margin: 4px 0 2px;
+  font-family: var(--serif);
+  font-size: clamp(30px, 4vw, 42px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.quran-page-arabic-name {
+  font-family: 'Amiri', 'Noto Naskh Arabic', 'Geeza Pro', serif;
+  font-size: 0.75em;
+  color: var(--ink-3);
+}
+.quran-page-head .muted {
+  margin: 0;
+}
+.quran-eyebrow {
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-3);
+}
+.quran-page .quran-jump {
+  margin: 0 0 16px;
+}
+.quran-page-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.quran-ayah {
+  padding: 18px 28px 22px;
+}
+.quran-ayah .quran-arabic {
+  margin: 0;
+  font-size: clamp(24px, 2.4vw, 30px);
+  line-height: 2.1;
+}
+.quran-ayah .quran-translation {
+  margin: 14px 0 6px;
+  font-size: 18px;
+}
+.quran-source a {
+  color: inherit;
+}
+.quran-ayah-recite {
+  margin: 0 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.quran-page-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.quran-page-actions .quran-nav {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.quran-page-actions .quran-mark {
+  min-width: 190px;
+}
+.quran-side {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding-bottom: 14px;
+}
+.quran-side .quran-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 16px 20px 10px;
+  background: var(--surface);
+}
+.quran-side .tafsir-text {
+  font-size: 15px;
+  line-height: 1.65;
+}
+@media (max-width: 860px) {
+  .quran-page-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .quran-side {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .quran-page-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .quran-ayah {
+    padding: 14px 18px 18px;
+  }
+  .quran-page-actions {
+    width: 100%;
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .quran-page-actions > .btn {
+    align-self: flex-start;
+  }
+  .quran-page-actions .quran-mark {
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+/* Quran study: recitation, tafsir and reflection on one ayah at a time. */
+.quran-study {
+  overflow: hidden;
+}
+.quran-jump {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 20px 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.quran-jump .select {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.quran-jump .input {
+  width: 80px;
+}
+.quran-arabic {
+  margin: 4px 20px 0;
+  font-family: 'Amiri Quran', 'Amiri', 'KFGQPC Uthmanic Script HAFS', 'Noto Naskh Arabic', 'Geeza Pro', 'Traditional Arabic', serif;
+  font-size: 26px;
+  line-height: 2.05;
+  text-align: right;
+  color: var(--ink);
+}
+.quran-translation {
+  margin: 6px 20px 0;
+  font-family: var(--serif);
+  font-size: 16.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.quran-tabs {
+  margin: 14px 20px 0;
+}
+.quran-panel {
+  margin: 12px 20px 4px;
+}
+.quran-loading,
+.quran-failed {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 28px 20px;
+  text-align: center;
+}
+.quran-recite {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.quran-recite .verse-play {
+  width: 44px;
+  height: 44px;
+}
+.quran-recite-body {
+  display: grid;
+  gap: 6px;
+}
+.quran-recite .seg button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.quran-tafsir {
+  display: grid;
+  gap: 10px;
+}
+.tafsir-text {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.tafsir-text h4 {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.tafsir-text p {
+  margin: 0;
+}
+.tafsir-text .tafsir-ar {
+  font-family: 'Amiri', 'Noto Naskh Arabic', 'Geeza Pro', 'Traditional Arabic', serif;
+  font-size: 19px;
+  line-height: 1.8;
+  text-align: right;
+}
+.quran-tafsir .link {
+  justify-self: start;
+  font-size: 13px;
+}
+.quran-reflect {
+  display: grid;
+  gap: 10px;
+}
+.quran-past {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.quran-past figure {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.quran-past figcaption {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.quran-past p {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.quran-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+.quran-mark {
+  flex: 1;
+  justify-content: center;
+  max-width: 240px;
+}
+@media (max-width: 520px) {
+  .quran-arabic {
+    font-size: 23px;
+  }
+}
+/* Themes drawn from the tafsir, under the ayah. */
+.quran-main {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.quran-themes {
+  display: grid;
+  gap: 12px;
+}
+.quran-themes-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px;
+}
+.quran-themes-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-2);
+}
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+.theme-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.theme-card h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+.theme-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.theme-kind {
+  justify-self: start;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--theme-ink, var(--ink-2));
+  background: color-mix(in oklch, var(--theme-ink, var(--ink-2)) 14%, transparent);
+}
+.theme-meaning {
+  --theme-ink: oklch(0.6 0.12 250);
+}
+.theme-context {
+  --theme-ink: oklch(0.62 0.1 200);
+}
+.theme-lesson {
+  --theme-ink: oklch(0.62 0.13 150);
+}
+.theme-virtue {
+  --theme-ink: oklch(0.68 0.13 75);
+}
+.theme-language {
+  --theme-ink: oklch(0.6 0.13 300);
+}
+.theme-ruling {
+  --theme-ink: oklch(0.6 0.14 25);
+}
+.theme-card.is-loading {
+  min-height: 130px;
+}
+.theme-card.is-loading i {
+  display: block;
+  height: 10px;
+  border-radius: 6px;
+  background: var(--sunken);
+  animation: rc-pulse 1.4s ease-in-out infinite;
+}
+.theme-card.is-loading i:first-child {
+  width: 30%;
+}
+.theme-card.is-loading i:nth-child(2) {
+  width: 70%;
+  height: 16px;
+}
+.theme-wait {
+  grid-column: 1 / -1;
+}
+.theme-source {
+  margin: 0;
+  padding: 0 4px;
+}
+/* Recitation check: recite from memory, then see each word marked. */
+.ayah-text {
+  position: relative;
+}
+.ayah-text.is-hidden > p {
+  filter: blur(14px);
+  user-select: none;
+  pointer-events: none;
+}
+.ayah-cover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.rw {
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+.rw-missed {
+  color: var(--bad);
+  text-decoration: underline dotted;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 10px;
+  opacity: 0.75;
+}
+.rw-different {
+  background: color-mix(in oklch, var(--warn, #d08a1e) 22%, transparent);
+  box-shadow: inset 0 -3px 0 var(--warn, #d08a1e);
+  cursor: help;
+}
+.rw-added {
+  font-size: 0.7em;
+  color: var(--good);
+}
+.rc {
+  margin: 12px 0 4px;
+}
+.rc-start {
+  gap: 6px;
+}
+.rc-note {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.rc-note p {
+  margin: 0;
+}
+.rc-note.is-error p {
+  color: var(--bad);
+}
+.rc-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  font-size: 13.5px;
+}
+.rc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: rc-pulse 1.2s ease-in-out infinite;
+}
+@keyframes rc-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.rc-summary {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.rc-score {
+  display: grid;
+  gap: 2px;
+}
+.rc-score b {
+  font-size: 15px;
+}
+.rc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.rc-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.rc-legend .rw-missed {
+  border-bottom: 2px dotted var(--bad);
+  border-radius: 0;
+}
+.rc-legend .rw-added {
+  background: var(--good);
+}
+.rc-caveat {
+  margin: 0;
+}
+.rc-heard {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.rc-heard [lang='ar'] {
+  font-family: 'Amiri', 'Noto Naskh Arabic', 'Geeza Pro', serif;
+  font-size: 18px;
+}
 /* The niyyah for tomorrow's fast: a quiet night card, shown from Maghrib to Fajr in Ramadan. */
 .niyyah {
   display: grid;
@@ -5734,6 +6286,38 @@ textarea.title-input {
   color: var(--ink-3);
   background: var(--surface-2);
 }
+.fc-badge.is-late {
+  color: oklch(0.48 0.13 60);
+  background: oklch(0.95 0.05 75);
+}
+/* In the air: a live dot that pulses before the time to go. */
+.fc-badge.is-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fc-badge.is-live::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: fc-live 1.6s ease-out infinite;
+}
+@keyframes fc-live {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, currentColor 55%, transparent);
+  }
+  80%,
+  100% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, currentColor 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fc-badge.is-live::before {
+    animation: none;
+  }
+}
 .fc-route {
   display: grid;
   grid-template-columns: auto minmax(60px, 1fr) auto;
@@ -5805,6 +6389,39 @@ textarea.title-input {
   font-weight: 550;
   color: oklch(0.52 0.12 245);
 }
+/* In the air the route is a live timeline: flown solid to a small plane, the time left above it. */
+.fc-live-rail {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  background: var(--line-2);
+}
+.fc-live-flown {
+  position: absolute;
+  inset: -0.5px auto -0.5px 0;
+  height: 2px;
+  border-radius: 1px;
+  background: oklch(0.6 0.13 245);
+  transition: width 1s linear;
+}
+.fc-live-plane {
+  position: absolute;
+  top: 50%;
+  translate: -50% -50%;
+  rotate: 45deg;
+  color: oklch(0.6 0.13 245);
+  transition: left 1s linear;
+}
+.fc-dot.is-done {
+  background: oklch(0.6 0.13 245);
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fc-live-flown,
+  .fc-live-plane {
+    transition: none;
+  }
+}
 :root[data-theme='dark'] .fc-badge {
   color: oklch(0.85 0.08 250);
   background: oklch(0.3 0.06 250);
@@ -5812,6 +6429,10 @@ textarea.title-input {
 :root[data-theme='dark'] .fc-badge.is-soon {
   color: oklch(0.85 0.1 155);
   background: oklch(0.3 0.06 155);
+}
+:root[data-theme='dark'] .fc-badge.is-late {
+  color: oklch(0.85 0.12 75);
+  background: oklch(0.32 0.07 65);
 }
 :root[data-theme='dark'] .fc-stops {
   color: oklch(0.78 0.1 245);
@@ -5824,6 +6445,10 @@ textarea.title-input {
   :root:not([data-theme='light']) .fc-badge.is-soon {
     color: oklch(0.85 0.1 155);
     background: oklch(0.3 0.06 155);
+  }
+  :root:not([data-theme='light']) .fc-badge.is-late {
+    color: oklch(0.85 0.12 75);
+    background: oklch(0.32 0.07 65);
   }
   :root:not([data-theme='light']) .fc-stops {
     color: oklch(0.78 0.1 245);
@@ -6401,7 +7026,6 @@ textarea.title-input {
   color: var(--ink-2);
   line-height: 1.45;
 }
-.lounge-list,
 .tm-plan,
 .tm-today {
   list-style: none;
@@ -6409,18 +7033,6 @@ textarea.title-input {
   padding: 0;
   display: grid;
   gap: 6px;
-}
-.lounge-list li {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  font-size: 13.5px;
-  line-height: 1.4;
-}
-.lounge-list li svg {
-  flex: none;
-  transform: translateY(2px);
-  color: oklch(0.6 0.11 75);
 }
 .lounge-none {
   margin: 0;
@@ -7183,6 +7795,18 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   gap: 10px;
   align-items: stretch;
 }
+/* In the air: the globe tracks the flight on the card itself, the flights beneath it. */
+.flight-pair.is-live {
+  grid-template-columns: minmax(0, 1fr);
+}
+.flight-globe {
+  display: flex;
+  height: 340px;
+  min-width: 0;
+}
+.flight-globe .route-globe {
+  flex: 1;
+}
 .flight-stack {
   display: grid;
   gap: 10px;
@@ -7254,6 +7878,30 @@ button.layover-pill:hover .layover-lounge {
 }
 .rg-stage {
   position: relative;
+}
+/* Back to the overhead view after turning or zooming a tracked flight. */
+.rg-follow {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: #fff;
+  background: oklch(0.5 0.12 245);
+  box-shadow: 0 4px 14px -6px rgb(10 30 60 / 0.45);
+  cursor: pointer;
+}
+.rg-follow:hover {
+  background: oklch(0.45 0.12 245);
+}
+.rg-follow:focus-visible {
+  outline: 2px solid oklch(0.6 0.13 245);
+  outline-offset: 2px;
 }
 .route-globe.is-fill {
   grid-template-rows: minmax(0, 1fr) auto;
@@ -7973,6 +8621,49 @@ button.layover-pill:hover .layover-lounge {
   margin-top: 2px;
   color: var(--good);
 }
+/* A stay's elite nights and benefits, folded into one line until opened. */
+.stay-fold > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+  list-style: none;
+  cursor: pointer;
+}
+.stay-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.stay-fold > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.stay-fold-gist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.stay-fold-chev {
+  color: var(--ink-4);
+  transition: transform 0.18s ease;
+}
+.stay-fold[open] > summary .stay-fold-chev {
+  transform: rotate(180deg);
+}
+.stay-fold-body {
+  display: grid;
+  gap: 14px;
+  padding-top: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stay-fold-chev {
+    transition: none;
+  }
+}
 .stay-card-address {
   display: flex;
   align-items: flex-start;
@@ -8577,6 +9268,13 @@ button.layover-pill:hover .layover-lounge {
   margin-bottom: 20px;
   padding-bottom: 6px;
 }
+/* On a travel day the travel card leads Today, and the to-dos sit in the column (which spaces them). */
+.today-lead {
+  margin-bottom: 20px;
+}
+.col > .today-todos {
+  margin-bottom: 0;
+}
 .todo-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -8619,6 +9317,15 @@ button.layover-pill:hover .layover-lounge {
     border-top: 1px solid var(--line);
     padding-top: 8px;
   }
+}
+/* In the column on a travel day the card is narrow: Work and Everything else stack, as on a phone. */
+.col > .today-todos .todo-split {
+  grid-template-columns: minmax(0, 1fr);
+}
+.col > .today-todos .todo-split:not(.single) .todo-col + .todo-col {
+  border-left: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
 }
 
 /* The lounges at a connection, opened from its layover pill. */
@@ -8941,104 +9648,174 @@ button.layover-pill:hover .layover-lounge {
   }
 }
 
-/* The travel day on Today: the day's steps beside what you need right now. */
-.journey {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 22px;
-  align-items: center;
-  margin-bottom: 20px;
-  padding: 18px 20px;
-}
-.journey-steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.journey-steps li {
-  position: relative;
-  display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
-  gap: 10px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
-  color: var(--ink-4);
-}
-.journey-steps li:last-child {
-  border-bottom: 0;
-}
-.journey-steps li.is-done {
-  color: var(--ink-4);
-  opacity: 0.7;
-}
-.journey-steps li.is-now {
-  color: var(--ink);
-}
-.journey-steps li.is-now .num {
-  color: oklch(0.55 0.12 245);
-  font-weight: 600;
-}
-.journey-steps li.is-now::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: -1px;
-  width: 52px;
-  border-bottom: 2px solid oklch(0.55 0.12 245);
-}
+/* What you need right now on a travel day: the top of Today's travel card, on the card itself,
+   with the day's steps beneath it. The action sits beside the headline when there is room. */
 .journey-now {
   display: grid;
-  gap: 6px;
-  align-content: start;
-  padding: 18px 20px;
-  border-radius: 18px;
-  color: #fff;
-  background:
-    radial-gradient(110% 120% at 62% 18%, oklch(0.36 0.08 245 / 0.95), transparent 62%),
-    linear-gradient(160deg, oklch(0.2 0.04 248), oklch(0.13 0.02 250));
-  box-shadow: 0 12px 30px -18px rgb(8 20 40 / 0.7), inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  row-gap: 4px;
+  align-items: center;
+}
+.journey-now > * {
+  grid-column: 1;
 }
 .jn-title {
-  font-size: 18px;
+  font-size: 21px;
+  line-height: 1.2;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 .jn-sub {
-  font-size: 13px;
-  color: rgb(255 255 255 / 0.72);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+/* The welcome on the trip card while you're away: the headline, then the day below it. */
+.tm-welcome {
+  margin-top: -2px;
+}
+.jn-sub b {
+  font-weight: 600;
+  color: var(--ink);
 }
 .jn-line {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
-  color: rgb(255 255 255 / 0.66);
+  color: var(--ink-3);
+}
+.journey-now > .jn-btn {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
 }
 .jn-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   justify-self: start;
-  margin-top: 8px;
-  padding: 8px 15px;
+  padding: 8px 14px;
+  border: 0;
   border-radius: 999px;
+  font: inherit;
   font-size: 13px;
   font-weight: 550;
+  white-space: nowrap;
   color: #fff;
   text-decoration: none;
-  background: oklch(0.42 0.09 240);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  background: oklch(0.5 0.12 245);
   cursor: pointer;
 }
 .jn-btn:hover {
-  background: oklch(0.47 0.1 240);
+  background: oklch(0.45 0.12 245);
+}
+.jn-btn.is-done {
+  color: oklch(0.45 0.11 155);
+  background: oklch(0.6 0.13 155 / 0.14);
+  box-shadow: inset 0 0 0 1px oklch(0.6 0.13 155 / 0.35);
+}
+.jn-btn.is-done:hover {
+  background: oklch(0.6 0.13 155 / 0.2);
+}
+:root[data-theme='dark'] .jn-btn.is-done {
+  color: oklch(0.82 0.12 155);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .jn-btn.is-done {
+    color: oklch(0.82 0.12 155);
+  }
+}
+.jn-btn:focus-visible {
+  outline: 2px solid oklch(0.6 0.13 245);
+  outline-offset: 2px;
+}
+.journey-now > .jn-arc,
+.journey-now > .jn-ends {
+  grid-column: 1 / -1;
 }
 .jn-arc {
+  position: relative;
   width: 100%;
-  height: 56px;
-  margin: 6px 0 2px;
-  color: #a9cbff;
+  height: 52px;
+  margin: 6px 0 0;
+  color: oklch(0.6 0.13 245);
+}
+.jn-arc svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.jn-arc-flown {
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+}
+/* The way left marches on toward the destination, like a loading bar. */
+.jn-arc-left {
+  stroke: currentColor;
+  stroke-opacity: 0.32;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 2 6;
+  animation: jn-march 1.2s linear infinite;
+}
+@keyframes jn-march {
+  to {
+    stroke-dashoffset: -8;
+  }
+}
+.jn-arc.is-late {
+  color: oklch(0.68 0.15 65);
+}
+/* The plane on the arc, with a soft glow of its colour that breathes. */
+.jn-plane {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in oklch, currentColor 26%, transparent), transparent);
+  animation: jn-breathe 2.4s ease-in-out infinite;
+}
+@keyframes jn-breathe {
+  50% {
+    filter: drop-shadow(0 0 4px color-mix(in oklch, currentColor 45%, transparent));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jn-arc-left,
+  .jn-plane {
+    animation: none;
+  }
+}
+/* A late flight: a chip by the headline, and the booked times struck through. */
+.jn-delay {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  vertical-align: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: oklch(0.5 0.13 60);
+  background: oklch(0.75 0.15 70 / 0.18);
+}
+:root[data-theme='dark'] .jn-delay {
+  color: oklch(0.82 0.13 75);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .jn-delay {
+    color: oklch(0.82 0.13 75);
+  }
+}
+.jn-was {
+  font-weight: 450;
+  color: var(--ink-4);
 }
 .jn-ends {
   display: grid;
@@ -9056,7 +9833,7 @@ button.layover-pill:hover .layover-lounge {
 }
 .jn-ends small {
   font-size: 12px;
-  color: rgb(255 255 255 / 0.66);
+  color: var(--ink-3);
 }
 .jn-ends .is-end {
   text-align: right;
@@ -9066,21 +9843,299 @@ button.layover-pill:hover .layover-lounge {
   align-items: center;
   gap: 8px;
   font-size: 12.5px;
-  color: rgb(255 255 255 / 0.72);
+  color: var(--ink-3);
 }
 .jn-dur::before,
 .jn-dur::after {
   content: '';
   flex: 1;
-  border-top: 1px dotted rgb(255 255 255 / 0.4);
+  border-top: 1px dotted var(--line-2);
 }
-@media (max-width: 720px) {
-  .journey {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
+@media (max-width: 520px) {
+  .journey-now > .jn-btn {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 8px;
   }
-  .journey-now {
-    order: -1;
+}
+
+/* Today's travel card on a travel day: now, the day's steps, the flight, then folds. */
+/* Three sections on one rhythm: now and the day's steps, the flight, then the folds. Each
+   section opens with one rule and the same 18px beneath it; inside, things sit closer. */
+.travel-day {
+  --td-section: 18px;
+  gap: var(--td-section);
+  padding-bottom: 14px;
+}
+.travel-day > .tm-head + .td-now {
+  margin-top: -6px;
+}
+.td-now {
+  display: grid;
+  gap: 18px;
+}
+.td-steps {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.td-steps li {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding-top: 16px;
+  padding-right: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--ink-3);
+}
+/* The rail: from each stop to the next. */
+.td-steps li::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 15px;
+  right: 6px;
+  border-top: 1.5px solid var(--line-2);
+}
+/* The last stop hugs the right edge; the rail runs on into it. */
+.td-steps li:nth-last-child(2)::before {
+  right: 0;
+}
+.td-steps li:last-child {
+  flex: 0 0 auto;
+  justify-items: end;
+  padding-right: 0;
+  padding-left: 12px;
+  text-align: right;
+}
+.td-steps li:last-child::before {
+  left: 0;
+  right: 15px;
+}
+.td-steps li:last-child i {
+  left: auto;
+  right: 0;
+}
+.td-steps li:last-child:is(.is-now, .is-done)::before {
+  border-color: oklch(0.55 0.12 245 / 0.6);
+}
+.td-steps li.is-done::before {
+  border-color: oklch(0.55 0.12 245 / 0.6);
+}
+.td-steps i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--ink-4);
+}
+.td-steps li.is-done i {
+  background: oklch(0.55 0.12 245 / 0.6);
+  box-shadow: none;
+}
+.td-steps li.is-now i {
+  background: oklch(0.6 0.13 245);
+  box-shadow: 0 0 0 4px oklch(0.6 0.13 245 / 0.22);
+}
+/* The step you're in pulses: a ring that swells out from the dot and fades. */
+.td-steps li.is-now i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 oklch(0.6 0.13 245 / 0.55);
+  animation: td-pulse 2s ease-out infinite;
+}
+@keyframes td-pulse {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.6 0.13 245 / 0.55);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 10px oklch(0.6 0.13 245 / 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .td-steps li.is-now i::after {
+    animation: none;
+  }
+}
+.td-step-time {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.td-steps li.is-now {
+  color: var(--ink);
+}
+.td-steps li.is-now .td-step-time {
+  color: oklch(0.6 0.13 245);
+  font-weight: 600;
+}
+.td-steps li.is-done {
+  color: var(--ink-4);
+}
+/* The flight, laid out as on the trip page but part of the travel card: no box of its own,
+   a rule above it like the card's other sections. */
+.flight-card.is-inline,
+.flight-card.is-inline:hover {
+  gap: 12px;
+  padding: var(--td-section, 18px) 0 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+/* One rule per section: the facts follow the route on space alone. */
+.flight-card.is-inline .fc-facts {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+.td-folds {
+  display: grid;
+  /* The rows bring their own 11px, so the text lands the same 18px under the rule. */
+  padding-top: calc(var(--td-section) - 11px);
+  border-top: 1px solid var(--line);
+}
+.travel-day > .td-folds + .td-foot,
+.travel-day > .td-folds + .error-text {
+  margin-top: -8px;
+}
+.td-fold {
+  border-bottom: 1px solid var(--line);
+}
+.td-fold:last-child {
+  border-bottom: 0;
+}
+.td-fold > summary,
+.td-fold-action {
+  display: grid;
+  grid-template-columns: 20px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  list-style: none;
+  cursor: pointer;
+}
+.td-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.td-fold-action {
+  grid-template-columns: 20px minmax(0, 1fr);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.td-fold-action:last-child {
+  border-bottom: 0;
+}
+.td-fold-action:hover {
+  color: var(--ink);
+}
+.td-fold-icon {
+  display: inline-flex;
+  color: var(--ink-3);
+}
+.td-fold-title {
+  font-weight: 550;
+}
+.td-fold-gist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--ink-3);
+}
+.td-fold-chev {
+  color: var(--ink-4);
+  transition: transform 0.18s ease;
+}
+.td-fold[open] > summary .td-fold-chev {
+  transform: rotate(180deg);
+}
+.td-fold > summary:focus-visible,
+.td-fold-action:focus-visible {
+  outline: 2px solid var(--focus, oklch(0.6 0.13 245));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.td-fold-body {
+  padding: 0 0 12px 28px;
+}
+/* Open, the fold's own content says it; the gist would only repeat it. */
+.td-fold[open] > summary .td-fold-gist {
+  visibility: hidden;
+}
+/* A flight's lounges: each a name, how you get in, where it is and what to know. */
+.lounge-options {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lounge-options li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.lounge-options li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.lounge-options li:last-child {
+  padding-bottom: 0;
+}
+.lounge-option-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.lounge-option-head b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.lounge-option-via {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.lounge-option-where {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lounge-option-note {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.td-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .td-fold-chev {
+    transition: none;
   }
 }
 
@@ -9918,18 +10973,304 @@ button.fin-rec-main:disabled {
 .fin-relief-head .btn {
   margin-left: auto;
 }
-.fin-relief-row {
+/* The rows share one grid: the amount column fits the widest amount, so the bars line up and
+   give way instead of the amounts spilling out of the card. */
+.fin-relief-rows {
   display: grid;
-  /* A fixed amount column keeps the bars the same length from row to row. */
-  grid-template-columns: 84px minmax(0, 1fr) 9.5em;
+  grid-template-columns: auto minmax(40px, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
   font-size: 13px;
 }
-.fin-relief-row .num {
+.fin-relief-row {
+  display: contents;
+}
+.fin-relief-amt {
   font-size: 12.5px;
-  white-space: nowrap;
   text-align: right;
+}
+/* Each half keeps together; on a narrow card the cap drops under what's done. */
+.fin-relief-amt > span {
+  white-space: nowrap;
+}
+
+/* ── Crypto Twitter ─────────────────────────────────────────────────────── */
+
+.xw-head {
+  align-items: flex-end;
+}
+.xw-head-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.xw-spend {
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+}
+.xw-spend b {
+  font: 500 15px/1.2 var(--mono);
+}
+.xw-spend-bar {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.xw-spend-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--sphere-main, var(--ink-3));
+}
+.xw-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.xw-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 16px 20px 6px;
+}
+.xw-feed {
+  padding: 0 12px 8px;
+}
+.xw-feed.is-compact {
+  padding-bottom: 4px;
+}
+.xw-post {
+  display: grid;
+  gap: 5px;
+  padding: 12px 8px;
+  border-top: 1px solid var(--line);
+}
+.xw-post:first-child {
+  border-top: 0;
+}
+.xw-post.is-urgent {
+  box-shadow: inset 3px 0 0 var(--bad);
+  padding-left: 14px;
+}
+.xw-post-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+.xw-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.xw-time {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.xw-kind {
+  height: 20px;
+  font-size: 11px;
+}
+.xw-kind.xw-warning {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+.xw-kind.xw-trade_idea,
+.xw-kind.xw-analysis {
+  background: color-mix(in oklab, oklch(0.62 0.13 255) 16%, transparent);
+  color: oklch(0.52 0.13 255);
+}
+.xw-kind.xw-news,
+.xw-kind.xw-launch {
+  background: color-mix(in oklab, var(--good) 15%, transparent);
+  color: var(--good);
+}
+.xw-summary {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.xw-text {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.xw-post-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+.xw-coin {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  font-size: 11.5px;
+}
+.xw-coin b {
+  font: 600 11.5px var(--mono);
+}
+.xw-coin .num {
+  font-size: 11px;
+}
+.xw-coin.is-mine {
+  border-color: color-mix(in oklab, var(--ink) 40%, transparent);
+  background: var(--surface-2);
+}
+button.xw-coin:hover,
+.xw-coin.is-active {
+  background: var(--sunken);
+}
+.xw-sent {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.xw-metrics {
+  font-size: 11.5px;
+}
+.xw-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink-2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.xw-open:hover {
+  color: var(--ink);
+}
+.xw-buzz-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 20px 6px;
+}
+.xw-buzz {
+  padding: 0 10px 8px;
+}
+.xw-buzz-row-btn {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 28px 52px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+.xw-buzz-row-btn:hover,
+.xw-buzz-row-btn.is-active {
+  background: var(--surface-2);
+}
+.xw-buzz-sym {
+  font: 600 13px var(--mono);
+}
+.xw-buzz-sym.is-mine {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.xw-buzz-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--sunken);
+}
+.xw-buzz-bar i {
+  display: block;
+  height: 100%;
+}
+.xw-buzz-bar i.is-up {
+  background: var(--good);
+}
+.xw-buzz-bar i.is-flat {
+  background: color-mix(in oklab, var(--ink) 25%, transparent);
+}
+.xw-buzz-bar i.is-down {
+  background: var(--bad);
+}
+.xw-buzz-n {
+  font-size: 12.5px;
+  text-align: right;
+}
+.xw-buzz-q {
+  font-size: 12px;
+  text-align: right;
+}
+.xw-search {
+  margin: 0 20px 8px;
+}
+.xw-acct-list {
+  padding: 0 20px 8px;
+}
+.xw-acct-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13.5px;
+}
+.xw-acct-list li .grow {
+  display: grid;
+  min-width: 0;
+  line-height: 1.3;
+}
+.xw-acct-list li .faint {
+  font-size: 12px;
+}
+.xw-acct-list li.is-off {
+  opacity: 0.6;
+}
+.xw-step {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+}
+.xw-step h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.xw-steps {
+  display: grid;
+  gap: 6px;
+  padding-left: 20px;
+  list-style: decimal;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.xw-steps a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Portfolio, liquid then illiquid, each with its subtotal. */
+.fin-holding-group-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 20px 2px;
+}
+.fin-holding-group-head .num {
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 @media (max-width: 720px) {
@@ -9974,6 +11315,21 @@ button.fin-rec-main:disabled {
   }
   .fin-tx-make {
     opacity: 1;
+  }
+  .xw-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .xw-head {
+    flex-wrap: wrap;
+  }
+  .xw-head-side {
+    width: 100%;
+  }
+  .xw-spend {
+    flex: 1;
+  }
+  .xw-metrics {
+    display: none;
   }
 }
 
@@ -10996,10 +12352,12 @@ button.fin-rec-main:disabled {
   font-weight: 600;
   color: var(--ink-2);
 }
+/* The facts spread evenly across the card, the last flush with its right edge. */
 .fc-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 18px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
@@ -11007,6 +12365,11 @@ button.fin-rec-main:disabled {
   display: grid;
   gap: 1px;
   min-width: 0;
+  flex: 0 1 auto;
+}
+.fc-fact:last-child {
+  justify-items: end;
+  text-align: right;
 }
 .fc-fact small {
   font-size: 11px;
@@ -11021,6 +12384,12 @@ button.fin-rec-main:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.fc-was {
+  font-size: 0.62em;
+  font-weight: 450;
+  color: var(--ink-4);
+  vertical-align: 0.2em;
 }
 .fc-add {
   font-weight: 450;
@@ -11138,4 +12507,127 @@ button.fin-rec-main:disabled {
   margin: 2px 0 0;
   font-size: 12px;
   color: var(--ink-4);
+}
+
+/* ── Weather chip (components/WeatherChip.tsx) ────────────────────────────────
+   The temperature beside Settings on Today, opening a card with the details. */
+
+.wx {
+  position: relative;
+}
+.topbar .wx-chip {
+  width: auto;
+  gap: 7px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px 0 12px;
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.wx-card {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
+  width: 300px;
+  padding: 16px 18px 14px;
+  display: grid;
+  gap: 12px;
+  /* Dense enough to read over the sky and the page beneath it. */
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-3);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  backdrop-filter: blur(30px) saturate(1.8);
+  animation: rise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.wx-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.wx-head b {
+  font-size: 15px;
+  font-weight: 600;
+}
+.wx-head span,
+.wx-now span:last-child {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.wx-now {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.wx-temp {
+  font-family: var(--serif);
+  font-size: 44px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.wx-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+.wx-facts dt {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.wx-facts dd {
+  margin: 1px 0 0;
+  font-size: 13.5px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.wx-hours {
+  list-style: none;
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.wx-hours li {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+.wx-hours svg {
+  color: var(--ink-2);
+}
+.wx-hour,
+.wx-rain {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.wx-rain {
+  min-height: 1em;
+  color: oklch(0.55 0.12 240);
+}
+.wx-source {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+@media (max-width: 720px) {
+  .topbar .wx-chip {
+    height: 38px;
+    padding: 0 12px 0 10px;
+  }
+  .wx-card {
+    position: fixed;
+    top: calc(64px + env(safe-area-inset-top, 0px));
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
 }

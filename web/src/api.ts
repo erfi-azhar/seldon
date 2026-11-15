@@ -9,6 +9,7 @@ import type {
   ConversationSummary,
   FaithState,
   FinanceState,
+  XWatchState,
   MarketState,
   Goal,
   HealthState,
@@ -345,4 +346,17 @@ export const booksWrite = {
   patch: (id: string, body: Partial<Pick<Book, 'title' | 'author' | 'synopsis' | 'status' | 'note' | 'buyUrl' | 'color'>> & { coverUrl?: string }) => api<Book>('PATCH', `/books/${id}`, body),
   refresh: (id: string) => api<Book>('POST', `/books/${id}/refresh`),
   del: (id: string) => api<{ ok: true }>('DELETE', `/books/${id}`),
+};
+
+// ── Crypto Twitter ──────────────────────────────────────────────────────────
+
+export const useXWatch = () =>
+  useQuery({ queryKey: ['xwatch'], queryFn: () => api<XWatchState>('GET', '/xwatch'), refetchInterval: (q) => (q.state.data?.running ? 5_000 : 2 * 60_000) });
+
+export const xwatchWrite = {
+  settings: (body: object) => api<XWatchState>('PUT', '/xwatch/settings', body),
+  following: () => api<XWatchState>('POST', '/xwatch/following', {}),
+  check: () => api<XWatchState>('POST', '/xwatch/check', {}),
+  account: (id: string, body: object) => api<XWatchState>('PATCH', `/xwatch/accounts/${id}`, body),
+  disconnect: () => api<XWatchState>('DELETE', '/xwatch'),
 };

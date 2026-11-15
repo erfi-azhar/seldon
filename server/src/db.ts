@@ -651,6 +651,69 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE trips ADD COLUMN guide TEXT;
   `,
+  // Quran study: each ayah marked studied, once per day.
+  `
+  CREATE TABLE quran_study_log (
+    verse_key TEXT NOT NULL,
+    date TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (verse_key, date)
+  );
+  CREATE INDEX quran_study_by_date ON quran_study_log(date);
+  `,
+  // Crypto Twitter: accounts from the owner's X following (classified crypto or not), and the posts
+  // read from the ones being watched, with the background brain's triage.
+  `
+  CREATE TABLE x_accounts (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    bio TEXT NOT NULL DEFAULT '',
+    followers INTEGER NOT NULL DEFAULT 0,
+    following INTEGER NOT NULL DEFAULT 1,
+    crypto INTEGER,
+    tags TEXT NOT NULL DEFAULT '[]',
+    why TEXT NOT NULL DEFAULT '',
+    monitored INTEGER NOT NULL DEFAULT 0,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    added_at TEXT NOT NULL
+  );
+  CREATE INDEX x_accounts_by_crypto ON x_accounts(crypto, monitored);
+
+  CREATE TABLE x_posts (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    likes INTEGER NOT NULL DEFAULT 0,
+    reposts INTEGER NOT NULL DEFAULT 0,
+    triage TEXT,
+    fetched_at TEXT NOT NULL
+  );
+  CREATE INDEX x_posts_by_time ON x_posts(created_at);
+  `,
+  // Quran study: themes drawn from a tafsir passage, written once per passage and tafsir.
+  `
+  CREATE TABLE quran_themes (
+    passage TEXT NOT NULL,
+    tafsir INTEGER NOT NULL,
+    themes TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (passage, tafsir)
+  );
+  `,
+  // Whether a holding can be turned into cash within days; null means decide by its kind.
+  `
+  ALTER TABLE fin_holdings ADD COLUMN liquid INTEGER;
+  `,
+  // When you checked in for a flight, so every device knows to send you to the gate.
+  `
+  ALTER TABLE trip_segments ADD COLUMN checked_in_at TEXT;
+  `,
+  // How late a flight is leaving, in minutes (0 on time), so Today follows the new times.
+  `
+  ALTER TABLE trip_segments ADD COLUMN delay_min INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

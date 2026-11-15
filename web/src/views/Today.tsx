@@ -8,8 +8,7 @@ import { AddTask, HabitRow, HabitWeekHead, HabitWeekLabel, TaskRow } from '../co
 import { SignalsCard } from '../components/Signals.tsx';
 import { HillBand } from '../components/Hill.tsx';
 import { Sky, type SkyTrip } from '../components/Sky.tsx';
-import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
-import { JourneyCard } from '../components/Journey.tsx';
+import { TravelModeCard, TravelPill, useTravelDay } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
 import { TodayCrypto } from '../components/Finance.tsx';
 import { Loading } from '../components/ui.tsx';
@@ -355,6 +354,7 @@ export function Today() {
   const { data: o } = useOverview();
   const skyTrip = useSkyTrip();
   const { openSheet, sphere } = useApp();
+  const travelDay = useTravelDay();
   if (!o) return <Loading />;
 
   const today = todayStr();
@@ -386,12 +386,18 @@ export function Today() {
         </div>
       </header>
 
-      <TodayTodos overview={o} />
+      {/* On a travel day the trip leads, and the day's to-dos take its place in the column. */}
+      {travelDay ? (
+        <div className="today-lead">
+          <TravelModeCard />
+        </div>
+      ) : (
+        <TodayTodos overview={o} />
+      )}
 
       <div className="today-grid">
         <div className="col">
-          <JourneyCard />
-          <TravelModeCard />
+          {travelDay ? <TodayTodos overview={o} /> : <TravelModeCard />}
           <SignalsCard />
           <Journal key={o.date} date={o.date} initial={o.journal?.body ?? ''} />
         </div>

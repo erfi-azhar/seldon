@@ -38,24 +38,43 @@ export interface Look {
   rain: number;
   snow: number;
   storm: boolean;
+  /** Drizzle: fine rain, lighter than a shower. */
+  drizzle: boolean;
   /** Cloud speed, as a share of a calm day's. */
   wind: number;
 }
 
-export const UNKNOWN: Look = { cover: -1, grey: 0, fog: 0, rain: 0, snow: 0, storm: false, wind: 1 };
+export const UNKNOWN: Look = { cover: -1, grey: 0, fog: 0, rain: 0, snow: 0, storm: false, drizzle: false, wind: 1 };
+
+// How rain is drawn. After dark drizzle only veils the sky lightly, so a drizzly night
+// stays a deep navy rather than going flat grey; by day, and in heavier rain, the sky
+// greys by 0.65. Against a dark sky
+// rain is a pale blue-white, and each drop's leading dot glints as if it caught a
+// streetlight, with a softer trail behind it. Drizzle has more drops than its share of
+// rain alone would give, and longer ones, so it reads as rain.
+const DRIZZLE_GREY = 0.25;
+/** How much a drizzly night's cloud cover adds to its grey, as a share of what it would. */
+const DRIZZLE_CLOUD_GREY = 0.3;
+const NIGHT_RAIN: RGB = [176, 192, 224];
+const NIGHT_RAIN_STRENGTH = 0.6;
+const NIGHT_GLINT = 0.9;
+const DRIZZLE_DROPS = 1.6;
+const DRIZZLE_LENGTH = 1.5;
 
 export function lookOf(w: Weather | null | undefined): Look {
   if (!w) return UNKNOWN;
   const cover = w.cloudCover / 100;
   const wet = w.kind === 'drizzle' || w.kind === 'rain' || w.kind === 'showers' || w.kind === 'storm';
   const heavy = clamp(0.3 + w.precipitation / 3);
+  const nightDrizzle = w.kind === 'drizzle' && !w.isDay;
   return {
     cover,
-    grey: Math.max(smooth(0.6, 1, cover), wet ? 0.65 : 0, w.kind === 'fog' || w.kind === 'snow' ? 0.5 : 0),
+    grey: Math.max(smooth(0.6, 1, cover) * (nightDrizzle ? DRIZZLE_CLOUD_GREY : 1), nightDrizzle ? DRIZZLE_GREY : wet ? 0.65 : 0, w.kind === 'fog' || w.kind === 'snow' ? 0.5 : 0),
     fog: w.kind === 'fog' ? 1 : 0,
     rain: w.kind === 'drizzle' ? 0.3 : w.kind === 'rain' || w.kind === 'showers' ? 0.45 + 0.55 * heavy : w.kind === 'storm' ? 1 : 0,
     snow: w.kind === 'snow' ? 0.4 + 0.6 * heavy : 0,
     storm: w.kind === 'storm',
+    drizzle: w.kind === 'drizzle',
     wind: clamp(0.6 + w.windKmh / 20, 0.5, 3),
   };
 }
@@ -110,14 +129,24 @@ export const hazeOf = (p: SkyColors): RGB => add(greyed(mix(p.low, p.cloud, 0.5)
 export const SNOW: RGB = [244, 247, 252];
 export const FLASH: RGB = [236, 240, 255];
 
-/** Rain shows as darker streaks against a pale sky and lighter ones against a dark sky. */
-export function fallColor(w: Look, p: SkyColors): RGB {
-  if (w.snow > 0) return SNOW;
-  return lum(p.cloud) > 0.55 ? mix(p.cloud, [84, 100, 128], 0.6) : mix(p.cloud, [235, 240, 250], 0.35);
-}
+const GLINT: RGB = [240, 245, 255];
 
-/** How strongly a falling streak or flake colours a dot. */
-export const fallStrength = (w: Look) => (w.snow > 0 ? 0.85 : 0.5);
+/**
+ * How a falling streak or flake colours a dot, for this frame's sky: rain shows as darker
+ * streaks against a pale sky and lighter ones against a dark sky; snow is white. `fell` is
+ * the cell's value from precipitation(): above 1 at a drop's glinting head.
+ */
+export function fallPainter(w: Look, p: SkyColors): (c: RGB, fell: number) => RGB {
+  if (w.snow > 0) return (c, fell) => mix(c, SNOW, Math.min(1, fell) * 0.85);
+  if (lum(p.cloud) > 0.55) {
+    const ink = mix(p.cloud, [84, 100, 128], 0.6);
+    return (c, fell) => mix(c, ink, Math.min(1, fell) * 0.5);
+  }
+  return (c, fell) => {
+    const out = mix(c, NIGHT_RAIN, Math.min(1, fell) * NIGHT_RAIN_STRENGTH);
+    return fell > 1 ? mix(out, GLINT, Math.min(1, fell - 1)) : out;
+  };
+}
 
 /**
  * Rain streaks or snowflakes for this frame, laid onto a dot grid of cols × rows over a
@@ -136,16 +165,17 @@ export function precipitation(w: Look, seconds: number, cols: number, rows: numb
   };
   if (w.rain > 0) {
     const slant = 0.1 + 0.05 * w.wind;
-    const drops = Math.round(w.rain * 0.9 * cols);
+    const drops = Math.round(w.rain * 0.9 * cols * (w.drizzle ? DRIZZLE_DROPS : 1));
     for (let d = 0; d < drops; d++) {
       const speed = 1.5 + 0.8 * hash(d, 3);
-      const len = 0.05 + 0.07 * hash(d, 4) * w.rain;
+      const len = (0.05 + 0.07 * hash(d, 4) * w.rain) * (w.drizzle ? DRIZZLE_LENGTH : 1);
       const y = ((hash(d, 2) * 1.4 + seconds * speed) % 1.4) - 0.2;
       const x = hash(d, 1) * (aspect + 0.5) - 0.3 + slant * y;
       const steps = Math.ceil(len * rows) + 1;
       for (let n = 0; n <= steps; n++) {
-        const t = n / steps;
-        put(x - slant * len * t, y - len * t, 1 - 0.6 * t);
+        const k = n / steps;
+        // The head carries a glint (a value above 1, drawn only against a dark sky); the tail fades behind it.
+        put(x - slant * len * k, y - len * k, n === 0 ? 1 + NIGHT_GLINT * (0.5 + 0.5 * hash(d, 5)) : 1 - 0.6 * k);
       }
     }
   }
@@ -172,3 +202,47 @@ export const nextFlashIn = () => 7 + Math.random() * 12;
 
 /** Whether anything is falling or flashing, so a scene should keep drawing steadily. */
 export const moving = (w: Look) => w.rain > 0 || w.snow > 0 || w.storm;
+
+// ── Words and units, for the weather chip ─────────────────────────────────────
+
+/** The WMO weather code in a few plain words. */
+export function weatherLabel(code: number): string {
+  const words: Record<number, string> = {
+    0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Freezing fog',
+    51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 56: 'Freezing drizzle', 57: 'Freezing drizzle',
+    61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Freezing rain',
+    71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains',
+    80: 'Light showers', 81: 'Showers', 82: 'Heavy showers', 85: 'Snow showers', 86: 'Heavy snow showers',
+    95: 'Thunderstorm', 96: 'Thunderstorm with hail', 99: 'Thunderstorm with hail',
+  };
+  return words[code] ?? 'Unsettled';
+}
+
+export type TempUnit = 'c' | 'f';
+const UNIT_KEY = 'terminus.units';
+const unitListeners = new Set<() => void>();
+
+export function readTempUnit(): TempUnit {
+  try {
+    return localStorage.getItem(UNIT_KEY) === 'f' ? 'f' : 'c';
+  } catch {
+    return 'c';
+  }
+}
+
+export function setTempUnit(unit: TempUnit): void {
+  try {
+    localStorage.setItem(UNIT_KEY, unit);
+  } catch {
+    // Storage is off: the choice holds for this visit only.
+  }
+  unitListeners.forEach((l) => l());
+}
+
+export function onTempUnit(listener: () => void): () => void {
+  unitListeners.add(listener);
+  return () => unitListeners.delete(listener);
+}
+
+/** A °C reading in the chosen unit, rounded, with its degree sign. */
+export const degrees = (celsius: number, unit: TempUnit) => `${Math.round(unit === 'f' ? (celsius * 9) / 5 + 32 : celsius)}°`;

@@ -2,13 +2,14 @@
 // up, and a countdown to Ramadan when it is near.
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronRight, Clock, LoaderCircle, LocateFixed, MapPin, MoonStar, Pause, Pencil, Play, Plus, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Check, ChevronRight, Clock, LocateFixed, MapPin, MoonStar, Pencil, Plus, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
 import { addDays, cx, parseDay, plural, todayStr } from '../lib.ts';
 import { Field, Modal } from './ui.tsx';
 import { MUNJIYAT, VERSES, verseIndexFor } from './verses.ts';
+import { arabicDigits, PlayIcon, RECITER, useRecitation, type Track } from './recitation.tsx';
 
 const NAME: Record<PrayerName, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
 
@@ -450,91 +451,12 @@ function NiyyahCard({ fast, now, tz }: { fast: { date: string; day: number; fajr
   );
 }
 
-const arabicDigits = (n: number) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]!);
-
-// Verse-by-verse recitation by Mishary Rashid Alafasy. quran.com's audio host comes first;
-// everyayah.com serves the same files and is tried if it fails.
-const RECITER = 'Mishary Alafasy';
-const audioSources = (surah: number, ayah: number): string[] => {
-  const file = `${String(surah).padStart(3, '0')}${String(ayah).padStart(3, '0')}.mp3`;
-  return [`https://verses.quran.com/Alafasy/mp3/${file}`, `https://everyayah.com/data/Alafasy_128kbps/${file}`];
-};
-
-/** One ayah to recite; `verse` is its entry in VERSES, so the card can follow along. */
-type Track = { surah: number; ayah: number; verse: number };
-type Playback =
-  | { state: 'idle' }
-  | { state: 'loading' | 'playing' | 'paused'; track: Track; set: string }
-  | { state: 'error' };
-
 /** The ayat of one entry in VERSES, in order. */
 function tracksOf(index: number): Track[] {
   const v = VERSES[index]!;
   const [surah, range] = v.ref.split(':') as [string, string];
   const first = Number(range.split('-')[0]);
   return v.arabic.map((_, i) => ({ surah: Number(surah), ayah: first + i, verse: index }));
-}
-
-/**
- * Plays a list of ayat one after another, falling back to the second host when the first
- * fails. `set` names what is playing (one verse, or all seven), so a button knows its own.
- */
-function useRecitation() {
-  const audio = useRef<HTMLAudioElement | null>(null);
-  const [pb, setPb] = useState<Playback>({ state: 'idle' });
-
-  const stop = () => {
-    const a = audio.current;
-    if (a) {
-      a.onended = a.onerror = a.onplaying = a.onwaiting = null;
-      a.pause();
-      a.removeAttribute('src');
-      a.load();
-    }
-    audio.current = null;
-  };
-  useEffect(() => stop, []);
-
-  const playAt = (tracks: Track[], i: number, set: string, source = 0) => {
-    stop();
-    const track = tracks[i]!;
-    const a = new Audio(audioSources(track.surah, track.ayah)[source]);
-    audio.current = a;
-    setPb({ state: 'loading', track, set });
-    a.onplaying = () => setPb({ state: 'playing', track, set });
-    a.onwaiting = () => setPb({ state: 'loading', track, set });
-    a.onended = () => (i + 1 < tracks.length ? playAt(tracks, i + 1, set) : (stop(), setPb({ state: 'idle' })));
-    a.onerror = () => (source === 0 ? playAt(tracks, i, set, 1) : (stop(), setPb({ state: 'error' })));
-    a.play().catch((e: unknown) => {
-      // Autoplay refusals are reported here; load failures arrive via onerror.
-      if (e instanceof DOMException && e.name === 'NotAllowedError') (stop(), setPb({ state: 'idle' }));
-    });
-  };
-
-  /** Start `set`, or pause and resume it if it is the one already going. */
-  const toggle = (set: string, tracks: Track[]) => {
-    const a = audio.current;
-    const mine = (pb.state === 'playing' || pb.state === 'paused' || pb.state === 'loading') && pb.set === set;
-    if (mine && pb.state === 'playing' && a) {
-      a.pause();
-      setPb({ ...pb, state: 'paused' });
-    } else if (mine && pb.state === 'paused' && a) {
-      void a.play().catch(() => setPb({ state: 'error' }));
-    } else if (!(mine && pb.state === 'loading')) playAt(tracks, 0, set);
-  };
-
-  const halt = () => {
-    stop();
-    setPb({ state: 'idle' });
-  };
-
-  return { pb, toggle, halt };
-}
-
-function PlayIcon({ state }: { state: 'loading' | 'playing' | 'other' }) {
-  if (state === 'loading') return <LoaderCircle size={15} className="spin" />;
-  if (state === 'playing') return <Pause size={15} fill="currentColor" strokeWidth={0} />;
-  return <Play size={15} fill="currentColor" strokeWidth={0} />;
 }
 
 /** Outside Ramadan: a verse of encouragement and calm, a new one each day. */

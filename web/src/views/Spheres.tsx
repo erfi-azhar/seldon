@@ -8,12 +8,14 @@ import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, HabitWeekHead, HabitWeekLabel, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
 import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
+import { QuranStudyCard } from '../components/QuranStudy.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { ReadingList } from '../components/Reading.tsx';
+import { CryptoTwitterCard } from '../components/CryptoTwitter.tsx';
 import { BillsCard, CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PlanCard, PortfolioCard } from '../components/Finance.tsx';
-import { InlineEdit, Loading, Seg } from '../components/ui.tsx';
+import { InlineEdit, Loading, Seg, useFolds } from '../components/ui.tsx';
 import { addDays, cx, dueLabel, hueStyle, parseDay, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { normalise, useScreenings } from './Screenings.tsx';
@@ -210,16 +212,18 @@ export function SphereDetail({ id }: { id: string }) {
       {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} projects={projects} />}
       {/* Learning's reading list is a shelf, and a shelf wants the full width. */}
       {s.key === 'learning' && <ReadingList />}
-      {/* With a daily card on the left, tasks join habits on the right so the columns even out. Travels
-          keeps only what needs you here: its to-dos live with each trip. */}
+      {/* With a daily card on the left, tasks join habits on the right so the columns even out.
+          Work has no habits card: job alerts lead on the left, and what needs you sits beside them
+          when there is any, so the left column is never the empty one. Travels keeps only what
+          needs you here: its to-dos live with each trip. */}
       <div className={travels ? undefined : 'detail-grid'}>
         <div className="col">
-          <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
+          {s.key === 'work' ? <JobAlertsCard /> : <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />}
           {s.key === 'health' && <HealthToday />}
           {s.key === 'faith' && <PrayerCard />}
           {s.key === 'finances' && <CashflowCard />}
           {s.key === 'finances' && <PlanCard />}
-          {(s.key === 'work' || s.key === 'finances') && habitsCard}
+          {s.key === 'finances' && habitsCard}
           {!hasDaily && !travels && (
             <section className="card">
               <div className="card-head">
@@ -237,7 +241,9 @@ export function SphereDetail({ id }: { id: string }) {
         </div>
         {!travels && <div className="col">
           {s.key === 'faith' && <FaithVerse />}
-          {s.key === 'work' ? <JobAlertsCard /> : s.key === 'finances' ? <CryptoDesk /> : travels ? null : habitsCard}
+          {s.key === 'faith' && <QuranStudyCard />}
+          {s.key === 'work' ? <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
+          {s.key === 'finances' && <CryptoTwitterCard />}
           {s.key === 'finances' && <BillsCard />}
           {hasDaily && s.key !== 'work' && (
             <section className="card">
@@ -400,6 +406,8 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
   const tripTitle = (tripId: string) => travel?.trips.find((x) => x.id === tripId)?.title ?? 'a trip';
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const lateCount = work.filter((t) => t.dueDate && t.dueDate < today).length;
+  // A trip's logistics start folded away; the ones you open stay open.
+  const tripFolds = useFolds('work-todos-open-trips', (k) => byTrip.has(k), false);
 
   return (
     <section className="card work-todos">
@@ -434,7 +442,7 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
           const next = list.find((t) => t.dueDate)?.dueDate;
           const due = next ? dueLabel(next, today) : null;
           return (
-            <details key={tripId} className="todo-fold">
+            <details key={tripId} className="todo-fold" open={tripFolds.isOpen(tripId)} onToggle={(e) => tripFolds.toggle(tripId, e.currentTarget.open)}>
               <summary>
                 <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
                 <Plane size={14} className="faint" aria-hidden />
@@ -461,6 +469,7 @@ function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; 
   const [adding, setAdding] = useState<string | null>(null);
   const [naming, setNaming] = useState(false);
   const known = new Set(projects.map((p) => p.id));
+  const { isOpen, toggle } = useFolds('work-todos-folded-projects', (k) => k === 'none' || known.has(k));
   const groups = [
     ...projects.map((p) => ({ id: p.id, project: p as Project | null, name: p.name, list: work.filter((t) => t.projectId === p.id).sort(byDue) })),
     { id: 'none', project: null, name: 'No project', list: work.filter((t) => !t.projectId || !known.has(t.projectId)).sort(byDue) },
@@ -482,7 +491,13 @@ function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; 
         const due = next ? dueLabel(next, today) : null;
         const late = g.list.filter((t) => t.dueDate && t.dueDate < today).length;
         return (
-          <details key={g.id} className={cx('todo-group', !g.list.length && 'is-empty')} open={g.list.length > 0 || adding === g.id}>
+          <details
+            key={g.id}
+            className={cx('todo-group', !g.list.length && 'is-empty')}
+            // Open while adding to it; otherwise open unless you folded it (an empty one stays shut).
+            open={adding === g.id || (g.list.length > 0 && isOpen(g.id))}
+            onToggle={(e) => g.list.length > 0 && adding !== g.id && toggle(g.id, e.currentTarget.open)}
+          >
             <summary>
               <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
               <span className="todo-group-name clamp-1">{g.name}</span>
@@ -587,8 +602,13 @@ function NewProject({ sphereId, onDone }: { sphereId: string; onDone: (created?:
   );
 }
 
-/** Every open to-do by its due day: late ones together, then each day in turn, then undated. */
+/**
+ * Every open to-do by its due day: late ones together, then each day in turn, then undated.
+ * Each day folds like a project does, and the ones you fold stay folded next time.
+ */
 function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; label: (t: Task) => string | undefined }) {
+  // A day that has passed joins Late, so its fold is let go.
+  const { isOpen, toggle } = useFolds('work-todos-folded-days', (k) => k === 'late' || k === 'none' || k >= today);
   const groups = new Map<string, Task[]>();
   for (const t of [...tasks].sort(byDue)) {
     const key = !t.dueDate ? 'none' : t.dueDate < today ? 'late' : t.dueDate;
@@ -603,19 +623,20 @@ function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; labe
   };
   if (!tasks.length) return null;
   return (
-    <div className="todo-days">
+    <div className="todo-groups">
       {[...groups].map(([key, list]) => (
-        <div key={key} className="todo-day">
-          <div className={cx('todo-day-head', key === 'late' && 'late')}>
-            <span>{heading(key)}</span>
-            <span className="todo-fold-meta">{list.length}</span>
-          </div>
+        <details key={key} className={cx('todo-group', key === 'late' && 'is-late')} open={isOpen(key)} onToggle={(e) => toggle(key, e.currentTarget.open)}>
+          <summary>
+            <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+            <span className="todo-group-name clamp-1">{heading(key)}</span>
+            <span className={cx('todo-fold-meta', key === 'late' && 'late')}>{plural(list.length, 'to-do')}</span>
+          </summary>
           <ul>
             {list.map((t) => (
               <TaskRow key={t.id} task={t} showSphere={false} showDue={key === 'late'} tag={label(t)} />
             ))}
           </ul>
-        </div>
+        </details>
       ))}
     </div>
   );
