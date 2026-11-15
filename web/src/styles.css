@@ -9754,29 +9754,75 @@ button.layover-pill:hover .layover-lounge {
   align-items: center;
   gap: 2px;
 }
+/* The money a typical month brings and takes, in one row of figures. */
+.fin-bills-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  padding: 0 20px 2px;
+}
+.fin-bills-sum b {
+  display: block;
+  margin-top: 2px;
+  font: 500 18px/1.2 var(--mono);
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+.fin-bills-note {
+  padding: 4px 20px 10px;
+}
+/* Money paid straight into a holding (CPF): real, but not cash in hand, so not the green of pay. */
+.fin-into {
+  color: var(--ink-2);
+}
+.fin-rec-section .list-label {
+  padding: 10px 20px 2px;
+}
+.fin-rec-section ul {
+  padding-bottom: 4px;
+}
 .fin-rec {
+  padding: 0 8px;
+}
+.fin-rec-main {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 6px 20px;
+  padding: 6px 12px;
+  border-radius: 12px;
   text-align: left;
   font-size: 14px;
 }
-.fin-rec:hover {
+button.fin-rec-main:not(:disabled):hover {
   background: var(--surface-2);
 }
-.fin-rec .grow {
+button.fin-rec-main:disabled {
+  cursor: default;
+  color: inherit;
+  opacity: 1;
+}
+.fin-rec-main .grow {
   display: grid;
   min-width: 0;
   line-height: 1.3;
 }
-.fin-rec .faint {
+.fin-rec-main .faint {
   font-size: 12px;
 }
-.fin-rec .num {
+.fin-rec-main .num {
   font-size: 13.5px;
   white-space: nowrap;
+}
+.fin-rec-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 12px 8px;
+}
+.fin-rec-parts .num {
+  font-size: 11.5px;
+  color: var(--ink-3);
 }
 .fin-rec.is-paused {
   opacity: 0.55;
@@ -9785,6 +9831,79 @@ button.layover-pill:hover .layover-lounge {
 /* On Today: the ticker closes the card, so it needs the bottom padding the foot gave it. */
 .fin-desk-today .fin-ticker {
   padding-bottom: 12px;
+}
+
+/* Where your pay goes */
+.fin-plan-bar {
+  display: flex;
+  gap: 3px;
+  height: 12px;
+  margin: 0 20px 12px;
+}
+.fin-plan-bar i {
+  min-width: 4px;
+  border-radius: 999px;
+}
+.fin-plan-list {
+  display: grid;
+  gap: 2px;
+  padding: 0 20px 6px;
+}
+.fin-plan-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+.fin-plan-list li:first-child {
+  border-top: 0;
+}
+.fin-plan-list .fin-kind {
+  margin-top: 6px;
+}
+.fin-plan-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+}
+.fin-plan-line b {
+  flex: 1;
+  font-weight: 500;
+}
+.fin-plan-line .num {
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.fin-plan-pct {
+  min-width: 34px;
+  text-align: right;
+  font-size: 12px !important;
+}
+.fin-plan-why {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.fin-plan-do {
+  margin-top: 3px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.fin-plan-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 20px 16px;
+  border-top: 1px solid var(--line);
+}
+.fin-tip.is-bad {
+  color: var(--bad);
+  background: var(--bad-soft);
 }
 
 @media (max-width: 720px) {
