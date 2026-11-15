@@ -8,7 +8,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
 import { Invalid, localDate, newId, NotFound, nowIso, prettyDay, registerUndo, type Store } from '../store.ts';
-import type { Debt, DebtKind, FinanceState, Frequency, Holding, PlanBucket, PlanRules, SalaryPlan, HoldingKind, PriceAlert, Quote, Recurring, Trade, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
+import type { Debt, DebtKind, FinanceState, Frequency, Holding, PlanBucket, PlanRules, ReliefPlan, SalaryPlan, HoldingKind, PriceAlert, Quote, Recurring, Trade, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { getIntegration, saveIntegration } from './integrations.ts';
 import { convert, getJson, marketFor, normSymbol, refreshFx, STABLE, storedFx, symbolOk, type FxRates } from './markets.ts';
 import { registerFeature } from './registry.ts';
@@ -32,9 +32,11 @@ interface FinanceSettings {
   budgets: Record<string, number>;
   watchlist: string[];
   plan?: Partial<PlanRules>;
+  /** Tax-relief contributions made so far in `year`. */
+  relief?: { year: number; srs: number; cpf: number };
 }
 
-export const PLAN_DEFAULTS: PlanRules = { emergencyMonths: 6, cryptoCapPct: 10, funPct: 5 };
+export const PLAN_DEFAULTS: PlanRules = { emergencyMonths: 6, cryptoCapPct: 10, funPct: 5, reliefs: 'auto', srsCap: 15_300 };
 
 const ZONE_CURRENCY: [RegExp, string][] = [
   [/^Asia\/Singapore$/, 'SGD'],
@@ -54,7 +56,7 @@ function getSettings(store: Store): FinanceSettings {
   const saved = r ? (JSON.parse(r.value) as Partial<FinanceSettings>) : {};
   const zone = store.zone() ?? '';
   const guess = ZONE_CURRENCY.find(([re]) => re.test(zone))?.[1] ?? 'USD';
-  return { currency: saved.currency ?? guess, budgets: saved.budgets ?? {}, watchlist: saved.watchlist ?? ['BTC', 'ETH', 'SOL'], plan: saved.plan };
+  return { currency: saved.currency ?? guess, budgets: saved.budgets ?? {}, watchlist: saved.watchlist ?? ['BTC', 'ETH', 'SOL'], plan: saved.plan, relief: saved.relief };
 }
 
 function saveSettings(store: Store, next: FinanceSettings): void {
@@ -908,6 +910,71 @@ function zoneToday(store: Store): string {
   return localDate();
 }
 
+// ── Singapore tax relief ────────────────────────────────────────────────────
+
+/** Resident income tax bands from YA 2024: [top of band, rate]. */
+const SG_BANDS: [number, number][] = [
+  [20_000, 0], [30_000, 0.02], [40_000, 0.035], [80_000, 0.07], [120_000, 0.115], [160_000, 0.15],
+  [200_000, 0.18], [240_000, 0.19], [280_000, 0.195], [320_000, 0.2], [500_000, 0.22], [1_000_000, 0.23], [Infinity, 0.24],
+];
+
+/** Tax on a chargeable income at resident rates, before rebates. */
+export function sgTax(chargeable: number): number {
+  let tax = 0;
+  let floor = 0;
+  for (const [top, rate] of SG_BANDS) {
+    if (chargeable <= floor) break;
+    tax += (Math.min(chargeable, top) - floor) * rate;
+    floor = top;
+  }
+  return tax;
+}
+
+export const sgTopRate = (chargeable: number): number => SG_BANDS.find(([top]) => chargeable <= top)?.[1] ?? 0.24;
+
+/** The CPF cash top-up relief for your own account, a year. */
+export const CPF_TOPUP_CAP = 8_000;
+
+/** What has gone into SRS and CPF top-ups this year; a new year starts from nothing. */
+export function reliefDone(store: Store, year: number): { srs: number; cpf: number } {
+  const r = getSettings(store).relief;
+  return r && r.year === year ? { srs: r.srs, cpf: r.cpf } : { srs: 0, cpf: 0 };
+}
+
+/** Record contributions made: `add` on top of what's recorded, or `set` the year's totals. */
+export function recordRelief(store: Store, year: number, amounts: { srs?: number; cpf?: number }, mode: 'add' | 'set'): { srs: number; cpf: number } {
+  const s = getSettings(store);
+  const have = reliefDone(store, year);
+  const next = {
+    srs: Math.max(0, r2(mode === 'add' ? have.srs + (amounts.srs ?? 0) : (amounts.srs ?? have.srs))),
+    cpf: Math.max(0, r2(mode === 'add' ? have.cpf + (amounts.cpf ?? 0) : (amounts.cpf ?? have.cpf))),
+  };
+  s.relief = { year, ...next };
+  saveSettings(store, s);
+  const what = [amounts.srs ? `${money(amounts.srs, s.currency)} into SRS` : '', amounts.cpf ? `${money(amounts.cpf, s.currency)} CPF top-up` : ''].filter(Boolean).join(' and ');
+  if (mode === 'add' && what) store.record('logged', 'fin_relief', String(year), financeSphere(store)?.id ?? null, `Tax relief: ${what}`);
+  return next;
+}
+
+/**
+ * The year's relief, when the rules suggest it. Taxable income is estimated from take-home pay:
+ * take-home is gross less employee CPF, which is relieved anyway, so twelve months of it less the
+ * earned income relief is close. Bonuses and RSUs add to it.
+ */
+function reliefPlan(store: Store, rules: PlanRules, pay: number, today: string): ReliefPlan | null {
+  if (rules.reliefs === 'off') return null;
+  const chargeable = Math.max(0, 12 * pay - 1_000);
+  const rate = sgTopRate(chargeable);
+  if (rules.reliefs === 'auto' && (countryOf(store.zone()) !== 'SG' || rate < 0.115)) return null;
+  const year = Number(today.slice(0, 4));
+  const done = reliefDone(store, year);
+  const srs = { cap: rules.srsCap, done: done.srs, left: Math.max(0, rules.srsCap - done.srs) };
+  const cpf = rules.reliefs === 'srs+cpf' ? { cap: CPF_TOPUP_CAP, done: done.cpf, left: Math.max(0, CPF_TOPUP_CAP - done.cpf) } : null;
+  const room = srs.left + (cpf?.left ?? 0);
+  const saving = Math.round(sgTax(chargeable) - sgTax(Math.max(0, chargeable - room)));
+  return { year, deadline: `${year}-12-31`, srs, cpf, chargeable: Math.round(chargeable), rate, saving };
+}
+
 // ── Salary plan ─────────────────────────────────────────────────────────────
 // Where a month's pay should go, as a waterfall: what has to be paid, then a cushion, then the
 // costliest debt, then the emergency fund, then investing. Every number says why.
@@ -969,6 +1036,7 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
     if (pay > 0) notes.push(`Pay is the average of the last ${byMonth.size === 1 ? 'month' : `${byMonth.size} months`}. Add your salary under Bills & pay for an exact plan.`);
   }
   if (pay <= 0) return null;
+  const relief = reliefPlan(store, rules, pay, p.today);
 
   // What has to go out: bills, minimums on debts no recurring item pays, yearly bills spread out.
   const bills = active.filter((r) => r.kind === 'expense' && BILL_CADENCES.has(r.cadence));
@@ -1003,7 +1071,7 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
   // With nothing known about spending, every split would be wrong in the same direction: an
   // emergency fund of zero and nearly all pay to invest. Say what's missing instead.
   if (essentials <= 0) {
-    return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: 0, emergency: { target: 0, have: 0 }, buckets: [], shortfall: null, rules, notes: [...notes.filter((n) => !n.startsWith("There's no spending history")), "There's nothing on file about what you spend yet, so there's no split to suggest. Add your bills under Bills & pay, set monthly budgets, or log a month of spending, and the plan fills in."] };
+    return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: 0, emergency: { target: 0, have: 0 }, buckets: [], shortfall: null, rules, relief, notes: [...notes.filter((n) => !n.startsWith("There's no spending history")), "There's nothing on file about what you spend yet, so there's no split to suggest. Add your bills under Bills & pay, set monthly budgets, or log a month of spending, and the plan fills in."] };
   }
   const cash = p.holdings.filter((h) => h.kind === 'cash').reduce((n, h) => n + (h.valueBase ?? 0), 0);
   const investments = p.holdings.filter((h) => h.kind === 'stock' || h.kind === 'fund' || h.kind === 'crypto').reduce((n, h) => n + (h.valueBase ?? 0), 0);
@@ -1024,7 +1092,7 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
   if (surplus <= 0) {
     shortfall = whole(-surplus);
     notes.push(`Your pay falls ${m0(shortfall, c)} short of bills and everyday spending. Trim the everyday, or look at the biggest bills, before anything else.`);
-    return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: whole(essentials), emergency: { target, have: whole(cash) }, buckets, shortfall, rules, notes };
+    return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: whole(essentials), emergency: { target, have: whole(cash) }, buckets, shortfall, rules, notes, relief };
   }
 
   let left = surplus;
@@ -1057,6 +1125,27 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
   const emergency = Math.min(gap, left * 0.5);
   left -= emergency;
 
+  // Tax relief, paced so the year's room is used by the deadline: an even share each month to
+  // November (the last pay before 31 December for anyone paid at month end), the rest in November.
+  // It comes out of what would be invested, so it's the same long-term money with tax back.
+  let srsPut = 0;
+  let cpfPut = 0;
+  let reliefRest = 0;
+  if (relief) {
+    const room = relief.srs.left + (relief.cpf?.left ?? 0);
+    const month = Number(p.today.slice(5, 7));
+    const decDeadline = `${relief.year}-12-15`;
+    // In December, only pay that lands by the 15th can still make it.
+    const payInTime = month < 12 || active.some((r) => r.kind === 'income' && !r.holdingId && r.next && r.next.slice(0, 7) === p.today.slice(0, 7) && r.next <= decDeadline) || payFrom === 'history';
+    const pace = month >= 11 ? room : room / (12 - month);
+    const put = payInTime ? Math.min(pace, left) : 0;
+    srsPut = Math.min(put, relief.srs.left);
+    cpfPut = Math.min(put - srsPut, relief.cpf?.left ?? 0);
+    left -= srsPut + cpfPut;
+    if (month >= 11) reliefRest = Math.max(0, room - srsPut - cpfPut);
+    if (room < 1) notes.push(`${relief.year}'s tax relief is used up: ${m0(relief.srs.done, c)} into SRS${relief.cpf ? ` and ${m0(relief.cpf.done, c)} CPF top-up` : ''}.`);
+  }
+
   // What's left is invested. Crypto gets at most its cap's share of this month's money, and none once
   // it already makes up more than the cap of everything invested.
   const capRoom = Math.max(0, (rules.cryptoCapPct / 100) * (investments + left) - cryptoValue);
@@ -1072,6 +1161,24 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
   add({ key: 'debt', label: 'Pay down costly debt', amount: debt, reason: `${high.map((d) => `${d.name} charges ${d.apr}%`).join('; ')}. No investment reliably earns that, so it goes first.`, action: `Pay ${debtParts.join(', then ')} on top of the minimum` });
   const monthsToFull = emergency > 0 ? Math.ceil((gap - emergency) / emergency) + 1 : null;
   add({ key: 'emergency', label: 'Emergency fund', amount: emergency, reason: `${rules.emergencyMonths} months of essentials is ${m0(target, c)}; you have ${m0((cash), c)}. Half of what's spare goes here until it's full${monthsToFull ? `, about ${monthsToFull} month${monthsToFull === 1 ? '' : 's'} at this rate` : ''}.`, action: `Move ${m0((emergency), c)} into savings${savingsWhere}` });
+  if (relief && srsPut + cpfPut >= 1) {
+    const put = srsPut + cpfPut;
+    const saves = Math.round(sgTax(relief.chargeable) - sgTax(Math.max(0, relief.chargeable - put)));
+    const rest = reliefRest >= 1 ? ` — and ${m0(reliefRest, c)} more from savings by 15 Dec, if your cash allows` : '';
+    add({
+      key: 'relief',
+      label: cpfPut >= 1 ? 'Tax relief: SRS and CPF' : 'Tax relief: SRS',
+      amount: put,
+      reason: `At a top rate of about ${Math.round(relief.rate * 1000) / 10}%, this saves about ${m0(saves, c)} on next year's tax bill. ${relief.year}'s room: ${m0(relief.srs.left, c)} of ${m0(relief.srs.cap, c)} SRS${relief.cpf ? `, ${m0(relief.cpf.left, c)} of ${m0(relief.cpf.cap, c)} CPF top-up` : ''} left, due by 31 Dec.`,
+      action: `Put ${m0(srsPut, c)} into SRS${cpfPut >= 1 ? ` and ${m0(cpfPut, c)} into your CPF Special Account` : ''}${rest}`,
+    });
+  }
+  if (relief && reliefRest >= 1 && srsPut + cpfPut < 1) {
+    notes.push(`${m0(reliefRest, c)} of ${relief.year}'s tax-relief room is left, worth about ${m0(relief.saving, c)} in tax. Your pay arrives after mid-December, so it would come from savings: by 15 Dec to be safe, if your cash allows.`);
+  }
+  if (relief && gap > emergency && srsPut + cpfPut >= 1 && reliefRest >= 1) {
+    notes.push("Your emergency fund isn't full yet, so only the money that would have been invested goes to tax relief from pay.");
+  }
   add({ key: 'crypto', label: 'Crypto', amount: crypto, reason: `At most ${rules.cryptoCapPct}% of what you invest, so crypto stays a small part of the whole`, action: `Up to ${m0((crypto), c)} for crypto this month` });
   add({ key: 'invest', label: 'Invest for the long run', amount: invest, reason: gap > emergency ? 'The other half of what’s spare: long-term money grows while the safety net fills' : 'Your safety net is in place, so what’s spare can work for you', action: `Invest ${m0((invest), c)}${biggestFund ? ` (into ${biggestFund.name}, say)` : ''}` });
 
@@ -1081,7 +1188,36 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
   }
   if (high.length && left < 1 && debt > 0) notes.push('Everything spare goes to costly debt this month; investing and the rest of the emergency fund pick up once it’s cleared.');
 
-  return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: whole(essentials), emergency: { target, have: whole(cash) }, buckets, shortfall, rules, notes };
+  return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: whole(essentials), emergency: { target, have: whole(cash) }, buckets, shortfall, rules, notes, relief };
+}
+
+/** In December, while relief room is left, a reminder of what it's worth and the deadline. Once a year. */
+export function reliefReminder(store: Store, today: string): boolean {
+  if (today.slice(5, 7) !== '12' || today > `${today.slice(0, 4)}-12-24`) return false;
+  const plan = financeState(store, today).plan;
+  const r = plan?.relief;
+  if (!r) return false;
+  const room = r.srs.left + (r.cpf?.left ?? 0);
+  if (room < 1 || r.saving < 1) return false;
+  const c = getSettings(store).currency;
+  const sphereId = financeSphere(store)?.id ?? null;
+  const days = Math.round((Date.parse(`${r.deadline}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000);
+  const due = today <= `${r.year}-12-13` ? `${r.year}-12-15` : plusDays(today, 1);
+  const sig = addSignal(store, {
+    source: 'finance',
+    kind: 'relief',
+    externalId: `relief:${r.year}`,
+    title: `${days} days left to save about ${m0(r.saving, c)} in tax`,
+    body: `${m0(r.srs.left, c)} of SRS room${r.cpf ? ` and ${m0(r.cpf.left, c)} of CPF top-up room` : ''} left for ${r.year}. Contributions must reach the account by 31 December; banks often stop a day or two earlier.`,
+    sphereId,
+    priority: 2,
+    actions: [
+      { type: 'task', label: 'Add as a task', title: `Put ${m0(r.srs.left, c)} into SRS`, dueDate: due, sphereId },
+      ...(r.cpf && r.cpf.left >= 1 ? [{ type: 'task' as const, label: 'Add the CPF top-up', title: `Top up ${m0(r.cpf.left, c)} to your CPF Special Account`, dueDate: due, sphereId }] : []),
+    ],
+    data: { year: r.year },
+  });
+  return !!sig;
 }
 
 /** Once a month, when pay has come in, the plan arrives under Needs you with the moves to make. */
@@ -1255,6 +1391,10 @@ registerSnapshotSection<Store>('Money', (store, today) => {
     const soon = f.upcoming.filter((u) => u.date <= plusDays(today, 7));
     if (soon.length) lines.push(`Next 7 days: ${soon.map((u) => `${u.name} ${money(u.amount, u.currency)} on ${u.date}${u.auto ? '' : u.overdue ? ' (overdue, not marked paid)' : ' (to mark paid)'}`).join('; ')}.`);
   }
+  if (f.plan?.relief) {
+    const r = f.plan.relief;
+    lines.push(`Tax relief ${r.year}: SRS ${money(r.srs.done, c)} of ${money(r.srs.cap, c)}${r.cpf ? `, CPF top-up ${money(r.cpf.done, c)} of ${money(r.cpf.cap, c)}` : ''}; using the rest saves about ${money(r.saving, c)} (top rate about ${Math.round(r.rate * 1000) / 10}% on an estimated ${money(r.chargeable, c)} taxable). Deadline 31 Dec.`);
+  }
   if (f.plan) lines.push(`Suggested split of ${money(f.plan.pay, c)} pay this month: ${f.plan.buckets.map((b) => `${b.label.toLowerCase()} ${money(b.amount, c)}`).join(', ')}${f.plan.shortfall !== null ? ` — ${money(f.plan.shortfall, c)} short of essentials` : ''}. Emergency fund ${money(f.plan.emergency.have, c)} of ${money(f.plan.emergency.target, c)}.`);
   const open = f.debts.filter((d) => !d.closedAt);
   if (open.length) lines.push(`Debts: ${open.map((d) => `${d.name} ${money(d.balance, d.currency)}${d.apr ? ` at ${d.apr}%` : ''}`).join('; ')}.`);
@@ -1312,7 +1452,10 @@ const planRules = z.object({
   emergencyMonths: z.number().int().min(1).max(24).optional(),
   cryptoCapPct: z.number().min(0).max(100).optional(),
   funPct: z.number().min(0).max(30).optional(),
+  reliefs: z.enum(['auto', 'srs', 'srs+cpf', 'off']).optional(),
+  srsCap: z.union([z.literal(15_300), z.literal(35_700)]).optional(),
 });
+const reliefInput = z.object({ srs: z.number().min(0).max(100_000).optional(), cpf: z.number().min(0).max(100_000).optional() });
 
 const frequency = z.enum(['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']);
 const weekend = z.enum(['none', 'before', 'after']);
@@ -1401,6 +1544,7 @@ registerFeature({
         postDue(store, today);
         remindBills(store, today);
         planSignal(store, today);
+        reliefReminder(store, today);
       },
     },
   ],
@@ -1544,7 +1688,7 @@ registerFeature({
     ),
     tool(
       'get_salary_plan',
-      "This month's recommended split of the user's pay, worked out from their recurring pay and bills, recent spending, cash, debts and investments: bills and minimums, yearly set-asides, everyday spending, guilt-free money, a first month of cash, extra on high-interest debt (8% APR and up, highest rate first), half of what's spare to the emergency fund until it holds the set number of months, and the rest invested with crypto kept under its cap. Each bucket says why. Use it when they ask where their money should go; explain it in your own words and adjust for anything you know that it doesn't (a big purchase coming, a bonus). It's a rule of thumb, not regulated financial advice.",
+      "This month's recommended split of the user's pay, including a Singapore tax-relief step (SRS, optionally a CPF cash top-up) paced to the 31 December deadline with the estimated tax saved, worked out from their recurring pay and bills, recent spending, cash, debts and investments: bills and minimums, yearly set-asides, everyday spending, guilt-free money, a first month of cash, extra on high-interest debt (8% APR and up, highest rate first), half of what's spare to the emergency fund until it holds the set number of months, and the rest invested with crypto kept under its cap. Each bucket says why. Use it when they ask where their money should go; explain it in your own words and adjust for anything you know that it doesn't (a big purchase coming, a bonus). It's a rule of thumb, not regulated financial advice.",
       z.object({}),
       async (_input, { store, today }) => {
         const plan = financeState(store, today).plan;
@@ -1552,8 +1696,17 @@ registerFeature({
       },
     ),
     tool(
+      'record_tax_relief',
+      "Record money the user has put into SRS (srs) or as a CPF cash top-up to their own Special Account (cpf) this year, in the base currency, so the salary plan knows how much tax-relief room is left. Adds to what's already recorded.",
+      reliefInput,
+      ({ srs, cpf }, { store, today }) => {
+        const done = recordRelief(store, Number(today.slice(0, 4)), { srs, cpf }, 'add');
+        return { data: { ok: true, done, relief: financeState(store, today).plan?.relief ?? null }, summary: `Recorded tax relief: ${[srs ? `${money(srs, getSettings(store).currency)} SRS` : '', cpf ? `${money(cpf, getSettings(store).currency)} CPF top-up` : ''].filter(Boolean).join(', ')}` };
+      },
+    ),
+    tool(
       'set_salary_plan_rules',
-      "Change the rules the salary plan follows: months of essentials to keep as an emergency fund (default 6), the most crypto may make up of their investments in percent (default 10), and the percent of pay kept as guilt-free spending (default 5). Only when the user agrees.",
+      "Change the rules the salary plan follows: months of essentials to keep as an emergency fund (default 6), the most crypto may make up of their investments in percent (default 10), the percent of pay kept as guilt-free spending (default 5), Singapore tax relief (reliefs: 'auto' suggests SRS when their top rate is 11.5%+, 'srs', 'srs+cpf' to add a CPF cash top-up to their own Special Account, or 'off'), and the SRS cap (15300 for citizens and PRs, 35700 for foreigners). Only when the user agrees.",
       planRules,
       (rules, { store, today }) => {
         updateSettings(store, { plan: rules });
@@ -1653,6 +1806,15 @@ registerFeature({
     });
     app.delete('/api/finance/payments/:id', (c) => {
       if (!store.tx(() => reversePayment(store.db, c.req.param('id')))) throw new NotFound('Payment');
+      return c.json(state(c));
+    });
+
+    app.post('/api/finance/relief', async (c) => {
+      recordRelief(store, Number(todayOf(c).slice(0, 4)), await read(c, reliefInput), 'add');
+      return c.json(state(c), 201);
+    });
+    app.put('/api/finance/relief', async (c) => {
+      recordRelief(store, Number(todayOf(c).slice(0, 4)), await read(c, reliefInput), 'set');
       return c.json(state(c));
     });
 

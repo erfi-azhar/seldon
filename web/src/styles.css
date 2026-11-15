@@ -9906,6 +9906,42 @@ button.fin-rec-main:disabled {
   background: var(--bad-soft);
 }
 
+/* The year's tax relief, under the plan */
+.fin-relief {
+  display: grid;
+  gap: 8px;
+  margin: 4px 20px 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.fin-relief-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fin-relief-head b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.fin-relief-head .btn {
+  margin-left: auto;
+}
+.fin-relief-row {
+  display: grid;
+  /* A fixed amount column keeps the bars the same length from row to row. */
+  grid-template-columns: 84px minmax(0, 1fr) 9.5em;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.fin-relief-row .num {
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-align: right;
+}
+
 @media (max-width: 720px) {
   .fin-hero {
     grid-template-columns: minmax(0, 1fr);
