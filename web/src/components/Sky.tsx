@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import type { Weather } from '../../../shared/types.ts';
 import { useWeather } from '../api.ts';
-import { closeIn, discShows, fallColor, fallStrength, FLASH, flashLevel, hazeOf, lookOf, moving, nextFlashIn, precipitation, weatherSky, type Look } from '../weather.ts';
+import { closeIn, discShows, fallPainter, FLASH, flashLevel, hazeOf, lookOf, moving, nextFlashIn, precipitation, weatherSky, type Look } from '../weather.ts';
 import { moonPhase, moonPosition, sunPosition, useSun, type Blend, type Phase, type SunState } from '../sun.ts';
 
 type RGB = [number, number, number];
@@ -305,8 +305,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   const drift = scene.drift;
   const falling = precipitation(look, seconds, cols, rows, aspect);
   // Rain shows as darker streaks against a pale sky and lighter ones against a dark sky.
-  const fall = fallColor(look, pal);
-  const fallBy = fallStrength(look);
+  const paintFall = fallPainter(look, pal);
   const flash = look.storm ? flashLevel(seconds - scene.flashAt) : 0;
   // Under heavy cloud the sun's disc is only a pale shape behind it.
   const veil = discShows(look);
@@ -389,7 +388,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       }
 
       const fell = falling ? falling[j * cols + i]! : 0;
-      if (fell > 0) c = mix(c, fall, fell * fallBy);
+      if (fell > 0) c = paintFall(c, fell);
 
       for (const sg of segments) {
         const minX = Math.min(sg.x1, sg.x2) - sg.width;
