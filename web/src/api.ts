@@ -6,6 +6,8 @@ import type {
   Conversation,
   ConversationSummary,
   FaithState,
+  FinanceState,
+  MarketState,
   Goal,
   HealthState,
   TravelState,
@@ -24,6 +26,7 @@ import type {
   Task,
   TaskFollowups,
 } from '../../shared/types.ts';
+import { useSyncExternalStore } from 'react';
 import { todayStr } from './lib.ts';
 
 export class ApiError extends Error {
@@ -285,3 +288,49 @@ export const jobsWrite = {
   mark: (id: string, status: 'seen' | 'saved' | 'dismissed') => api<JobsState>('PATCH', `/jobs/postings/${id}`, { status }),
   check: () => api<unknown>('POST', '/integrations/jobs/run'),
 };
+
+export const useFinance = () =>
+  useQuery({ queryKey: ['finance', todayStr()], queryFn: () => api<FinanceState>('GET', withDate('/finance')), refetchInterval: 5 * 60_000 });
+
+export const financeWrite = {
+  post: (path: string, body: object = {}) => api<FinanceState>('POST', withDate(`/finance${path}`), body),
+  patch: (path: string, body: object) => api<FinanceState>('PATCH', withDate(`/finance${path}`), body),
+  put: (path: string, body: object) => api<FinanceState>('PUT', withDate(`/finance${path}`), body),
+  del: (path: string) => api<FinanceState>('DELETE', withDate(`/finance${path}`)),
+};
+
+// One price stream for the whole page, however many cards read it; closed when none do.
+let marketSource: EventSource | null = null;
+let marketLatest: MarketState | undefined;
+const marketListeners = new Set<() => void>();
+
+function subscribeMarket(fn: () => void): () => void {
+  marketListeners.add(fn);
+  if (!marketSource && typeof EventSource !== 'undefined') {
+    marketSource = new EventSource('/api/finance/stream', { withCredentials: true });
+    marketSource.addEventListener('market', (e) => {
+      try {
+        marketLatest = JSON.parse((e as MessageEvent<string>).data) as MarketState;
+        for (const l of marketListeners) l();
+      } catch {
+        // A garbled frame: wait for the next one.
+      }
+    });
+  }
+  return () => {
+    marketListeners.delete(fn);
+    if (marketListeners.size === 0 && marketSource) {
+      marketSource.close();
+      marketSource = null;
+    }
+  };
+}
+
+/**
+ * Live crypto prices from the server's stream, starting from what the page loaded with.
+ * The browser reconnects on its own when the stream drops.
+ */
+export function useMarket(initial: MarketState | undefined): MarketState | undefined {
+  const live = useSyncExternalStore(subscribeMarket, () => marketLatest, () => undefined);
+  return live ?? initial;
+}
