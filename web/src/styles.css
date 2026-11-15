@@ -6286,6 +6286,38 @@ textarea.title-input {
   color: var(--ink-3);
   background: var(--surface-2);
 }
+.fc-badge.is-late {
+  color: oklch(0.48 0.13 60);
+  background: oklch(0.95 0.05 75);
+}
+/* In the air: a live dot that pulses before the time to go. */
+.fc-badge.is-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fc-badge.is-live::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: fc-live 1.6s ease-out infinite;
+}
+@keyframes fc-live {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, currentColor 55%, transparent);
+  }
+  80%,
+  100% {
+    box-shadow: 0 0 0 6px color-mix(in oklch, currentColor 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fc-badge.is-live::before {
+    animation: none;
+  }
+}
 .fc-route {
   display: grid;
   grid-template-columns: auto minmax(60px, 1fr) auto;
@@ -6357,6 +6389,39 @@ textarea.title-input {
   font-weight: 550;
   color: oklch(0.52 0.12 245);
 }
+/* In the air the route is a live timeline: flown solid to a small plane, the time left above it. */
+.fc-live-rail {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  background: var(--line-2);
+}
+.fc-live-flown {
+  position: absolute;
+  inset: -0.5px auto -0.5px 0;
+  height: 2px;
+  border-radius: 1px;
+  background: oklch(0.6 0.13 245);
+  transition: width 1s linear;
+}
+.fc-live-plane {
+  position: absolute;
+  top: 50%;
+  translate: -50% -50%;
+  rotate: 45deg;
+  color: oklch(0.6 0.13 245);
+  transition: left 1s linear;
+}
+.fc-dot.is-done {
+  background: oklch(0.6 0.13 245);
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fc-live-flown,
+  .fc-live-plane {
+    transition: none;
+  }
+}
 :root[data-theme='dark'] .fc-badge {
   color: oklch(0.85 0.08 250);
   background: oklch(0.3 0.06 250);
@@ -6364,6 +6429,10 @@ textarea.title-input {
 :root[data-theme='dark'] .fc-badge.is-soon {
   color: oklch(0.85 0.1 155);
   background: oklch(0.3 0.06 155);
+}
+:root[data-theme='dark'] .fc-badge.is-late {
+  color: oklch(0.85 0.12 75);
+  background: oklch(0.32 0.07 65);
 }
 :root[data-theme='dark'] .fc-stops {
   color: oklch(0.78 0.1 245);
@@ -6376,6 +6445,10 @@ textarea.title-input {
   :root:not([data-theme='light']) .fc-badge.is-soon {
     color: oklch(0.85 0.1 155);
     background: oklch(0.3 0.06 155);
+  }
+  :root:not([data-theme='light']) .fc-badge.is-late {
+    color: oklch(0.85 0.12 75);
+    background: oklch(0.32 0.07 65);
   }
   :root:not([data-theme='light']) .fc-stops {
     color: oklch(0.78 0.1 245);
@@ -6953,7 +7026,6 @@ textarea.title-input {
   color: var(--ink-2);
   line-height: 1.45;
 }
-.lounge-list,
 .tm-plan,
 .tm-today {
   list-style: none;
@@ -6961,18 +7033,6 @@ textarea.title-input {
   padding: 0;
   display: grid;
   gap: 6px;
-}
-.lounge-list li {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  font-size: 13.5px;
-  line-height: 1.4;
-}
-.lounge-list li svg {
-  flex: none;
-  transform: translateY(2px);
-  color: oklch(0.6 0.11 75);
 }
 .lounge-none {
   margin: 0;
@@ -7735,6 +7795,18 @@ form.stage-center.is-opening > :not(.vault-anchor) {
   gap: 10px;
   align-items: stretch;
 }
+/* In the air: the globe tracks the flight on the card itself, the flights beneath it. */
+.flight-pair.is-live {
+  grid-template-columns: minmax(0, 1fr);
+}
+.flight-globe {
+  display: flex;
+  height: 340px;
+  min-width: 0;
+}
+.flight-globe .route-globe {
+  flex: 1;
+}
 .flight-stack {
   display: grid;
   gap: 10px;
@@ -7806,6 +7878,30 @@ button.layover-pill:hover .layover-lounge {
 }
 .rg-stage {
   position: relative;
+}
+/* Back to the overhead view after turning or zooming a tracked flight. */
+.rg-follow {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: #fff;
+  background: oklch(0.5 0.12 245);
+  box-shadow: 0 4px 14px -6px rgb(10 30 60 / 0.45);
+  cursor: pointer;
+}
+.rg-follow:hover {
+  background: oklch(0.45 0.12 245);
+}
+.rg-follow:focus-visible {
+  outline: 2px solid oklch(0.6 0.13 245);
+  outline-offset: 2px;
 }
 .route-globe.is-fill {
   grid-template-rows: minmax(0, 1fr) auto;
@@ -8525,6 +8621,49 @@ button.layover-pill:hover .layover-lounge {
   margin-top: 2px;
   color: var(--good);
 }
+/* A stay's elite nights and benefits, folded into one line until opened. */
+.stay-fold > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+  list-style: none;
+  cursor: pointer;
+}
+.stay-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.stay-fold > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.stay-fold-gist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.stay-fold-chev {
+  color: var(--ink-4);
+  transition: transform 0.18s ease;
+}
+.stay-fold[open] > summary .stay-fold-chev {
+  transform: rotate(180deg);
+}
+.stay-fold-body {
+  display: grid;
+  gap: 14px;
+  padding-top: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stay-fold-chev {
+    transition: none;
+  }
+}
 .stay-card-address {
   display: flex;
   align-items: flex-start;
@@ -9129,6 +9268,13 @@ button.layover-pill:hover .layover-lounge {
   margin-bottom: 20px;
   padding-bottom: 6px;
 }
+/* On a travel day the travel card leads Today, and the to-dos sit in the column (which spaces them). */
+.today-lead {
+  margin-bottom: 20px;
+}
+.col > .today-todos {
+  margin-bottom: 0;
+}
 .todo-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -9171,6 +9317,15 @@ button.layover-pill:hover .layover-lounge {
     border-top: 1px solid var(--line);
     padding-top: 8px;
   }
+}
+/* In the column on a travel day the card is narrow: Work and Everything else stack, as on a phone. */
+.col > .today-todos .todo-split {
+  grid-template-columns: minmax(0, 1fr);
+}
+.col > .today-todos .todo-split:not(.single) .todo-col + .todo-col {
+  border-left: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
 }
 
 /* The lounges at a connection, opened from its layover pill. */
@@ -9493,104 +9648,174 @@ button.layover-pill:hover .layover-lounge {
   }
 }
 
-/* The travel day on Today: the day's steps beside what you need right now. */
-.journey {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 22px;
-  align-items: center;
-  margin-bottom: 20px;
-  padding: 18px 20px;
-}
-.journey-steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.journey-steps li {
-  position: relative;
-  display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
-  gap: 10px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
-  color: var(--ink-4);
-}
-.journey-steps li:last-child {
-  border-bottom: 0;
-}
-.journey-steps li.is-done {
-  color: var(--ink-4);
-  opacity: 0.7;
-}
-.journey-steps li.is-now {
-  color: var(--ink);
-}
-.journey-steps li.is-now .num {
-  color: oklch(0.55 0.12 245);
-  font-weight: 600;
-}
-.journey-steps li.is-now::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: -1px;
-  width: 52px;
-  border-bottom: 2px solid oklch(0.55 0.12 245);
-}
+/* What you need right now on a travel day: the top of Today's travel card, on the card itself,
+   with the day's steps beneath it. The action sits beside the headline when there is room. */
 .journey-now {
   display: grid;
-  gap: 6px;
-  align-content: start;
-  padding: 18px 20px;
-  border-radius: 18px;
-  color: #fff;
-  background:
-    radial-gradient(110% 120% at 62% 18%, oklch(0.36 0.08 245 / 0.95), transparent 62%),
-    linear-gradient(160deg, oklch(0.2 0.04 248), oklch(0.13 0.02 250));
-  box-shadow: 0 12px 30px -18px rgb(8 20 40 / 0.7), inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  row-gap: 4px;
+  align-items: center;
+}
+.journey-now > * {
+  grid-column: 1;
 }
 .jn-title {
-  font-size: 18px;
+  font-size: 21px;
+  line-height: 1.2;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 .jn-sub {
-  font-size: 13px;
-  color: rgb(255 255 255 / 0.72);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+/* The welcome on the trip card while you're away: the headline, then the day below it. */
+.tm-welcome {
+  margin-top: -2px;
+}
+.jn-sub b {
+  font-weight: 600;
+  color: var(--ink);
 }
 .jn-line {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
-  color: rgb(255 255 255 / 0.66);
+  color: var(--ink-3);
+}
+.journey-now > .jn-btn {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
 }
 .jn-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   justify-self: start;
-  margin-top: 8px;
-  padding: 8px 15px;
+  padding: 8px 14px;
+  border: 0;
   border-radius: 999px;
+  font: inherit;
   font-size: 13px;
   font-weight: 550;
+  white-space: nowrap;
   color: #fff;
   text-decoration: none;
-  background: oklch(0.42 0.09 240);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  background: oklch(0.5 0.12 245);
   cursor: pointer;
 }
 .jn-btn:hover {
-  background: oklch(0.47 0.1 240);
+  background: oklch(0.45 0.12 245);
+}
+.jn-btn.is-done {
+  color: oklch(0.45 0.11 155);
+  background: oklch(0.6 0.13 155 / 0.14);
+  box-shadow: inset 0 0 0 1px oklch(0.6 0.13 155 / 0.35);
+}
+.jn-btn.is-done:hover {
+  background: oklch(0.6 0.13 155 / 0.2);
+}
+:root[data-theme='dark'] .jn-btn.is-done {
+  color: oklch(0.82 0.12 155);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .jn-btn.is-done {
+    color: oklch(0.82 0.12 155);
+  }
+}
+.jn-btn:focus-visible {
+  outline: 2px solid oklch(0.6 0.13 245);
+  outline-offset: 2px;
+}
+.journey-now > .jn-arc,
+.journey-now > .jn-ends {
+  grid-column: 1 / -1;
 }
 .jn-arc {
+  position: relative;
   width: 100%;
-  height: 56px;
-  margin: 6px 0 2px;
-  color: #a9cbff;
+  height: 52px;
+  margin: 6px 0 0;
+  color: oklch(0.6 0.13 245);
+}
+.jn-arc svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.jn-arc-flown {
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+}
+/* The way left marches on toward the destination, like a loading bar. */
+.jn-arc-left {
+  stroke: currentColor;
+  stroke-opacity: 0.32;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 2 6;
+  animation: jn-march 1.2s linear infinite;
+}
+@keyframes jn-march {
+  to {
+    stroke-dashoffset: -8;
+  }
+}
+.jn-arc.is-late {
+  color: oklch(0.68 0.15 65);
+}
+/* The plane on the arc, with a soft glow of its colour that breathes. */
+.jn-plane {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in oklch, currentColor 26%, transparent), transparent);
+  animation: jn-breathe 2.4s ease-in-out infinite;
+}
+@keyframes jn-breathe {
+  50% {
+    filter: drop-shadow(0 0 4px color-mix(in oklch, currentColor 45%, transparent));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jn-arc-left,
+  .jn-plane {
+    animation: none;
+  }
+}
+/* A late flight: a chip by the headline, and the booked times struck through. */
+.jn-delay {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  vertical-align: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: oklch(0.5 0.13 60);
+  background: oklch(0.75 0.15 70 / 0.18);
+}
+:root[data-theme='dark'] .jn-delay {
+  color: oklch(0.82 0.13 75);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .jn-delay {
+    color: oklch(0.82 0.13 75);
+  }
+}
+.jn-was {
+  font-weight: 450;
+  color: var(--ink-4);
 }
 .jn-ends {
   display: grid;
@@ -9608,7 +9833,7 @@ button.layover-pill:hover .layover-lounge {
 }
 .jn-ends small {
   font-size: 12px;
-  color: rgb(255 255 255 / 0.66);
+  color: var(--ink-3);
 }
 .jn-ends .is-end {
   text-align: right;
@@ -9618,21 +9843,299 @@ button.layover-pill:hover .layover-lounge {
   align-items: center;
   gap: 8px;
   font-size: 12.5px;
-  color: rgb(255 255 255 / 0.72);
+  color: var(--ink-3);
 }
 .jn-dur::before,
 .jn-dur::after {
   content: '';
   flex: 1;
-  border-top: 1px dotted rgb(255 255 255 / 0.4);
+  border-top: 1px dotted var(--line-2);
 }
-@media (max-width: 720px) {
-  .journey {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
+@media (max-width: 520px) {
+  .journey-now > .jn-btn {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 8px;
   }
-  .journey-now {
-    order: -1;
+}
+
+/* Today's travel card on a travel day: now, the day's steps, the flight, then folds. */
+/* Three sections on one rhythm: now and the day's steps, the flight, then the folds. Each
+   section opens with one rule and the same 18px beneath it; inside, things sit closer. */
+.travel-day {
+  --td-section: 18px;
+  gap: var(--td-section);
+  padding-bottom: 14px;
+}
+.travel-day > .tm-head + .td-now {
+  margin-top: -6px;
+}
+.td-now {
+  display: grid;
+  gap: 18px;
+}
+.td-steps {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.td-steps li {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding-top: 16px;
+  padding-right: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--ink-3);
+}
+/* The rail: from each stop to the next. */
+.td-steps li::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 15px;
+  right: 6px;
+  border-top: 1.5px solid var(--line-2);
+}
+/* The last stop hugs the right edge; the rail runs on into it. */
+.td-steps li:nth-last-child(2)::before {
+  right: 0;
+}
+.td-steps li:last-child {
+  flex: 0 0 auto;
+  justify-items: end;
+  padding-right: 0;
+  padding-left: 12px;
+  text-align: right;
+}
+.td-steps li:last-child::before {
+  left: 0;
+  right: 15px;
+}
+.td-steps li:last-child i {
+  left: auto;
+  right: 0;
+}
+.td-steps li:last-child:is(.is-now, .is-done)::before {
+  border-color: oklch(0.55 0.12 245 / 0.6);
+}
+.td-steps li.is-done::before {
+  border-color: oklch(0.55 0.12 245 / 0.6);
+}
+.td-steps i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--ink-4);
+}
+.td-steps li.is-done i {
+  background: oklch(0.55 0.12 245 / 0.6);
+  box-shadow: none;
+}
+.td-steps li.is-now i {
+  background: oklch(0.6 0.13 245);
+  box-shadow: 0 0 0 4px oklch(0.6 0.13 245 / 0.22);
+}
+/* The step you're in pulses: a ring that swells out from the dot and fades. */
+.td-steps li.is-now i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 oklch(0.6 0.13 245 / 0.55);
+  animation: td-pulse 2s ease-out infinite;
+}
+@keyframes td-pulse {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.6 0.13 245 / 0.55);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 10px oklch(0.6 0.13 245 / 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .td-steps li.is-now i::after {
+    animation: none;
+  }
+}
+.td-step-time {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.td-steps li.is-now {
+  color: var(--ink);
+}
+.td-steps li.is-now .td-step-time {
+  color: oklch(0.6 0.13 245);
+  font-weight: 600;
+}
+.td-steps li.is-done {
+  color: var(--ink-4);
+}
+/* The flight, laid out as on the trip page but part of the travel card: no box of its own,
+   a rule above it like the card's other sections. */
+.flight-card.is-inline,
+.flight-card.is-inline:hover {
+  gap: 12px;
+  padding: var(--td-section, 18px) 0 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+/* One rule per section: the facts follow the route on space alone. */
+.flight-card.is-inline .fc-facts {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+.td-folds {
+  display: grid;
+  /* The rows bring their own 11px, so the text lands the same 18px under the rule. */
+  padding-top: calc(var(--td-section) - 11px);
+  border-top: 1px solid var(--line);
+}
+.travel-day > .td-folds + .td-foot,
+.travel-day > .td-folds + .error-text {
+  margin-top: -8px;
+}
+.td-fold {
+  border-bottom: 1px solid var(--line);
+}
+.td-fold:last-child {
+  border-bottom: 0;
+}
+.td-fold > summary,
+.td-fold-action {
+  display: grid;
+  grid-template-columns: 20px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  list-style: none;
+  cursor: pointer;
+}
+.td-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.td-fold-action {
+  grid-template-columns: 20px minmax(0, 1fr);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.td-fold-action:last-child {
+  border-bottom: 0;
+}
+.td-fold-action:hover {
+  color: var(--ink);
+}
+.td-fold-icon {
+  display: inline-flex;
+  color: var(--ink-3);
+}
+.td-fold-title {
+  font-weight: 550;
+}
+.td-fold-gist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--ink-3);
+}
+.td-fold-chev {
+  color: var(--ink-4);
+  transition: transform 0.18s ease;
+}
+.td-fold[open] > summary .td-fold-chev {
+  transform: rotate(180deg);
+}
+.td-fold > summary:focus-visible,
+.td-fold-action:focus-visible {
+  outline: 2px solid var(--focus, oklch(0.6 0.13 245));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.td-fold-body {
+  padding: 0 0 12px 28px;
+}
+/* Open, the fold's own content says it; the gist would only repeat it. */
+.td-fold[open] > summary .td-fold-gist {
+  visibility: hidden;
+}
+/* A flight's lounges: each a name, how you get in, where it is and what to know. */
+.lounge-options {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lounge-options li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.lounge-options li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.lounge-options li:last-child {
+  padding-bottom: 0;
+}
+.lounge-option-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.lounge-option-head b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.lounge-option-via {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.lounge-option-where {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lounge-option-note {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.td-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .td-fold-chev {
+    transition: none;
   }
 }
 
@@ -11849,10 +12352,12 @@ button.xw-coin:hover,
   font-weight: 600;
   color: var(--ink-2);
 }
+/* The facts spread evenly across the card, the last flush with its right edge. */
 .fc-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 18px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
@@ -11860,6 +12365,11 @@ button.xw-coin:hover,
   display: grid;
   gap: 1px;
   min-width: 0;
+  flex: 0 1 auto;
+}
+.fc-fact:last-child {
+  justify-items: end;
+  text-align: right;
 }
 .fc-fact small {
   font-size: 11px;
@@ -11874,6 +12384,12 @@ button.xw-coin:hover,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.fc-was {
+  font-size: 0.62em;
+  font-weight: 450;
+  color: var(--ink-4);
+  vertical-align: 0.2em;
 }
 .fc-add {
   font-weight: 450;

@@ -37,8 +37,19 @@ export const reachAirportBy = (f: Segment): number => ms(f.startUtc) - (domestic
 /** When to set off: an hour before you need to be there. */
 export const leaveBy = (f: Segment): number => reachAirportBy(f) - HOUR;
 
+/** When a flight really leaves and lands: the booked times plus any delay. */
+export const delayOf = (f: Segment): number => Math.max(0, f.delayMin ?? 0) * MIN;
+export const departs = (f: Segment): number => ms(f.startUtc) + delayOf(f);
+export const lands = (f: Segment): number => ms(f.endUtc) + delayOf(f);
+
+/**
+ * Check-in (bag drop) closes an hour before departure. Reaching the airport and check-in keep to
+ * the booked time even when a flight is late, since a delay can shrink; boarding follows the delay.
+ */
+export const checkInCloses = (f: Segment): number => ms(f.startUtc) - HOUR;
+
 /** Boarding: about 45 minutes before a long flight, 30 before a short one. */
-export const boardsAt = (f: Segment): number => ms(f.startUtc) - (ms(f.endUtc) - ms(f.startUtc) > 6 * HOUR ? 45 : 30) * MIN;
+export const boardsAt = (f: Segment): number => departs(f) - (ms(f.endUtc) - ms(f.startUtc) > 6 * HOUR ? 45 : 30) * MIN;
 
 /**
  * Flights strung into journeys: each one leaving from where the last landed, less than a day later.
@@ -76,10 +87,10 @@ export function journeyPhases(legs: Segment[]): Phase[] {
     { kind: 'airport', at: iso(reachAirportBy(first)), tz: first.startTz, label: 'At the airport', leg: 0 },
   ];
   legs.forEach((f, i) => {
-    phases.push({ kind: 'flight', at: f.startUtc, tz: f.startTz, label: legs.length > 1 ? `In flight · ${`${f.carrier} ${f.number}`.trim()}` : 'In flight', leg: i });
-    if (i < legs.length - 1) phases.push({ kind: 'connection', at: f.endUtc, tz: f.endTz, label: `Connecting in ${place(f, 'to')}`, leg: i });
+    phases.push({ kind: 'flight', at: iso(departs(f)), tz: f.startTz, label: legs.length > 1 ? `In flight · ${`${f.carrier} ${f.number}`.trim()}` : 'In flight', leg: i });
+    if (i < legs.length - 1) phases.push({ kind: 'connection', at: iso(lands(f)), tz: f.endTz, label: `Connecting in ${place(f, 'to')}`, leg: i });
   });
-  phases.push({ kind: 'arrived', at: last.endUtc, tz: last.endTz, label: 'Arrived', leg: legs.length - 1 });
+  phases.push({ kind: 'arrived', at: iso(lands(last)), tz: last.endTz, label: 'Arrived', leg: legs.length - 1 });
   return phases;
 }
 
@@ -90,7 +101,7 @@ export function journeyPhases(legs: Segment[]): Phase[] {
 export function activeJourney(segments: Segment[], now: number): Journey | null {
   for (const legs of journeys(segments)) {
     const start = ms(legs[0]!.startUtc) - 18 * HOUR;
-    const end = ms(legs[legs.length - 1]!.endUtc) + 6 * HOUR;
+    const end = lands(legs[legs.length - 1]!) + 6 * HOUR;
     if (now < start || now > end) continue;
     const phases = journeyPhases(legs);
     let current = -1;

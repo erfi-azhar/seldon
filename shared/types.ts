@@ -951,6 +951,10 @@ export interface Segment {
   /** Flights: the terminals it leaves from and lands at ("3", "1", "T2"), empty when unknown. */
   fromTerminal: string;
   toTerminal: string;
+  /** Flights: when you said you'd checked in (ISO), so Today sends you to the gate. */
+  checkedInAt?: string | null;
+  /** Flights: how many minutes late it leaves (and so lands); 0 or missing when on time. */
+  delayMin?: number;
   address: string;
   notes: string;
   source: string;

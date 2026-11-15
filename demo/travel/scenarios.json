@@ -1,0 +1,39 @@
+[
+  {
+    "id": "countdown",
+    "label": "4 days out",
+    "detail": "Thu evening, Singapore",
+    "now": "2026-11-12T20:30:00+08:00"
+  },
+  {
+    "id": "departing",
+    "label": "Flight day",
+    "detail": "Mon 03:50, Singapore",
+    "now": "2026-11-16T03:50:00+08:00"
+  },
+  {
+    "id": "airport",
+    "label": "At airport",
+    "detail": "Mon 05:50, Singapore",
+    "now": "2026-11-16T05:50:00+08:00"
+  },
+  {
+    "id": "flight",
+    "label": "In the air",
+    "detail": "Mon 11:30, Singapore; SQ 636 left 40 minutes late",
+    "now": "2026-11-16T11:30:00+08:00",
+    "sql": "UPDATE trip_segments SET delay_min = 40 WHERE number = '636'"
+  },
+  {
+    "id": "landed",
+    "label": "Landed",
+    "detail": "Mon 16:30, Tokyo",
+    "now": "2026-11-16T16:30:00+09:00"
+  },
+  {
+    "id": "away",
+    "label": "In Tokyo",
+    "detail": "Tue 11:15, Tokyo",
+    "now": "2026-11-17T11:15:00+09:00"
+  }
+]
