@@ -140,7 +140,7 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
 
 - **Books on a shelf.** The Learning sphere keeps the books you want to read standing
   spine-out, each in its cover's colour; point at one and it turns to show its cover. Open
-  it and the book sits in your hand, tilting as you move and turning over as you drag,
+  it and the book sits in your hand, front on, tilting as you move,
   beside its synopsis, ratings, page count and a link to buy it.
 - **Name a book, the rest is found.** Search by title, author or ISBN and pick the match:
   Open Library and Google Books (both free, no account) supply the cover, synopsis and
@@ -150,7 +150,8 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
 - **Buy it where you are.** The link searches the Amazon store for your time zone
   (Amazon.sg in Singapore) by ISBN when one is known.
 - Mark a book *Reading* (it gets a ribbon) or *Read* (it moves to its own shelf), note why
-  it's on the list, or ask Seldon to add one.
+  it's on the list, or ask Seldon to add one. If Learning tracks a *Books finished* number,
+  each book you finish adds one to it, counting on from whatever you last logged.
 
 ### Travels
 

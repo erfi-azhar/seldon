@@ -10142,9 +10142,9 @@ button.layover-pill:hover .layover-lounge {
 .book-modal {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(0, 1.15fr);
-  width: min(100%, 960px);
-  max-height: min(90dvh, 760px);
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1fr);
+  width: min(100%, 940px);
+  height: min(88dvh, 680px);
   overflow: hidden;
   background: var(--glass-strong);
   -webkit-backdrop-filter: blur(30px) saturate(1.8);
@@ -10169,7 +10169,7 @@ button.layover-pill:hover .layover-lounge {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 460px;
+  min-height: 0;
   /* A pool of the book's own colour behind it. */
   background:
     radial-gradient(60% 50% at 50% 48%, color-mix(in oklab, var(--binding) 26%, transparent), transparent 70%),
@@ -10309,54 +10309,71 @@ button.layover-pill:hover .layover-lounge {
   }
 }
 
+.book-modal-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
 .book-modal-info {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-  padding: 26px 30px 24px;
+  gap: 22px;
+  flex: 1;
+  min-height: 0;
+  padding: 34px 34px 24px;
   overflow-y: auto;
 }
-.book-status-line {
-  padding-right: 40px;
-}
-.book-status-line .seg button {
-  height: 28px;
-  padding: 0 12px;
-  font-size: 12.5px;
+.book-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 36px;
 }
 .book-title {
   font-family: var(--serif);
-  font-size: 34px;
+  font-size: 36px;
   font-weight: 500;
-  line-height: 1.05;
-  letter-spacing: -0.01em;
+  line-height: 1.04;
+  letter-spacing: -0.015em;
   text-wrap: balance;
 }
 .book-author {
-  margin-top: -6px;
   font-size: 15px;
   color: var(--ink-2);
 }
-.book-facts {
-  margin-top: -8px;
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-.book-rating {
+.book-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px 14px;
+  margin-top: 4px;
   font-size: 13px;
+  color: var(--ink-3);
 }
-.book-rating b {
+.book-meta > span + span::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin-right: 14px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--ink-4);
+}
+.book-meta-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+}
+.book-meta-rating b {
   font-weight: 600;
 }
 .stars {
   position: relative;
   display: inline-block;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
   letter-spacing: 1px;
 }
@@ -10370,9 +10387,33 @@ button.layover-pill:hover .layover-lounge {
   white-space: nowrap;
   color: oklch(0.75 0.15 75);
 }
-.book-synopsis h3,
+.book-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+.book-status .seg button {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+.book-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.book-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  align-self: stretch;
+  font-size: 12px;
+}
+.book-section h3,
 .book-note h3 {
-  margin-bottom: 6px;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -10384,23 +10425,16 @@ button.layover-pill:hover .layover-lounge {
   flex-direction: column;
   gap: 10px;
   font-family: var(--serif);
-  font-size: 17px;
-  line-height: 1.5;
+  font-size: 16.5px;
+  line-height: 1.55;
   color: var(--ink);
+  text-wrap: pretty;
 }
 .book-synopsis-text.is-clamped {
-  max-height: 13.5em;
+  max-height: calc(1.55em * 7);
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
-  mask-image: linear-gradient(to bottom, #000 70%, transparent);
-}
-.book-synopsis-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 6px;
-  font-size: 12px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent);
 }
 .link-btn {
   padding: 0;
@@ -10413,25 +10447,26 @@ button.layover-pill:hover .layover-lounge {
   text-underline-offset: 3px;
   cursor: pointer;
 }
+.book-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--glass-press);
+}
 .book-note .inline-edit {
   font-size: 14px;
 }
-.book-actions {
+.book-foot {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
-  padding-top: 14px;
+  padding: 14px 20px 14px 34px;
   border-top: 1px solid var(--line);
 }
-.book-actions a.btn {
+.book-foot a.btn {
   text-decoration: none;
-}
-.book-modal-info > .hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: -6px;
 }
 
 /* Adding */
@@ -10514,12 +10549,32 @@ button.layover-pill:hover .layover-lounge {
   .book-stage {
     padding: 26px 0 4px;
   }
+  .book-modal {
+    height: auto;
+  }
+  .book-modal-side {
+    min-height: auto;
+  }
   .book-modal-info {
     overflow: visible;
-    padding: 20px 20px 22px;
+    padding: 22px 20px 18px;
+  }
+  .book-head {
+    padding-right: 0;
   }
   .book-title {
-    font-size: 28px;
+    font-size: 29px;
+  }
+  .book-foot-label {
+    display: none;
+  }
+  .book-foot {
+    position: sticky;
+    bottom: 0;
+    padding: 12px 16px;
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
