@@ -1414,3 +1414,15 @@ export interface XWatchState {
   /** Coins mentioned in the last day, most-mentioned first. */
   buzz: XCoinBuzz[];
 }
+
+/** One theme of a tafsir passage, summarised by the background model from that passage alone. */
+export interface QuranTheme {
+  kind: 'meaning' | 'context' | 'lesson' | 'virtue' | 'language' | 'ruling';
+  title: string;
+  summary: string;
+}
+
+export type QuranThemes =
+  | { status: 'ready'; tafsir: string; covers: string[]; themes: QuranTheme[] }
+  /** No tafsir passage for this ayah, or no model to read it: nothing to show. */
+  | { status: 'none'; reason: string };

@@ -692,6 +692,16 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX x_posts_by_time ON x_posts(created_at);
   `,
+  // Quran study: themes drawn from a tafsir passage, written once per passage and tafsir.
+  `
+  CREATE TABLE quran_themes (
+    passage TEXT NOT NULL,
+    tafsir INTEGER NOT NULL,
+    themes TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (passage, tafsir)
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
