@@ -9450,7 +9450,7 @@ button.layover-pill:hover .layover-lounge {
 }
 
 /* On Today: the ticker closes the card, so it needs the bottom padding the foot gave it. */
-.fin-desk.is-compact .fin-ticker {
+.fin-desk-today .fin-ticker {
   padding-bottom: 12px;
 }
 
