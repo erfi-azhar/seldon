@@ -3,7 +3,7 @@ import { after, beforeEach, test } from 'node:test';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
 import { Store } from '../src/store.ts';
-import { addAlert, addDebt, addHolding, addRecurring, addTransaction, checkAlerts, financeState, logTrade, markPaid, nthDate, payDebt, payoff, postDue, remindBills, skipNext, syncSymbols, updateRecurring } from '../src/features/finance.ts';
+import { addAlert, addDebt, addHolding, addRecurring, addTransaction, checkAlerts, countryOf, financeState, holidays, logTrade, markPaid, nthDate, payDebt, payoff, postDue, refreshHolidays, remindBills, skipNext, syncSymbols, toWorkingDay, updateRecurring } from '../src/features/finance.ts';
 import { marketFor, parseTick, setMarketTransport, type MarketTransport } from '../src/features/markets.ts';
 import '../src/features/index.ts';
 
@@ -387,4 +387,55 @@ test('editing a recurring item leaves its schedule alone unless the date or freq
   const bill = addRecurring(store, { kind: 'expense', name: 'Water', amount: 40, category: 'Utilities', cadence: 'monthly', next: '2027-04-10', auto: false }, '2027-04-01');
   updateRecurring(store, bill.id, { amount: 45 }, '2027-04-20');
   assert.equal(financeState(store, '2027-04-20').recurring.find((x) => x.id === bill.id)!.next, '2027-04-10', 'an overdue bill stays waiting after an edit');
+});
+
+test('salary on the last working day: back past weekends and public holidays', async () => {
+  const store = fresh();
+  store.setZone('Asia/Singapore');
+  // 31 March 2025 was Hari Raya Puasa, a Monday; 1 May is Labour Day. A regional day off and an
+  // observance people work through must not move anything.
+  handlers.push((url) =>
+    url.includes('date.nager.at/api/v3/PublicHolidays/2025/SG')
+      ? { json: [{ date: '2025-03-31', global: true, types: ['Public'] }, { date: '2025-05-01', global: true, types: ['Public'] }, { date: '2025-06-30', global: false, types: ['Public'] }, { date: '2025-04-30', global: true, types: ['Observance'] }] }
+      : url.includes('date.nager.at/api/v3/PublicHolidays/2026/SG')
+        ? { json: [] }
+        : null,
+  );
+  await refreshHolidays(store, '2025-01-10');
+  assert.deepEqual([...holidays(store)].sort(), ['2025-03-31', '2025-05-01']);
+
+  addRecurring(store, { kind: 'income', name: 'Salary', amount: 7200, category: 'Salary', cadence: 'monthly', next: '2025-01-31', day: 31, weekend: 'before' }, '2025-01-10');
+  assert.equal(postDue(store, '2025-06-30'), 6);
+  assert.deepEqual(txs(store).map((t) => t.date), [
+    '2025-01-31', // Friday
+    '2025-02-28', // Friday
+    '2025-03-28', // Monday the 31st is Hari Raya Puasa: the Friday before
+    '2025-04-30', // Wednesday; an observance isn't a day off
+    '2025-05-30', // the 31st is a Saturday
+    '2025-06-30', // a regional holiday doesn't count
+  ]);
+
+  // Fetched once; a second call within the month doesn't ask again.
+  const asked = seen.filter((u) => u.includes('nager')).length;
+  await refreshHolidays(store, '2025-02-01');
+  assert.equal(seen.filter((u) => u.includes('nager')).length, asked);
+});
+
+test('working days without a holiday list are weekdays, and unknown places fetch nothing', async () => {
+  assert.equal(toWorkingDay('2026-01-31', 'before', new Set()), '2026-01-30', 'a Saturday goes back to Friday');
+  assert.equal(toWorkingDay('2026-05-31', 'after', new Set()), '2026-06-01', 'a Sunday goes on to Monday');
+  assert.equal(toWorkingDay('2026-12-25', 'before', new Set(['2026-12-25', '2026-12-24'])), '2026-12-23', 'back past two days off in a row');
+  assert.equal(toWorkingDay('2026-01-31', 'none', new Set()), '2026-01-31');
+  assert.equal(countryOf('Asia/Singapore'), 'SG');
+  assert.equal(countryOf('Antarctica/Troll'), null);
+  const store = fresh();
+  store.setZone('Antarctica/Troll');
+  await refreshHolidays(store, TODAY);
+  assert.equal(seen.filter((u) => u.includes('nager')).length, 0);
+  // Holidays unreachable: the schedule still works off weekends.
+  store.setZone('Asia/Singapore');
+  await refreshHolidays(store, TODAY);
+  assert.equal(holidays(store).size, 0);
+  const pay = addRecurring(store, { kind: 'income', name: 'Salary', amount: 1, category: 'Salary', cadence: 'monthly', next: '2027-01-31', day: 31, weekend: 'before' }, TODAY);
+  assert.equal(pay.next, '2027-01-29', '31 Jan 2027 is a Sunday');
 });

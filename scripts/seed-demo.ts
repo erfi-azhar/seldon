@@ -177,7 +177,9 @@ const car = addDebt(store, { name: 'Car loan', kind: 'car', lender: 'Maybank', b
 addDebt(store, { name: 'Laptop instalments', kind: 'bnpl', lender: 'Atome', balance: 600, original: 1_800, apr: 0, minPayment: 300, dueDay: 15 });
 // What comes round: pay and fixed bills log themselves, the utility bill waits to be marked paid.
 const nextOn = (dom: number) => (firstOf(0, dom) >= today ? firstOf(0, dom) : firstOf(-1, dom));
-addRecurring(store, { kind: 'income', name: 'Salary', amount: 7200, category: 'Salary', cadence: 'monthly', next: nextOn(25), weekend: 'before' }, today);
+// Paid on the last working day of the month: day 31 is each month's last, then back past weekends and holidays.
+const monthEndDay = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0).getDate();
+addRecurring(store, { kind: 'income', name: 'Salary', amount: 7200, category: 'Salary', cadence: 'monthly', next: `${today.slice(0, 8)}${monthEndDay}`, day: 31, weekend: 'before' }, today);
 addRecurring(store, { kind: 'expense', name: 'Rent', amount: 2400, category: 'Housing', cadence: 'monthly', next: nextOn(1) }, today);
 addRecurring(store, { kind: 'expense', name: 'Phone plan', amount: 45.9, category: 'Subscriptions', cadence: 'monthly', next: nextOn(5) }, today);
 addRecurring(store, { kind: 'expense', name: 'Spotify + iCloud', amount: 22.98, category: 'Subscriptions', cadence: 'monthly', next: nextOn(6) }, today);
