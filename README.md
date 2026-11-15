@@ -95,9 +95,11 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   budgets (a bar per category, red when over), six months side by side, and what's left.
   Tell Seldon "spent $14 on lunch and $60 on Grab this week" and it logs both.
 - **Bills and pay that come round.** Salary, rent, subscriptions, insurance, instalments —
-  weekly, fortnightly, monthly, quarterly or yearly. Fixed amounts log themselves on the
-  day (a salary on the 25th can move to the Friday before when the 25th is a weekend;
-  day 31 means each month's last day). Bills that vary, like electricity, remind you under
+  weekly, fortnightly, monthly, quarterly or yearly, on a date, the month's last day, or
+  its last working day. Fixed amounts log themselves on the day. A date that lands on a
+  weekend or public holiday can move to the working day before or after; holidays come
+  from Nager.Date for the country your time zone is in (Singapore, Malaysia, Indonesia
+  and others), and without them weekends still count. Bills that vary, like electricity, remind you under
   *Needs you* three days ahead and wait for you to mark them paid at what they came to, or
   skip them. An instalment can pay down one of your debts. The month's card shows what's
   still to come and what it leaves you with by month end. Any transaction can be made to
@@ -291,7 +293,7 @@ The older `LIFEOS_*` names still work, and an existing `data/lifeos.db` keeps be
 
 Connections need outbound network access: `imap.gmail.com:993` for Gmail; `oauth2.googleapis.com` and `www.googleapis.com` for Google Calendar; your calendar's host (`calendar.google.com`, `*.icloud.com`) for calendar flights; the job boards'
 APIs (`boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com`, `apply.workable.com`,
-`api.smartrecruiters.com`); for crypto prices `data-api.binance.vision` and `data-stream.binance.vision` (Binance) or `api.exchange.coinbase.com` and `ws-feed.exchange.coinbase.com` (Coinbase), and `api.frankfurter.dev` or `open.er-api.com` for currency rates; any MCP servers you add; and whatever links you capture.
+`api.smartrecruiters.com`); for crypto prices `data-api.binance.vision` and `data-stream.binance.vision` (Binance) or `api.exchange.coinbase.com` and `ws-feed.exchange.coinbase.com` (Coinbase), `api.frankfurter.dev` or `open.er-api.com` for currency rates, and `date.nager.at` for public holidays; any MCP servers you add; and whatever links you capture.
 
 ### Hosting it
 

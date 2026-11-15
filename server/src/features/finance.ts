@@ -10,7 +10,7 @@ import { read, today as todayOf } from '../http.ts';
 import { Invalid, localDate, newId, NotFound, nowIso, prettyDay, registerUndo, type Store } from '../store.ts';
 import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, PriceAlert, Quote, Recurring, Trade, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { getIntegration, saveIntegration } from './integrations.ts';
-import { convert, marketFor, normSymbol, refreshFx, STABLE, storedFx, symbolOk, type FxRates } from './markets.ts';
+import { convert, getJson, marketFor, normSymbol, refreshFx, STABLE, storedFx, symbolOk, type FxRates } from './markets.ts';
 import { registerFeature } from './registry.ts';
 import { addSignal } from './signals.ts';
 
@@ -544,22 +544,83 @@ export function nthDate(anchor: string, cadence: Frequency, day: number | null, 
   return `${yy}-${pad2(mm)}-${pad2(Math.min(day ?? d, last))}`;
 }
 
-function offWeekend(date: string, rule: Recurring['weekend']): string {
+/** Move a date off a weekend or public holiday to the working day before or after. */
+export function toWorkingDay(date: string, rule: Recurring['weekend'], holidays: ReadonlySet<string>): string {
   if (rule === 'none') return date;
-  const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
-  if (dow === 6) return plusDays(date, rule === 'before' ? -1 : 2);
-  if (dow === 0) return plusDays(date, rule === 'before' ? -2 : 1);
+  let d = date;
+  // Two weeks is far more than any run of days off; it only guards against a bad holiday list.
+  for (let i = 0; i < 14; i++) {
+    const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
+    if (dow !== 0 && dow !== 6 && !holidays.has(d)) return d;
+    d = plusDays(d, rule === 'before' ? -1 : 1);
+  }
   return date;
 }
 
 /** The date of occurrence n; null once past the end date. */
-function occurrence(r: Row, n: number): string | null {
+function occurrence(r: Row, n: number, hol: ReadonlySet<string>): string | null {
   const raw = nthDate(r.anchor, r.cadence, r.day, n);
   if (r.end_date && raw > r.end_date) return null;
-  return offWeekend(raw, r.weekend);
+  return toWorkingDay(raw, r.weekend, hol);
 }
 
-const recurringFromRow = (r: Row): Recurring => ({
+// ── Public holidays ──
+
+/** Where the person is, for public holidays: from their time zone. */
+const ZONE_COUNTRY: [RegExp, string][] = [
+  [/^Asia\/Singapore$/, 'SG'],
+  [/^Asia\/(Kuala_Lumpur|Kuching)$/, 'MY'],
+  [/^Asia\/(Jakarta|Makassar|Jayapura|Pontianak)$/, 'ID'],
+  [/^Asia\/Tokyo$/, 'JP'],
+  [/^Asia\/Hong_Kong$/, 'HK'],
+  [/^Europe\/London$/, 'GB'],
+  [/^Europe\/Dublin$/, 'IE'],
+  [/^Europe\/Berlin$/, 'DE'],
+  [/^Europe\/Paris$/, 'FR'],
+  [/^Europe\/Amsterdam$/, 'NL'],
+  [/^Australia\//, 'AU'],
+  [/^Pacific\/Auckland$/, 'NZ'],
+  [/^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage)$/, 'US'],
+  [/^America\/Toronto$/, 'CA'],
+];
+
+export const countryOf = (zone: string | null): string | null => ZONE_COUNTRY.find(([re]) => re.test(zone ?? ''))?.[1] ?? null;
+
+/** Every public holiday we have on file, as dates. */
+export function holidays(store: Store): Set<string> {
+  const out = new Set<string>();
+  for (const r of store.db.prepare("SELECT value FROM settings WHERE key LIKE 'holidays:%'").all() as Row[]) {
+    for (const d of (JSON.parse(r.value as string) as { dates: string[] }).dates) out.add(d);
+  }
+  return out;
+}
+
+const HOLIDAYS_EVERY_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * Fetch this year's and next year's public holidays for where the person is (from Nager.Date, no
+ * key) and keep them, refreshed monthly. Leaves what it has when the service can't be reached.
+ */
+export async function refreshHolidays(store: Store, today: string): Promise<void> {
+  const cc = countryOf(store.zone());
+  if (!cc) return;
+  const year = Number(today.slice(0, 4));
+  for (const y of [year, year + 1]) {
+    const key = `holidays:${cc}:${y}`;
+    const have = store.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+    if (have && Date.now() - Date.parse((JSON.parse(have.value) as { at: string }).at) < HOLIDAYS_EVERY_MS) continue;
+    try {
+      const list = await getJson<{ date: string; global?: boolean; types?: string[] }[]>(`https://date.nager.at/api/v3/PublicHolidays/${y}/${cc}`);
+      // National days off only: not regional ones, and not observances people still work on.
+      const dates = list.filter((h) => h.global !== false && (!h.types || h.types.includes('Public') || h.types.includes('Bank'))).map((h) => h.date).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+      store.db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify({ dates, at: new Date().toISOString() }));
+    } catch {
+      // Unreachable or unknown country: weekends alone still count.
+    }
+  }
+}
+
+const recurringFromRow = (r: Row, hol: ReadonlySet<string>): Recurring => ({
   id: r.id,
   kind: r.kind,
   name: r.name,
@@ -574,15 +635,15 @@ const recurringFromRow = (r: Row): Recurring => ({
   endDate: r.end_date,
   debtId: r.debt_id,
   active: !!r.active,
-  next: r.active ? occurrence(r, r.done) : null,
+  next: r.active ? occurrence(r, r.done, hol) : null,
   monthly: r2(r.amount * PER_MONTH[r.cadence as Frequency]),
 });
 
 /** How many occurrences fall before today: they are history, not something to log now. */
-function pastCount(r: Row, today: string): number {
+function pastCount(r: Row, today: string, hol: ReadonlySet<string>): number {
   let n = 0;
   for (; n < 2000; n++) {
-    const d = occurrence(r, n);
+    const d = occurrence(r, n, hol);
     if (!d || d >= today) break;
   }
   return n;
@@ -625,11 +686,12 @@ export function addRecurring(store: Store, input: RecurringInput, today: string)
     debt_id: input.debtId ?? null,
   };
   // It starts from the next date given, never by logging months gone by.
-  row.done = pastCount(row, today);
+  const hol = holidays(store);
+  row.done = pastCount(row, today, hol);
   store.db
     .prepare('INSERT INTO fin_recurring (id, kind, name, amount, currency, category, cadence, anchor, day, done, weekend, auto, end_date, debt_id, active, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)')
     .run(id, row.kind, row.name, row.amount, row.currency, row.category, row.cadence, row.anchor, row.day, row.done, row.weekend, Number(row.auto), row.end_date, row.debt_id, nowIso());
-  const saved = recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row);
+  const saved = recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row, hol);
   store.record('created', 'fin_recurring', id, financeSphere(store)?.id ?? null, `${saved.kind === 'income' ? 'Expecting' : 'Recurring'}: ${saved.name}, ${money(saved.amount, saved.currency)} ${saved.cadence}`);
   return saved;
 }
@@ -639,6 +701,7 @@ registerUndo('created:fin_recurring', (db, id) => void db.prepare('DELETE FROM f
 export function updateRecurring(store: Store, id: string, patch: Partial<Omit<RecurringInput, 'kind' | 'currency' | 'debtId'>> & { active?: boolean }, today: string): Recurring {
   const r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Recurring item');
+  const hol = holidays(store);
   const next: Row = { ...r };
   if (patch.name !== undefined) next.name = patch.name.trim().slice(0, 80) || r.name;
   if (patch.amount !== undefined) {
@@ -652,7 +715,7 @@ export function updateRecurring(store: Store, id: string, patch: Partial<Omit<Re
   if (patch.cadence !== undefined) next.cadence = patch.cadence;
   // A new next date or cadence starts the schedule again from there. Without a new date it starts
   // from the next occurrence as scheduled (before any weekend move), keeping its day of the month.
-  const moved = patch.next !== undefined && patch.next !== occurrence(r, r.done);
+  const moved = patch.next !== undefined && patch.next !== occurrence(r, r.done, hol);
   const recadenced = patch.cadence !== undefined && patch.cadence !== r.cadence;
   const redayed = patch.day !== undefined && patch.day !== r.day;
   if (moved || recadenced || redayed) {
@@ -660,17 +723,17 @@ export function updateRecurring(store: Store, id: string, patch: Partial<Omit<Re
     const day = patch.day ?? (moved ? Number(patch.next!.slice(8, 10)) : (r.day ?? Number(String(next.anchor).slice(8, 10))));
     next.day = CADENCE_MONTHS[next.cadence as Frequency] ? day : null;
     next.done = 0;
-    next.done = pastCount(next, today);
+    next.done = pastCount(next, today, hol);
   }
   if (patch.active !== undefined) {
     // Coming back from a pause picks up from today; the paused months aren't logged.
-    if (patch.active && !r.active) next.done = Math.max(next.done, pastCount(next, today));
+    if (patch.active && !r.active) next.done = Math.max(next.done, pastCount(next, today, hol));
     next.active = Number(patch.active);
   }
   store.db
     .prepare('UPDATE fin_recurring SET name = ?, amount = ?, category = ?, cadence = ?, anchor = ?, day = ?, done = ?, weekend = ?, auto = ?, end_date = ?, active = ? WHERE id = ?')
     .run(next.name, next.amount, next.category, next.cadence, next.anchor, next.day, next.done, next.weekend, next.auto, next.end_date, next.active, id);
-  return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row);
+  return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row, hol);
 }
 
 function deleteRecurring(store: Store, id: string): void {
@@ -686,7 +749,7 @@ function settleReminder(store: Store, id: string, date: string | null): void {
  * Log occurrence n: a transaction, or a payment on its debt. Returns false (and pauses the item)
  * when its debt is gone or paid off. Runs inside the caller's transaction.
  */
-function post(store: Store, r: Row, n: number, date: string, amount: number, paid: boolean): boolean {
+function post(store: Store, r: Row, n: number, date: string, amount: number, paid: boolean, hol: ReadonlySet<string>): boolean {
   if (r.debt_id) {
     const debt = store.db.prepare('SELECT balance, closed_at FROM fin_debts WHERE id = ?').get(r.debt_id) as Row | undefined;
     if (!debt || debt.closed_at || debt.balance <= 0) {
@@ -698,26 +761,27 @@ function post(store: Store, r: Row, n: number, date: string, amount: number, pai
     addTransaction(store, { kind: r.kind, amount, category: r.category, description: r.name, date, currency: r.currency }, paid ? 'manual' : 'recurring', { id: r.id, n, paid });
   }
   store.db.prepare('UPDATE fin_recurring SET done = ? WHERE id = ?').run(n + 1, r.id);
-  settleReminder(store, r.id, occurrence(r, n));
+  settleReminder(store, r.id, occurrence(r, n, hol));
   return true;
 }
 
 /** Log every automatic occurrence that has come due. Safe to call as often as you like. */
 export function postDue(store: Store, today: string): number {
   let posted = 0;
+  const hol = holidays(store);
   const rows = store.db.prepare('SELECT * FROM fin_recurring WHERE active = 1 AND auto = 1').all() as Row[];
   for (const row of rows) {
     store.tx(() => {
       let r = row;
       for (let i = 0; i < MAX_CATCH_UP; i++) {
-        const date = occurrence(r, r.done);
+        const date = occurrence(r, r.done, hol);
         if (!date || date > today) break;
-        if (!post(store, r, r.done, date, r.amount, false)) break;
+        if (!post(store, r, r.done, date, r.amount, false, hol)) break;
         posted++;
         r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(r.id) as Row;
       }
       // Still behind after catching up the most allowed: let the rest go rather than flood the log.
-      const behind = pastCount(r, today);
+      const behind = pastCount(r, today, hol);
       if (r.done < behind) store.db.prepare('UPDATE fin_recurring SET done = ? WHERE id = ?').run(behind, r.id);
     });
   }
@@ -729,11 +793,12 @@ export function markPaid(store: Store, id: string, today: string, opts: { amount
   return store.tx(() => {
     const r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row | undefined;
     if (!r) throw new NotFound('Recurring item');
-    if (!r.active || !occurrence(r, r.done)) throw new Invalid(`${r.name} has nothing left to pay`);
+    const hol = holidays(store);
+    if (!r.active || !occurrence(r, r.done, hol)) throw new Invalid(`${r.name} has nothing left to pay`);
     const amount = opts.amount ?? r.amount;
     if (!(amount > 0)) throw new Invalid('An amount above zero');
-    if (!post(store, r, r.done, opts.date ?? today, amount, true)) throw new Invalid(`${r.name}'s debt is already paid off`);
-    return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row);
+    if (!post(store, r, r.done, opts.date ?? today, amount, true, hol)) throw new Invalid(`${r.name}'s debt is already paid off`);
+    return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row, hol);
   });
 }
 
@@ -741,9 +806,10 @@ export function markPaid(store: Store, id: string, today: string, opts: { amount
 export function skipNext(store: Store, id: string): Recurring {
   const r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Recurring item');
-  settleReminder(store, id, occurrence(r, r.done));
+  const hol = holidays(store);
+  settleReminder(store, id, occurrence(r, r.done, hol));
   store.db.prepare('UPDATE fin_recurring SET done = done + 1 WHERE id = ?').run(id);
-  return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row);
+  return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row, hol);
 }
 
 // Undoing a "marked paid" takes the transaction back and leaves that occurrence waiting again.
@@ -756,9 +822,10 @@ registerUndo('created:fin_rtx', (db, id) => {
 /** Occurrences still to come (or waiting to be paid) up to a date, oldest first. */
 function pending(store: Store, until: string, today: string): Upcoming[] {
   const out: Upcoming[] = [];
+  const hol = holidays(store);
   for (const r of store.db.prepare('SELECT * FROM fin_recurring WHERE active = 1').all() as Row[]) {
     for (let n = r.done, i = 0; i < 60; n++, i++) {
-      const date = occurrence(r, n);
+      const date = occurrence(r, n, hol);
       if (!date || date > until) break;
       out.push({ recurringId: r.id, name: r.name, kind: r.kind, amount: r.amount, currency: r.currency, date, auto: !!r.auto, debtId: r.debt_id, overdue: date < today });
     }
@@ -772,8 +839,9 @@ const dueWords = (date: string, today: string) => (date < today ? `was due ${pre
 export function remindBills(store: Store, today: string): number {
   let raised = 0;
   const sphereId = financeSphere(store)?.id ?? null;
+  const hol = holidays(store);
   for (const r of store.db.prepare("SELECT * FROM fin_recurring WHERE active = 1 AND auto = 0 AND kind = 'expense'").all() as Row[]) {
-    const date = occurrence(r, r.done);
+    const date = occurrence(r, r.done, hol);
     if (!date || date > plusDays(today, REMIND_DAYS)) continue;
     const sig = addSignal(store, {
       source: 'finance',
@@ -853,7 +921,8 @@ export function financeState(store: Store, today: string): FinanceState {
     if (u.date > monthEnd || u.debtId) continue;
     expected[u.kind] += toBase(u.amount, u.currency) ?? 0;
   }
-  const recurring = (store.db.prepare('SELECT * FROM fin_recurring ORDER BY active DESC, kind DESC, amount DESC').all() as Row[]).map(recurringFromRow);
+  const hol = holidays(store);
+  const recurring = (store.db.prepare('SELECT * FROM fin_recurring ORDER BY active DESC, kind DESC, amount DESC').all() as Row[]).map((r) => recurringFromRow(r, hol));
   const recurringMonthly = { income: 0, expense: 0 };
   for (const r of recurring) if (r.active && !r.debtId) recurringMonthly[r.kind] += toBase(r.monthly, r.currency) ?? 0;
 
@@ -1079,6 +1148,8 @@ registerFeature({
       everyMs: 15 * 60_000,
       run: async (store) => {
         const today = zoneToday(store);
+        // Holidays first, so pay due before a long weekend is logged on the right day.
+        await refreshHolidays(store, today);
         postDue(store, today);
         remindBills(store, today);
       },
@@ -1195,7 +1266,7 @@ registerFeature({
     ),
     tool(
       'add_recurring',
-      "Set up money that comes round on a schedule: salary or other regular income, rent, bills, subscriptions, insurance, a loan instalment. `next` is the next date it's due; month-based cadences keep that day of the month (day 31 = the month's last day). `weekend`: 'before' moves a date on a weekend to the Friday before (common for salary), 'after' to the Monday after. `auto` true logs it by itself on the day (fixed amounts: salary, rent, subscriptions); false waits for the user to mark it paid and reminds them a few days ahead (bills that vary, like electricity). For a loan or card instalment, pass debt_id (from get_finances) and each payment pays that debt down instead of logging spending. Past occurrences are not logged.",
+      "Set up money that comes round on a schedule: salary or other regular income, rent, bills, subscriptions, insurance, a loan instalment. `next` is the next date it's due; month-based cadences keep that day of the month (day 31 = the month's last day). `weekend`: 'before' moves a date that falls on a weekend or public holiday to the working day before (common for salary), 'after' to the working day after. For pay on the last working day of the month: cadence monthly, day 31, weekend 'before', next = the last day of this month (or next month if that has passed). `auto` true logs it by itself on the day (fixed amounts: salary, rent, subscriptions); false waits for the user to mark it paid and reminds them a few days ahead (bills that vary, like electricity). For a loan or card instalment, pass debt_id (from get_finances) and each payment pays that debt down instead of logging spending. Past occurrences are not logged.",
       recurringInput,
       (r, { store, today }) => {
         const saved = addRecurring(store, toRecurring(r), today);

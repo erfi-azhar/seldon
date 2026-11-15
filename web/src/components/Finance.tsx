@@ -446,7 +446,7 @@ function ordinal(n: number): string {
 
 /** "Monthly on the 25th", "Every two weeks", "Yearly on Mar 1". */
 export function scheduleText(r: Recurring): string {
-  const day = r.day === 31 ? 'the last day' : r.day ? `the ${ordinal(r.day)}` : '';
+  const day = r.day === 31 ? (r.weekend === 'before' ? 'the last working day' : 'the last day') : r.day ? `the ${ordinal(r.day)}` : '';
   switch (r.cadence) {
     case 'weekly':
       return `Every ${new Date(`${r.anchor}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' })}`;
@@ -601,10 +601,22 @@ function nextDay(day: number, today: string): string {
   return here >= today ? here : m === 12 ? at(y + 1, 1) : at(y, m + 1);
 }
 
+/** Which day of the month a monthly or quarterly item falls on. */
+type DayMode = 'date' | 'last' | 'lastWorking';
+
+const dayModeOf = (item: Recurring | null): DayMode => (item?.day === 31 ? (item.weekend === 'before' ? 'lastWorking' : 'last') : 'date');
+
+/** The last day of the month a date is in, or of this month when that has passed. */
+function monthEnd(date: string, today: string): string {
+  const [y, m] = (date >= today ? date : today).split('-').map(Number) as [number, number];
+  return `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+}
+
 function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Recurring | null; from?: Transaction; onClose: () => void }) {
   const today = todayStr();
   const startKind: TxKind = item?.kind ?? from?.kind ?? 'expense';
   const [kind, setKind] = useState<TxKind>(startKind);
+  const [on, setOn] = useState<DayMode>(dayModeOf(item));
   const [r, setR] = useState({
     name: item?.name ?? from?.description ?? '',
     amount: item ? String(item.amount) : from ? String(from.amount) : '',
@@ -616,22 +628,32 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
     endDate: item?.endDate ?? '',
     debtId: item?.debtId ?? '',
   });
+  // "Last day" and "last working day" only make sense for items that come round by the month.
+  const byMonth = r.cadence === 'monthly' || r.cadence === 'quarterly';
+  const mode: DayMode = byMonth ? on : 'date';
+  const chooseMode = (next: DayMode) => {
+    setOn(next);
+    if (next === 'date') return;
+    // Day 31 is each month's last day; the working-day rule then steps back past weekends and holidays.
+    setR({ ...r, next: monthEnd(r.next, today), weekend: next === 'lastWorking' ? 'before' : r.weekend === 'before' && on === 'lastWorking' ? 'none' : r.weekend });
+  };
   const body = () => ({
     name: r.name,
     amount: parseNumber(r.amount),
     category: r.category,
     cadence: r.cadence,
     next: r.next,
-    day: r.cadence === 'monthly' || r.cadence === 'quarterly' || r.cadence === 'yearly' ? Number(r.next.slice(8, 10)) : null,
+    day: mode !== 'date' ? 31 : r.cadence === 'monthly' || r.cadence === 'quarterly' || r.cadence === 'yearly' ? Number(r.next.slice(8, 10)) : null,
     auto: r.auto,
-    weekend: r.weekend,
+    weekend: mode === 'lastWorking' ? 'before' : r.weekend,
     end_date: r.endDate || null,
   });
   // An edit sends the schedule only when it changed, so a weekend-shifted date never becomes the new day.
   const save = useWrite(() => {
     if (!item) return financeWrite.post('/recurring', { ...body(), kind, debt_id: r.debtId || null });
     const { next, day, cadence, ...rest } = body();
-    return financeWrite.patch(`/recurring/${item.id}`, { ...rest, ...(r.next !== item.next ? { next, day } : {}), ...(r.cadence !== item.cadence ? { cadence } : {}) });
+    const rescheduled = r.next !== item.next || mode !== dayModeOf(item);
+    return financeWrite.patch(`/recurring/${item.id}`, { ...rest, ...(rescheduled ? { next, day } : {}), ...(r.cadence !== item.cadence ? { cadence } : {}) });
   });
   const pause = useWrite(() => financeWrite.patch(`/recurring/${item!.id}`, { active: !item!.active }));
   const remove = useWrite(() => financeWrite.del(`/recurring/${item!.id}`));
@@ -697,17 +719,33 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
             ))}
           </select>
         </Field>
-        <Field label="Next on" hint={r.cadence === 'monthly' && Number(r.next.slice(8, 10)) >= 29 ? 'Shorter months use their last day' : undefined}>
-          <input className="input" type="date" value={r.next} onChange={(e) => setR({ ...r, next: e.target.value })} />
-        </Field>
-        <Field label="On a weekend">
-          <select className="select" value={r.weekend} onChange={(e) => setR({ ...r, weekend: e.target.value as Recurring['weekend'] })}>
-            <option value="none">Keep the date</option>
-            <option value="before">The Friday before</option>
-            <option value="after">The Monday after</option>
-          </select>
+        {byMonth && (
+          <Field label="On">
+            <select className="select" value={mode} onChange={(e) => chooseMode(e.target.value as DayMode)}>
+              <option value="date">A date</option>
+              <option value="last">The last day of the month</option>
+              <option value="lastWorking">The last working day</option>
+            </select>
+          </Field>
+        )}
+        <Field
+          label={mode === 'date' ? 'Next on' : 'Starting'}
+          hint={mode === 'lastWorking' ? 'Earlier when the month ends on a weekend or public holiday' : mode === 'date' && r.cadence === 'monthly' && Number(r.next.slice(8, 10)) >= 29 ? 'Shorter months use their last day' : undefined}
+        >
+          <input className="input" type="date" value={r.next} onChange={(e) => setR({ ...r, next: mode === 'date' ? e.target.value : monthEnd(e.target.value, today) })} />
         </Field>
       </div>
+      {mode !== 'lastWorking' && (
+        <div className="field-row">
+          <Field label="On a weekend or public holiday">
+            <select className="select" value={r.weekend} onChange={(e) => setR({ ...r, weekend: e.target.value as Recurring['weekend'] })}>
+              <option value="none">Keep the date</option>
+              <option value="before">The working day before</option>
+              <option value="after">The working day after</option>
+            </select>
+          </Field>
+        </div>
+      )}
       <Seg
         label="How it's recorded"
         value={r.auto ? 'auto' : 'manual'}

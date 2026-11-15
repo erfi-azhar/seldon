@@ -63,7 +63,8 @@ class HttpError extends Error {
   }
 }
 
-async function getJson<T>(url: string): Promise<T> {
+/** GET JSON through the market transport (the real network, or a test's fake). */
+export async function getJson<T>(url: string): Promise<T> {
   const res = await transport.fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: 'application/json', 'user-agent': 'terminus' } });
   const text = await res.text();
   if (!res.ok) throw new HttpError(res.status, text.slice(0, 300));

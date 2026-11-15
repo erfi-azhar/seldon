@@ -641,7 +641,7 @@ export interface Recurring {
   anchor: string;
   /** Day of the month for monthly, quarterly and yearly (31 means the month's last day). */
   day: number | null;
-  /** When a date lands on a weekend: leave it, move it to the Friday before, or the Monday after. */
+  /** When a date lands on a weekend or public holiday: leave it, or move it to the working day before or after. */
   weekend: 'none' | 'before' | 'after';
   /** Logged by itself when due; otherwise it waits to be marked paid. */
   auto: boolean;
