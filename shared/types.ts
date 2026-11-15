@@ -69,6 +69,15 @@ export interface Goal {
   completedAt: string | null;
 }
 
+/** A named group of to-dos within a sphere, like "Personal Loan (BR)" in Work. */
+export interface Project {
+  id: string;
+  sphereId: string;
+  name: string;
+  archived: boolean;
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -77,6 +86,8 @@ export interface Task {
   goalId: string | null;
   /** The trip this to-do is for, if any. */
   tripId: string | null;
+  /** The project this to-do belongs to, if any. */
+  projectId: string | null;
   dueDate: string | null;
   done: boolean;
   doneAt: string | null;
@@ -120,9 +131,9 @@ export interface Habit {
   /** Dates (YYYY-MM-DD) checked in over the last 35 days. */
   log: string[];
   doneToday: boolean;
-  /** Check-ins in the trailing 7 days. */
+  /** Check-ins this calendar week (Monday to Sunday). */
   weekCount: number;
-  /** Consecutive days (daily) or weeks on target (weekly). */
+  /** Consecutive days (daily) or calendar weeks on target (weekly). */
   streak: number;
 }
 
@@ -235,6 +246,8 @@ export interface SphereDetail {
   habits: Habit[];
   metrics: Metric[];
   tasks: Task[];
+  /** The sphere's projects, archived ones left out. */
+  projects: Project[];
   notes: Note[];
   activity: Activity[];
 }
@@ -498,10 +511,30 @@ export interface PrayerDay {
   log: Partial<Record<PrayerName, PrayerStatus>>;
 }
 
+// ── Weather, for the Today sky ──────────────────────────────────────────────
+
+export type WeatherKind = 'clear' | 'cloudy' | 'overcast' | 'fog' | 'drizzle' | 'rain' | 'showers' | 'snow' | 'storm';
+
+/** The weather now at a place, from Open-Meteo. */
+export interface Weather {
+  kind: WeatherKind;
+  /** The WMO weather code it was read from. */
+  code: number;
+  /** Share of the sky under cloud, 0–100. */
+  cloudCover: number;
+  /** Rain, showers and snow in the last hour, in mm. */
+  precipitation: number;
+  windKmh: number;
+  /** When Open-Meteo last updated it (ISO). */
+  observedAt: string;
+}
+
 export interface FaithState {
   configured: boolean;
   settings: PrayerSettings;
   today: PrayerDay | null;
+  /** Tomorrow's prayer times, for planning sahur the evening before. */
+  tomorrow: PrayerDay['times'] | null;
   /** The prayer whose time it is now, and the next one to come. */
   current: { prayer: PrayerName; endsAt: string } | null;
   next: { prayer: PrayerName; at: string } | null;
@@ -512,7 +545,8 @@ export interface FaithState {
   /** Missed prayers still to make up: logged misses plus the backlog. */
   owed: Record<PrayerName, number>;
   hijri: string;
-  ramadan: { start: string; daysUntil: number; inRamadan: boolean; day: number | null } | null;
+  /** The next (or current) Ramadan: its first and last day by the Umm al-Qura calendar. */
+  ramadan: { start: string; end: string; daysUntil: number; inRamadan: boolean; day: number | null } | null;
 }
 
 // ── Health: food, training, body composition ────────────────────────────────
@@ -587,6 +621,200 @@ export interface HealthState {
   workouts: Workout[];
   week: { sessions: number; minutes: number; strength: number; cardio: number };
   body: BodyReading[];
+}
+
+// ── Finances ────────────────────────────────────────────────────────────────
+
+export type TxKind = 'income' | 'expense';
+
+export interface Transaction {
+  id: string;
+  date: string;
+  kind: TxKind;
+  amount: number;
+  currency: string;
+  category: string;
+  description: string;
+  source: string;
+  /** The recurring item that logged it, if one did. */
+  recurringId: string | null;
+}
+
+export type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+
+export interface Recurring {
+  id: string;
+  kind: TxKind;
+  name: string;
+  amount: number;
+  currency: string;
+  category: string;
+  cadence: Frequency;
+  /** The first occurrence; later ones follow the cadence from it. */
+  anchor: string;
+  /** Day of the month for monthly, quarterly and yearly (31 means the month's last day). */
+  day: number | null;
+  /** When a date lands on a weekend or public holiday: leave it, or move it to the working day before or after. */
+  weekend: 'none' | 'before' | 'after';
+  /** Logged by itself when due; otherwise it waits to be marked paid. */
+  auto: boolean;
+  endDate: string | null;
+  /** Paying it pays down this debt instead of logging spending. */
+  debtId: string | null;
+  /** Paid into this holding (CPF, savings) instead of logged as income or spending. */
+  holdingId: string | null;
+  active: boolean;
+  next: string | null;
+  /** What it comes to in an average month, in its own currency. */
+  monthly: number;
+}
+
+export interface Upcoming {
+  recurringId: string;
+  name: string;
+  kind: TxKind;
+  amount: number;
+  currency: string;
+  date: string;
+  auto: boolean;
+  debtId: string | null;
+  holdingId: string | null;
+  overdue: boolean;
+}
+
+export type HoldingKind = 'cash' | 'crypto' | 'stock' | 'fund' | 'retirement' | 'property' | 'other';
+
+export interface Holding {
+  id: string;
+  kind: HoldingKind;
+  name: string;
+  /** A ticker: BTC for crypto (priced live), AAPL for a stock. Empty for cash or property. */
+  symbol: string;
+  quantity: number;
+  /** What it cost in total, in its own currency. */
+  costBasis: number;
+  /** Unit price you set; null when it is priced live. */
+  price: number | null;
+  currency: string;
+  notes: string;
+  updatedAt: string;
+  /** Worked out: unit price used, value and gain, in its own currency and in the base currency. */
+  unitPrice: number | null;
+  live: boolean;
+  value: number | null;
+  gain: number | null;
+  gainPct: number | null;
+  valueBase: number | null;
+  change24hPct: number | null;
+}
+
+export interface Trade {
+  id: string;
+  holdingId: string | null;
+  symbol: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  /** Price per coin, in USD. */
+  price: number;
+  fee: number;
+  /** Profit or loss a sale locked in, in USD; null for a buy. */
+  realized: number | null;
+  date: string;
+  venue: string;
+  notes: string;
+}
+
+export type DebtKind = 'credit_card' | 'loan' | 'mortgage' | 'car' | 'student' | 'personal' | 'bnpl' | 'other';
+
+export interface Debt {
+  id: string;
+  name: string;
+  kind: DebtKind;
+  lender: string;
+  balance: number;
+  original: number | null;
+  apr: number | null;
+  minPayment: number | null;
+  dueDay: number | null;
+  currency: string;
+  notes: string;
+  closedAt: string | null;
+  /** At the minimum payment: months to clear it and the interest paid on the way. null when it never clears. */
+  payoff: { months: number; interest: number; date: string } | null;
+  paidOffPct: number | null;
+  /** The next due date from dueDay. */
+  nextDue: string | null;
+  payments: { id: string; date: string; amount: number }[];
+}
+
+export interface PriceAlert {
+  id: string;
+  symbol: string;
+  direction: 'above' | 'below';
+  price: number;
+  note: string;
+  triggeredAt: string | null;
+}
+
+export interface Quote {
+  /** The coin, e.g. BTC. Prices are in US dollars. */
+  symbol: string;
+  price: number;
+  open: number;
+  high: number;
+  low: number;
+  changePct: number;
+  /** 24h volume in US dollars. */
+  volume: number;
+  source: 'binance' | 'coinbase' | 'fixed';
+  at: number;
+}
+
+export interface MarketState {
+  quotes: Quote[];
+  /** Hourly closes over the last day, oldest first, by coin. */
+  sparks: Record<string, number[]>;
+  /** How prices are arriving: a live stream, polling, or not at all. */
+  status: 'live' | 'polling' | 'offline' | 'idle';
+  source: string | null;
+  error: string | null;
+  /** Coins no venue lists. */
+  unknown: string[];
+}
+
+export interface FinanceState {
+  date: string;
+  currency: string;
+  /** Rates from one US dollar; null until fetched. */
+  fx: { rates: Record<string, number>; at: string } | null;
+  month: {
+    key: string;
+    income: number;
+    expense: number;
+    net: number;
+    savingsRate: number | null;
+    byCategory: { category: string; kind: TxKind; amount: number; budget: number | null }[];
+    /** Pay and bills still to come before the month ends (debt instalments left out, as payments are). */
+    expected: { income: number; expense: number; net: number };
+  };
+  /** The last six months, oldest first. */
+  months: { key: string; income: number; expense: number }[];
+  transactions: Transaction[];
+  recurring: Recurring[];
+  /** The next five weeks, and anything waiting to be marked paid. */
+  upcoming: Upcoming[];
+  /** Recurring income and outgoings in an average month, in the base currency. */
+  recurringMonthly: { income: number; expense: number };
+  budgets: Record<string, number>;
+  holdings: Holding[];
+  allocation: { kind: HoldingKind; value: number }[];
+  trades: Trade[];
+  crypto: { value: number; cost: number; gain: number; realized: number; change24h: number } | null;
+  debts: Debt[];
+  alerts: PriceAlert[];
+  watchlist: string[];
+  netWorth: { assets: number; debts: number; net: number; unpriced: string[] };
+  market: MarketState;
 }
 
 // ── MCP connections ─────────────────────────────────────────────────────────
@@ -897,4 +1125,47 @@ export interface TripTrack {
 export interface JourneyStatus {
   push: { publicKey: string; devices: { label: string; since: string }[] };
   tracking: { on: boolean; lastAt: string | null };
+}
+
+// ── Reading list ────────────────────────────────────────────────────────────
+
+export type BookStatus = 'want' | 'reading' | 'read';
+
+export interface Book {
+  id: string;
+  title: string;
+  author: string;
+  year: number | null;
+  pages: number | null;
+  isbn: string;
+  synopsis: string;
+  /** Where the synopsis came from: 'Google Books', 'Open Library', the agent's name, or 'you'. */
+  synopsisSource: string;
+  /** Average rating out of 5, from the source with the most ratings. */
+  rating: number | null;
+  ratingsCount: number | null;
+  ratingSource: string;
+  /** Where the cover is served from (this server keeps a copy), or '' when none was found. */
+  cover: string;
+  buyUrl: string;
+  /** The book's page at its source, for more detail. */
+  infoUrl: string;
+  /** The spine's colour, read from the cover's left edge (#rrggbb), or '' until it is. */
+  color: string;
+  status: BookStatus;
+  note: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+}
+
+/** A match for a search, before it is added. */
+export interface BookCandidate {
+  /** 'ol:OL123W' (Open Library work) or 'gb:abc' (Google Books volume). */
+  ref: string;
+  title: string;
+  author: string;
+  year: number | null;
+  /** A small cover to tell editions apart by. */
+  thumb: string;
 }

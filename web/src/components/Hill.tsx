@@ -3,11 +3,14 @@
 // The band rises out of the page the way the top sky dissolves into it. Drawn by
 // ../hill.ts; slowly when nothing moves, and not at all while hidden or scrolled away.
 // After dark a shooting star crosses now and then, and a tap on the sky sends another.
+// The weather where you are shows here as it does in the sky at the top.
 // With reduced motion it holds still.
 
 import { useEffect, useRef } from 'react';
 import { cellFor, crestAt, drawHill, HOVER, pageColor, starsOut, streakAlive, streakAt, type HillView, type Streak } from '../hill.ts';
+import { useWeather } from '../api.ts';
 import { useSun } from '../sun.ts';
+import { lookOf, moving, nextFlashIn } from '../weather.ts';
 
 /** The band shows the scene from FROM (sky, above the shard) down to TO, a little below the crest. */
 const FROM = -0.22;
@@ -19,13 +22,17 @@ export function HillBand() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sunRef = useRef(sun);
   sunRef.current = sun;
+  // The same reading as the sky at the top (shared, so it is looked up once).
+  const { data: weather } = useWeather(sun.source === 'guess' ? null : sun.place);
+  const weatherRef = useRef(weather ?? null);
+  weatherRef.current = weather ?? null;
   const redraw = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const still = matchMedia('(prefers-reduced-motion: reduce)');
-    const scene = { spin: Math.random() * 6, drift: Math.random() * 10, streaks: [] as Streak[], nextStar: 5 };
+    const scene = { spin: Math.random() * 6, drift: Math.random() * 10, streaks: [] as Streak[], nextStar: 5, flashAt: -99, nextFlash: 0 };
     let raf = 0;
     let last = -Infinity;
     let onScreen = true;
@@ -49,6 +56,8 @@ export function HillBand() {
         pulse: 0,
         traveller: 0,
         streaks: scene.streaks,
+        weather: weatherRef.current,
+        flashAt: scene.flashAt,
       }, pageColor());
     };
     redraw.current = () => draw(performance.now() / 1000);
@@ -56,17 +65,22 @@ export function HillBand() {
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       const t = now / 1000;
-      if (!still.matches && starsOut(sunRef.current) && t > scene.nextStar && view) {
+      const look = lookOf(weatherRef.current);
+      if (!still.matches && look.storm && t > scene.nextFlash) {
+        scene.flashAt = t;
+        scene.nextFlash = t + nextFlashIn();
+      }
+      if (!still.matches && starsOut(sunRef.current, weatherRef.current) && t > scene.nextStar && view) {
         const half = canvas.clientWidth / 2 / view.unit;
         scene.streaks.push(streakAt(t, (Math.random() - 0.5) * half * 1.2, 0.2 + Math.random() * 0.1));
         scene.nextStar = t + 10 + Math.random() * 12;
       }
-      // Smooth while a star is falling; otherwise a slow drift is enough.
-      if (now - last < (scene.streaks.length ? 33 : 90)) return;
+      // Smooth while a star is falling, steady while rain or snow falls; otherwise a slow drift is enough.
+      if (now - last < (scene.streaks.length ? 33 : moving(look) ? 50 : 90)) return;
       const step = Math.min(0.25, (now - last) / 1000);
       last = now;
       scene.spin += step * 0.16;
-      scene.drift += step * 0.03;
+      scene.drift += step * 0.03 * look.wind;
       draw(t);
     };
     const run = () => {
@@ -89,7 +103,7 @@ export function HillBand() {
     const minute = setInterval(() => still.matches && redraw.current(), 60_000);
 
     const onClick = (e: MouseEvent) => {
-      if (e.defaultPrevented || e.button !== 0 || still.matches || !view || !starsOut(sunRef.current)) return;
+      if (e.defaultPrevented || e.button !== 0 || still.matches || !view || !starsOut(sunRef.current, weatherRef.current)) return;
       const el = e.target as Element | null;
       if (!el?.closest('.app-main') || el.closest(INTERACTIVE) || window.getSelection()?.toString()) return;
       const r = canvas.getBoundingClientRect();
@@ -111,10 +125,10 @@ export function HillBand() {
     };
   }, []);
 
-  // Redraw a held-still scene when the phase or place changes.
+  // Redraw a held-still scene when the phase, place or weather changes.
   useEffect(() => {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) redraw.current();
-  }, [sun]);
+  }, [sun, weather]);
 
   return (
     <div className="hill-band" aria-hidden="true">

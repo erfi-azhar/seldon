@@ -195,3 +195,70 @@ test('deleting a sphere removes what lives in it and frees what merely pointed a
   assert.equal(s.listGoals({ status: 'all' }).length, 0);
   assert.equal(s.getTask(task.id).sphereId, null);
 });
+
+test('habit weeks are calendar weeks, Monday to Sunday', () => {
+  const s = fresh();
+  const sphere = s.createSphere({ key: 'health' });
+  // TODAY (2026-11-13) is a Friday; its week runs Monday 9 to Sunday 15 November.
+  const weekly = s.createHabit({ sphereId: sphere.id, name: 'Gym', cadence: 'weekly', targetPerWeek: 2 });
+  s.setHabitLog(weekly.id, '2026-11-08', true, TODAY); // last Sunday: last week
+  s.setHabitLog(weekly.id, '2026-11-07', true, TODAY); // last Saturday: last week
+  s.setHabitLog(weekly.id, '2026-11-09', true, TODAY); // this Monday
+  let h = s.getHabit(weekly.id, TODAY);
+  assert.equal(h.weekCount, 1, 'only Monday onwards counts for this week');
+  assert.equal(h.streak, 1, 'last week was on target; this week is still open');
+  s.setHabitLog(weekly.id, TODAY, true, TODAY);
+  h = s.getHabit(weekly.id, TODAY);
+  assert.equal(h.weekCount, 2);
+  assert.equal(h.streak, 2, 'this week counts once it is on target');
+});
+
+test('projects group a sphere’s to-dos; deleting or undoing one keeps its to-dos', () => {
+  const s = fresh();
+  const work = s.createSphere({ key: 'work' });
+  const health = s.createSphere({ key: 'health' });
+  const br = s.createProject({ sphereId: work.id, name: 'Personal Loan (BR)' });
+  assert.equal(s.createProject({ sphereId: work.id, name: 'personal loan (br)' }).id, br.id, 'the same name in the same sphere is the same project');
+  assert.throws(() => s.createProject({ sphereId: work.id, name: '  ' }), Invalid);
+
+  // A project's to-do lands in the project's sphere.
+  const t = s.createTask({ title: 'Recruit testers', projectId: br.id });
+  assert.equal(t.projectId, br.id);
+  assert.equal(t.sphereId, work.id);
+  assert.deepEqual(s.listTasks({ projectId: br.id }).map((x) => x.id), [t.id]);
+  assert.deepEqual(s.sphereDetail(work.id, TODAY).projects.map((p) => p.name), ['Personal Loan (BR)']);
+
+  // Moving it to another sphere takes it out of the project; moving it back in follows the project.
+  assert.equal(s.updateTask(t.id, { sphereId: health.id }).projectId, null);
+  const back = s.updateTask(t.id, { projectId: br.id });
+  assert.equal(back.sphereId, work.id);
+  assert.equal(s.updateTask(t.id, { title: 'Recruit testers and lock the list' }).projectId, br.id, 'other edits leave the project alone');
+
+  // Archived projects drop out of the sphere's list but come back when asked for by name.
+  s.updateProject(br.id, { archived: true });
+  assert.equal(s.sphereDetail(work.id, TODAY).projects.length, 0);
+  assert.equal(s.createProject({ sphereId: work.id, name: 'Personal Loan (BR)' }).archived, false);
+
+  s.deleteProject(br.id);
+  assert.equal(s.getTask(t.id).projectId, null, 'the to-do outlives its project');
+  assert.throws(() => s.getProject(br.id), NotFound);
+
+  const agent = s.as('agent');
+  const kyc = agent.createProject({ sphereId: work.id, name: 'KYC' });
+  const k = s.createTask({ title: 'Review the KYC flow', projectId: kyc.id });
+  assert.equal(s.undo(agent.trail.at(-1)!), true);
+  assert.throws(() => s.getProject(kyc.id), NotFound);
+  assert.equal(s.getTask(k.id).projectId, null);
+});
+
+test('projects survive export and import, before the to-dos that point at them', () => {
+  const s = fresh();
+  const work = s.createSphere({ key: 'work' });
+  const p = s.createProject({ sphereId: work.id, name: 'AI in Design Report' });
+  const t = s.createTask({ title: 'Outline the report', projectId: p.id });
+  const dump = s.exportAll();
+  const t2 = fresh();
+  t2.importAll(JSON.parse(JSON.stringify(dump)));
+  assert.equal(t2.getTask(t.id).projectId, p.id);
+  assert.equal(t2.getProject(p.id).name, 'AI in Design Report');
+});

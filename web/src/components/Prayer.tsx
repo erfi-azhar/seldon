@@ -2,12 +2,13 @@
 // up, and a countdown to Ramadan when it is near.
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, Clock, LocateFixed, MapPin, MoonStar, Pencil, Plus, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Check, ChevronRight, Clock, LoaderCircle, LocateFixed, MapPin, MoonStar, Pause, Pencil, Play, Plus, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
 import { addDays, cx, parseDay, plural, todayStr } from '../lib.ts';
 import { Field, Modal } from './ui.tsx';
+import { MUNJIYAT, VERSES, verseIndexFor } from './verses.ts';
 
 const NAME: Record<PrayerName, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
 
@@ -134,8 +135,8 @@ function LocationSheet({ faith, onClose }: { faith: FaithState; onClose: () => v
   );
 }
 
-/** Prayed, late or missed for one prayer. `auto` means its time passed unmarked, so it was counted missed. */
-function StatusButtons({ date, prayer, status, disabled, auto }: { date: string; prayer: PrayerName; status: PrayerStatus | undefined; disabled?: boolean; auto?: boolean }) {
+/** Prayed, late or missed for one prayer. */
+function StatusButtons({ date, prayer, status, disabled }: { date: string; prayer: PrayerName; status: PrayerStatus | undefined; disabled?: boolean }) {
   const log = useWrite(faithWrite.log);
   const set = (next: PrayerStatus) => log.mutate({ date, prayer, status: status === next ? null : next });
   const pending = log.isPending ? (log.variables as { status: PrayerStatus | null }).status : undefined;
@@ -150,14 +151,7 @@ function StatusButtons({ date, prayer, status, disabled, auto }: { date: string;
         <Clock size={13} strokeWidth={2.4} />
         <span className="sr-only">Prayed late</span>
       </button>
-      <button
-        type="button"
-        className={cx('pb pb-missed', auto && !log.isPending && 'is-auto')}
-        aria-pressed={shown === 'missed'}
-        disabled={disabled}
-        onClick={() => set('missed')}
-        title={auto ? 'Its time passed without a mark, so it counts as missed' : 'Missed — add to prayers to make up'}
-      >
+      <button type="button" className="pb pb-missed" aria-pressed={shown === 'missed'} disabled={disabled} onClick={() => set('missed')} title="Missed — add to prayers to make up">
         <X size={13} strokeWidth={2.8} />
         <span className="sr-only">Missed</span>
       </button>
@@ -171,13 +165,12 @@ const SAY: Record<PrayerStatus, string> = { prayed: 'prayed', late: 'prayed late
 const NEXT: Record<PrayerStatus, PrayerStatus> = { prayed: 'late', late: 'missed', missed: 'prayed' };
 const dayLabel = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
-function WeekDot({ day, prayer, auto, now }: { day: PrayerDay; prayer: PrayerName; auto: boolean; now: number }) {
+function WeekDot({ day, prayer, now }: { day: PrayerDay; prayer: PrayerName; now: number }) {
   const log = useWrite(faithWrite.log);
   const status = log.isPending ? (log.variables as { status: PrayerStatus }).status : day.log[prayer];
-  const isAuto = auto && !log.isPending;
   const started = Date.parse(day.times[prayer]) <= now;
   const next = status ? NEXT[status] : 'prayed';
-  const state = isAuto ? 'not marked, counted missed' : status ? SAY[status] : 'not marked';
+  const state = status ? SAY[status] : 'not marked';
   return (
     <button
       type="button"
@@ -186,7 +179,7 @@ function WeekDot({ day, prayer, auto, now }: { day: PrayerDay; prayer: PrayerNam
       onClick={() => log.mutate({ date: day.date, prayer, status: next })}
       title={`${NAME[prayer]}, ${dayLabel(day.date)}: ${state}${started ? ` — tap to mark ${SAY[next]}` : ''}`}
     >
-      <i className={cx('pw-dot', status && `pw-${status}`, isAuto && 'pw-auto')} />
+      <i className={cx('pw-dot', status && `pw-${status}`)} />
       <span className="sr-only">
         {NAME[prayer]}, {dayLabel(day.date)}: {state}
       </span>
@@ -197,7 +190,6 @@ function WeekDot({ day, prayer, auto, now }: { day: PrayerDay; prayer: PrayerNam
 /** The last seven days, one dot per prayer. Dots are buttons, so a past day is corrected here. */
 function WeekGrid({ faith, now }: { faith: FaithState; now: number }) {
   const today = todayStr();
-  const auto = new Set(faith.autoMissed.map((u) => `${u.date}|${u.prayer}`));
   return (
     <div className="prayer-week" role="group" aria-label="The last seven days">
       <span />
@@ -210,7 +202,7 @@ function WeekGrid({ faith, now }: { faith: FaithState; now: number }) {
         <div key={p} style={{ display: 'contents' }}>
           <span className="pw-name">{NAME[p]}</span>
           {faith.week.map((d) => (
-            <WeekDot key={d.date} day={d} prayer={p} auto={auto.has(`${d.date}|${p}`)} now={now} />
+            <WeekDot key={d.date} day={d} prayer={p} now={now} />
           ))}
         </div>
       ))}
@@ -224,17 +216,8 @@ function WeekGrid({ faith, now }: { faith: FaithState; now: number }) {
         <span>
           <i className="pw-dot pw-missed" /> Missed
         </span>
-        {auto.size > 0 && (
-          <span>
-            <i className="pw-dot pw-missed pw-auto" /> Not marked
-          </span>
-        )}
+        <span className="pw-hint">Tap a dot to change it</span>
       </div>
-      {auto.size > 0 && (
-        <p className="pw-note">
-          {plural(auto.size, 'prayer')} passed without a mark and {auto.size === 1 ? 'counts' : 'count'} as missed. Prayed after all? Tap its dot.
-        </p>
-      )}
     </div>
   );
 }
@@ -304,7 +287,42 @@ function QadaPanel({ owed }: { owed: FaithState['owed'] }) {
   );
 }
 
-function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramadan']> }) {
+// Imsak, the customary time to finish sahur: ten minutes before Subuh, as in the
+// Singapore and Malaysian timetables. The fast itself begins at Subuh.
+const IMSAK_MS = 10 * 60_000;
+
+/**
+ * During Ramadan: the fasting times that matter now. Until Maghrib that's today's fast;
+ * from Maghrib, when today's fast has ended, it's tomorrow's (for sahur) and tonight's Isyak.
+ */
+function FastTimes({ faith, ramadan, now }: { faith: FaithState; ramadan: NonNullable<FaithState['ramadan']>; now: number }) {
+  const today = faith.today!;
+  const tz = faith.settings.timezone;
+  const tomorrow = faith.tomorrow;
+  const evening = now >= Date.parse(today.times.maghrib) && !!tomorrow && today.date < ramadan.end;
+  const day = evening ? tomorrow : today.times;
+  const imsak = hhmm(new Date(Date.parse(day.fajr) - IMSAK_MS).toISOString(), tz);
+  const rows = [
+    { label: 'Fast begins', at: day.fajr, sub: evening ? `Tomorrow · Imsak ${imsak}` : `Imsak ${imsak}` },
+    { label: 'Fast ends', at: day.maghrib, sub: evening ? 'Tomorrow · iftar' : 'Maghrib · iftar' },
+    { label: 'Isyak', at: today.times.isha, sub: evening ? 'Tonight · tarawih' : 'Then tarawih' },
+  ];
+  const upcoming = rows.filter((r) => Date.parse(r.at) > now);
+  const next = upcoming.length ? upcoming.reduce((a, r) => (Date.parse(r.at) < Date.parse(a.at) ? r : a)) : null;
+  return (
+    <dl className="ramadan-dates ramadan-times">
+      {rows.map((r) => (
+        <div key={r.label} className={cx(r === next && 'is-next', Date.parse(r.at) <= now && 'is-past')}>
+          <dt>{r.label}</dt>
+          <dd className="ramadan-time">{hhmm(r.at, tz)}</dd>
+          <dd className="ramadan-sub">{r === next ? `in ${untilLabel(r.at, now)}` : r.sub}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function RamadanCountdown({ ramadan, faith, now }: { ramadan: NonNullable<FaithState['ramadan']>; faith: FaithState; now: number }) {
   const long = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
   const short = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   if (ramadan.inRamadan)
@@ -316,7 +334,10 @@ function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramada
           <b>Ramadan</b>
           <MoonStar size={22} className="ramadan-moon" />
         </div>
-        <p className="ramadan-note">Ramadan Mubarak — began {long(ramadan.start)}.</p>
+        {faith.configured && faith.today && <FastTimes faith={faith} ramadan={ramadan} now={now} />}
+        <p className="ramadan-note">
+          Ramadan Mubarak — began {long(ramadan.start)}.{faith.configured ? ` Times for ${faith.settings.label || faith.settings.timezone.replaceAll('_', ' ')}.` : ''}
+        </p>
       </div>
     );
   // Islamic days begin at sunset, so the first tarawih is prayed after Isha on the
@@ -346,6 +367,260 @@ function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramada
   );
 }
 
+/**
+ * The fast a niyyah can be made for right now: from Maghrib on the eve of a Ramadan
+ * day until that day's Fajr, since the Islamic day begins at sunset.
+ */
+export function niyyahFast(faith: FaithState, now: number): { date: string; day: number; fajr: string | null } | null {
+  const r = faith.ramadan;
+  const today = faith.today;
+  if (!faith.configured || !r || !today) return null;
+  const t = today.times;
+  let date: string;
+  let fajr: string | null;
+  if (now < Date.parse(t.fajr)) [date, fajr] = [today.date, t.fajr];
+  // Tomorrow's Fajr isn't known here; a day after today's is near enough, and the
+  // data is refetched each minute, so past midnight the branch above takes over.
+  else if (now >= Date.parse(t.maghrib) && now < Date.parse(t.fajr) + 86_400_000) [date, fajr] = [addDays(today.date, 1), null];
+  else return null;
+  if (date < r.start || date > r.end) return null;
+  return { date, day: Math.round((parseDay(date).getTime() - parseDay(r.start).getTime()) / 86_400_000) + 1, fajr };
+}
+
+const NIYYAH = {
+  arabic: 'نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هٰذِهِ السَّنَةِ لِلّٰهِ تَعَالَى',
+  transliteration: 'Nawaitu ṣauma ghadin ʿan adāʾi farḍi shahri Ramaḍāna hādhihis-sanati lillāhi taʿālā.',
+  meaning: 'I intend to fast tomorrow, fulfilling the obligation of the month of Ramadan this year, for the sake of Allah the Most High.',
+};
+
+const niyyahKey = (date: string) => `niyyah-done:${date}`;
+function readDone(date: string): boolean {
+  try {
+    return localStorage.getItem(niyyahKey(date)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** On each night before a Ramadan fast: the intention for tomorrow's fast. */
+function NiyyahCard({ fast, now, tz }: { fast: { date: string; day: number; fajr: string | null }; now: number; tz: string }) {
+  const [done, setDone] = useState(() => readDone(fast.date));
+  useEffect(() => setDone(readDone(fast.date)), [fast.date]);
+  const mark = (v: boolean) => {
+    setDone(v);
+    try {
+      if (v) localStorage.setItem(niyyahKey(fast.date), '1');
+      else localStorage.removeItem(niyyahKey(fast.date));
+    } catch {
+      /* the card still works for this visit */
+    }
+  };
+  const when = fast.fajr ? `Before Fajr at ${hhmm(fast.fajr, tz)} · in ${untilLabel(fast.fajr, now)}` : 'Tonight, before Fajr';
+  if (done)
+    return (
+      <div className="niyyah is-done">
+        <Check size={15} strokeWidth={2.6} />
+        <span>Niyyah made for the fast of {fast.day} Ramadan</span>
+        <button type="button" className="link" onClick={() => mark(false)}>
+          Show again
+        </button>
+      </div>
+    );
+  return (
+    <section className="niyyah" aria-labelledby="niyyah-title">
+      <div className="niyyah-head">
+        <div>
+          <span className="niyyah-eyebrow">{when}</span>
+          <h2 id="niyyah-title">Niyyah for the fast of {fast.day} Ramadan</h2>
+        </div>
+        <MoonStar size={20} className="niyyah-moon" />
+      </div>
+      <p className="niyyah-arabic" lang="ar" dir="rtl">
+        {NIYYAH.arabic}
+      </p>
+      <p className="niyyah-translit">{NIYYAH.transliteration}</p>
+      <p className="niyyah-meaning">“{NIYYAH.meaning}”</p>
+      <div className="niyyah-foot">
+        <span>The intention is made in the heart; saying it is recommended.</span>
+        <button type="button" className="btn btn-sm niyyah-done" onClick={() => mark(true)}>
+          <Check size={14} strokeWidth={2.6} /> Done
+        </button>
+      </div>
+    </section>
+  );
+}
+
+const arabicDigits = (n: number) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]!);
+
+// Verse-by-verse recitation by Mishary Rashid Alafasy. quran.com's audio host comes first;
+// everyayah.com serves the same files and is tried if it fails.
+const RECITER = 'Mishary Alafasy';
+const audioSources = (surah: number, ayah: number): string[] => {
+  const file = `${String(surah).padStart(3, '0')}${String(ayah).padStart(3, '0')}.mp3`;
+  return [`https://verses.quran.com/Alafasy/mp3/${file}`, `https://everyayah.com/data/Alafasy_128kbps/${file}`];
+};
+
+/** One ayah to recite; `verse` is its entry in VERSES, so the card can follow along. */
+type Track = { surah: number; ayah: number; verse: number };
+type Playback =
+  | { state: 'idle' }
+  | { state: 'loading' | 'playing' | 'paused'; track: Track; set: string }
+  | { state: 'error' };
+
+/** The ayat of one entry in VERSES, in order. */
+function tracksOf(index: number): Track[] {
+  const v = VERSES[index]!;
+  const [surah, range] = v.ref.split(':') as [string, string];
+  const first = Number(range.split('-')[0]);
+  return v.arabic.map((_, i) => ({ surah: Number(surah), ayah: first + i, verse: index }));
+}
+
+/**
+ * Plays a list of ayat one after another, falling back to the second host when the first
+ * fails. `set` names what is playing (one verse, or all seven), so a button knows its own.
+ */
+function useRecitation() {
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const [pb, setPb] = useState<Playback>({ state: 'idle' });
+
+  const stop = () => {
+    const a = audio.current;
+    if (a) {
+      a.onended = a.onerror = a.onplaying = a.onwaiting = null;
+      a.pause();
+      a.removeAttribute('src');
+      a.load();
+    }
+    audio.current = null;
+  };
+  useEffect(() => stop, []);
+
+  const playAt = (tracks: Track[], i: number, set: string, source = 0) => {
+    stop();
+    const track = tracks[i]!;
+    const a = new Audio(audioSources(track.surah, track.ayah)[source]);
+    audio.current = a;
+    setPb({ state: 'loading', track, set });
+    a.onplaying = () => setPb({ state: 'playing', track, set });
+    a.onwaiting = () => setPb({ state: 'loading', track, set });
+    a.onended = () => (i + 1 < tracks.length ? playAt(tracks, i + 1, set) : (stop(), setPb({ state: 'idle' })));
+    a.onerror = () => (source === 0 ? playAt(tracks, i, set, 1) : (stop(), setPb({ state: 'error' })));
+    a.play().catch((e: unknown) => {
+      // Autoplay refusals are reported here; load failures arrive via onerror.
+      if (e instanceof DOMException && e.name === 'NotAllowedError') (stop(), setPb({ state: 'idle' }));
+    });
+  };
+
+  /** Start `set`, or pause and resume it if it is the one already going. */
+  const toggle = (set: string, tracks: Track[]) => {
+    const a = audio.current;
+    const mine = (pb.state === 'playing' || pb.state === 'paused' || pb.state === 'loading') && pb.set === set;
+    if (mine && pb.state === 'playing' && a) {
+      a.pause();
+      setPb({ ...pb, state: 'paused' });
+    } else if (mine && pb.state === 'paused' && a) {
+      void a.play().catch(() => setPb({ state: 'error' }));
+    } else if (!(mine && pb.state === 'loading')) playAt(tracks, 0, set);
+  };
+
+  const halt = () => {
+    stop();
+    setPb({ state: 'idle' });
+  };
+
+  return { pb, toggle, halt };
+}
+
+function PlayIcon({ state }: { state: 'loading' | 'playing' | 'other' }) {
+  if (state === 'loading') return <LoaderCircle size={15} className="spin" />;
+  if (state === 'playing') return <Pause size={15} fill="currentColor" strokeWidth={0} />;
+  return <Play size={15} fill="currentColor" strokeWidth={0} />;
+}
+
+/** Outside Ramadan: a verse of encouragement and calm, a new one each day. */
+function VerseCard({ date }: { date: string }) {
+  const [offset, setOffset] = useState(0);
+  const { pb, toggle, halt } = useRecitation();
+  const active = pb.state === 'playing' || pb.state === 'paused' || pb.state === 'loading' ? pb : null;
+  // While all seven saving verses are recited, the card shows the one being read.
+  const index = active?.set === 'munjiyat' ? active.track.verse : (verseIndexFor(date) + offset) % VERSES.length;
+  // Keep the card on the verse being recited, so it stays there when the set ends.
+  const following = active?.set === 'munjiyat' ? active.track.verse : null;
+  useEffect(() => {
+    if (following !== null) setOffset((((following - verseIndexFor(date)) % VERSES.length) + VERSES.length) % VERSES.length);
+  }, [following, date]);
+  const v = VERSES[index]!;
+  const tracks = tracksOf(index);
+  const first = tracks[0]!.ayah;
+  const reciting = active && active.track.verse === index ? active.track.ayah : null;
+  const verseSet = `verse:${index}`;
+  const stateOf = (set: string) => (active?.set === set ? (active.state === 'paused' ? 'other' : active.state) : 'other');
+  const seventh = v.munjiyat ? MUNJIYAT.indexOf(index) + 1 : 0;
+  // The translation is kept verbatim; only a trailing dash or comma, left where the
+  // sentence runs on into the next ayah, is dropped for display.
+  const english = v.english.replace(/[\s,;:\-–—]+$/, '');
+  return (
+    <section className="card verse-card" aria-label="Verse of the day">
+      <div className="verse-head">
+        <span className="verse-eyebrow">{seventh ? `Seven saving verses · ${seventh} of 7` : offset ? 'Another verse' : 'Verse for today'}</span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => {
+            halt();
+            // The verse after the one on show (which, mid-set, may not be today's plus the offset).
+            setOffset((((index + 1 - verseIndexFor(date)) % VERSES.length) + VERSES.length) % VERSES.length);
+          }}
+        >
+          Another <ChevronRight size={13} />
+        </button>
+      </div>
+      <p className="verse-arabic" lang="ar" dir="rtl">
+        {v.arabic.map((a, i) => (
+          <span key={i} className={cx(v.arabic.length > 1 && reciting === first + i && 'is-reciting')}>
+            {a} <span className="verse-end">﴿{arabicDigits(first + i)}﴾</span>{' '}
+          </span>
+        ))}
+      </p>
+      <p className="verse-english">{english.charAt(0).toUpperCase() + english.slice(1)}</p>
+      <div className="verse-foot">
+        <button
+          type="button"
+          className={cx('verse-play', stateOf(verseSet) === 'playing' && 'is-playing')}
+          onClick={() => toggle(verseSet, tracks)}
+          aria-label={stateOf(verseSet) === 'playing' ? 'Pause recitation' : 'Play recitation'}
+        >
+          <PlayIcon state={stateOf(verseSet)} />
+        </button>
+        <div className="verse-meta">
+          <a href={`https://quran.com/${v.ref}`} target="_blank" rel="noreferrer">
+            {v.surah} {v.ref.replace('-', '–')}
+          </a>
+          <span>{pb.state === 'error' ? 'Recitation couldn’t load — try again' : `Recited by ${RECITER} · Abdel Haleem translation`}</span>
+        </div>
+        {v.munjiyat && (
+          <button
+            type="button"
+            className={cx('btn btn-ghost btn-sm verse-all', active?.set === 'munjiyat' && 'is-on')}
+            onClick={() => toggle('munjiyat', MUNJIYAT.flatMap(tracksOf))}
+            aria-label={stateOf('munjiyat') === 'playing' ? 'Pause the seven saving verses' : 'Play all seven saving verses'}
+          >
+            <PlayIcon state={stateOf('munjiyat')} /> {active?.set === 'munjiyat' ? `${seventh} of 7` : 'All seven'}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** The verse card for the Faith sphere: outside Ramadan, and not while the niyyah card is up. */
+export function FaithVerse() {
+  const { data: faith } = useFaith();
+  const now = useNow();
+  if (!faith || faith.ramadan?.inRamadan || niyyahFast(faith, now)) return null;
+  return <VerseCard date={faith.today?.date ?? todayStr()} />;
+}
+
 export function PrayerCard() {
   const { data: faith } = useFaith();
   const now = useNow();
@@ -355,11 +630,12 @@ export function PrayerCard() {
   const travelling = faith.configured && tz !== deviceTz();
   const curDay = currentDay(faith);
   const lastNight = curDay && curDay !== faith.today ? curDay : undefined;
-  const autoToday = new Set(faith.autoMissed.filter((u) => u.date === faith.today?.date).map((u) => u.prayer));
+  const fast = niyyahFast(faith, now);
 
   return (
     <>
-      {faith.ramadan && (faith.ramadan.inRamadan || faith.ramadan.daysUntil <= 100) && <RamadanCountdown ramadan={faith.ramadan} />}
+      {fast && <NiyyahCard fast={fast} now={now} tz={tz} />}
+      {faith.ramadan && (faith.ramadan.inRamadan || faith.ramadan.daysUntil <= 100) && <RamadanCountdown ramadan={faith.ramadan} faith={faith} now={now} />}
       <section className="card prayer-card">
         <div className="card-head">
           <div>
@@ -407,15 +683,14 @@ export function PrayerCard() {
                 const isCurrent = faith.current?.prayer === p && curDay === faith.today;
                 const isNext = faith.next?.prayer === p && Date.parse(faith.next.at) > now && Date.parse(faith.next.at) - now < 18 * 3_600_000 && faith.next.at === faith.today!.times[p];
                 const started = Date.parse(faith.today!.times[p]) <= now;
-                const auto = autoToday.has(p);
                 return (
                   <li key={p} className={cx('prayer-row', isCurrent && 'is-current')}>
                     <span className="prayer-name">{NAME[p]}</span>
                     <span className="prayer-time num">{hhmm(faith.today!.times[p], tz)}</span>
                     <span className="prayer-when">
-                      {isCurrent && faith.current ? `ends in ${untilLabel(faith.current.endsAt, now)}` : isNext ? `in ${untilLabel(faith.next!.at, now)}` : auto ? 'not marked' : ''}
+                      {isCurrent && faith.current ? `ends in ${untilLabel(faith.current.endsAt, now)}` : isNext ? `in ${untilLabel(faith.next!.at, now)}` : ''}
                     </span>
-                    <StatusButtons date={faith.today!.date} prayer={p} status={faith.today!.log[p]} disabled={!started} auto={auto} />
+                    <StatusButtons date={faith.today!.date} prayer={p} status={faith.today!.log[p]} disabled={!started} />
                   </li>
                 );
               })}

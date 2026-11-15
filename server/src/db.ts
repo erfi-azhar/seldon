@@ -450,6 +450,168 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX trip_stay_options_by_trip ON trip_stay_options(trip_id, position);
   `,
+  // finances — money in and out, what you own (crypto priced live), what you owe, price alerts.
+  `
+  CREATE TABLE fin_transactions (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX fin_transactions_by_date ON fin_transactions(date);
+
+  CREATE TABLE fin_holdings (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    symbol TEXT NOT NULL DEFAULT '',
+    quantity REAL NOT NULL DEFAULT 0,
+    cost_basis REAL NOT NULL DEFAULT 0,
+    price REAL,
+    currency TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE fin_trades (
+    id TEXT PRIMARY KEY,
+    holding_id TEXT REFERENCES fin_holdings(id) ON DELETE SET NULL,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    price REAL NOT NULL,
+    fee REAL NOT NULL DEFAULT 0,
+    cost_out REAL NOT NULL DEFAULT 0,
+    realized REAL,
+    date TEXT NOT NULL,
+    venue TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_holding INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX fin_trades_by_date ON fin_trades(date);
+
+  CREATE TABLE fin_debts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    lender TEXT NOT NULL DEFAULT '',
+    balance REAL NOT NULL,
+    original REAL,
+    apr REAL,
+    min_payment REAL,
+    due_day INTEGER,
+    currency TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    closed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE fin_debt_payments (
+    id TEXT PRIMARY KEY,
+    debt_id TEXT NOT NULL REFERENCES fin_debts(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX fin_debt_payments_by_debt ON fin_debt_payments(debt_id, date);
+
+  CREATE TABLE fin_alerts (
+    id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    price REAL NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    triggered_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  `,
+  // Recurring money: pay, bills and instalments that come round on a schedule. `done` counts the
+  // occurrences already logged or skipped; the next one is worked out from the anchor and day.
+  `
+  CREATE TABLE fin_recurring (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL,
+    category TEXT NOT NULL,
+    cadence TEXT NOT NULL,
+    anchor TEXT NOT NULL,
+    day INTEGER,
+    done INTEGER NOT NULL DEFAULT 0,
+    weekend TEXT NOT NULL DEFAULT 'none',
+    auto INTEGER NOT NULL DEFAULT 1,
+    end_date TEXT,
+    debt_id TEXT REFERENCES fin_debts(id) ON DELETE SET NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  ALTER TABLE fin_transactions ADD COLUMN recurring_id TEXT REFERENCES fin_recurring(id) ON DELETE SET NULL;
+  ALTER TABLE fin_transactions ADD COLUMN recurring_n INTEGER;
+  `,
+  // Projects: named groups of to-dos within a sphere (Work's "Personal Loan (BR)").
+  `
+  CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    sphere_id TEXT NOT NULL REFERENCES spheres(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX projects_by_sphere ON projects(sphere_id, archived);
+  ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+  CREATE INDEX tasks_by_project ON tasks(project_id, done);
+  `,
+  // The reading list: books you want to read, are reading, or have read, with what was
+  // found about each (synopsis, ratings, cover). Covers are cached apart, and not exported.
+  `
+  CREATE TABLE reading_books (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL DEFAULT '',
+    year INTEGER,
+    pages INTEGER,
+    isbn TEXT NOT NULL DEFAULT '',
+    synopsis TEXT NOT NULL DEFAULT '',
+    synopsis_source TEXT NOT NULL DEFAULT '',
+    rating REAL,
+    ratings_count INTEGER,
+    rating_source TEXT NOT NULL DEFAULT '',
+    cover_url TEXT NOT NULL DEFAULT '',
+    buy_url TEXT NOT NULL DEFAULT '',
+    info_url TEXT NOT NULL DEFAULT '',
+    color TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'want',
+    note TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX reading_books_by_status ON reading_books(status, position);
+
+  CREATE TABLE reading_covers (
+    book_id TEXT PRIMARY KEY REFERENCES reading_books(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    bytes BLOB,
+    fetched_at TEXT NOT NULL
+  );
+  `,
+  // Recurring money paid into a holding (CPF contributions, a standing order into savings).
+  // Plain text, not a foreign key: a holding removed must pause the item, not turn it into income.
+  `
+  ALTER TABLE fin_recurring ADD COLUMN holding_id TEXT;
+  `,
   // Where you went on a trip, as your phone reported it (OwnTracks), and the devices that get travel notifications.
   `
   CREATE TABLE trip_track (

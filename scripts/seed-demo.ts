@@ -20,6 +20,7 @@ import { logBody, logFood, logWorkout } from '../server/src/features/health.ts';
 import { addItems, addSegment, createTrip, upsertLoyalty } from '../server/src/features/travel.ts';
 import { setPreferences } from '../server/src/features/job-alerts.ts';
 import { updateIntegration } from '../server/src/features/integrations.ts';
+import { addAlert, addDebt, addHolding, addRecurring, addTransaction, logTrade, payDebt } from '../server/src/features/finance.ts';
 import { deflateSync } from 'node:zlib';
 
 const path = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 'data/demo.db');
@@ -126,6 +127,67 @@ at(33, () => store.updateMilestone(invest.milestones[0]!.id, { done: true }));
 at(2, () => store.updateMilestone(invest.milestones[1]!.id, { done: true }));
 at(4, () => store.createTask({ title: 'Cancel the two subscriptions nobody uses', sphereId: sphere.finances!, dueDate: today }));
 at(3, () => store.createTask({ title: 'Send documents to the accountant', sphereId: sphere.finances!, dueDate: day(-9) }));
+
+// The money itself: in and out over three months, what's owned, what's owed, a few trades.
+db.prepare("INSERT INTO settings (key, value) VALUES ('finance', ?)").run(JSON.stringify({ currency: 'SGD', budgets: { Food: 700, Groceries: 450, Transport: 250, Shopping: 300, Entertainment: 200, Subscriptions: 80 }, watchlist: ['BTC', 'ETH', 'SOL', 'LINK'] }));
+db.prepare("INSERT INTO settings (key, value) VALUES ('fx_rates', ?)").run(JSON.stringify({ rates: { USD: 1, SGD: 1.3, MYR: 4.4, EUR: 0.92 }, at: new Date().toISOString() }));
+const firstOf = (monthsAgo: number, dayOfMonth: number) => {
+  const d = new Date(`${today}T12:00:00`);
+  d.setDate(1);
+  d.setMonth(d.getMonth() - monthsAgo);
+  d.setDate(Math.min(dayOfMonth, 28));
+  return d.toISOString().slice(0, 10);
+};
+for (let m = 2; m >= 0; m--) {
+  const on = (dom: number) => firstOf(m, dom);
+  const past = (date: string) => date <= today;
+  const tx = (date: string, kind: 'income' | 'expense', amount: number, category: string, description: string) => {
+    if (past(date)) addTransaction(store, { kind, amount, category, description, date }, 'demo');
+  };
+  tx(on(1), 'expense', 2400, 'Housing', 'Rent');
+  tx(on(25), 'income', 7200, 'Salary', 'Salary');
+  tx(on(3), 'expense', 168, 'Utilities', 'SP Group');
+  tx(on(5), 'expense', 45.9, 'Subscriptions', 'Phone plan');
+  tx(on(6), 'expense', 22.98, 'Subscriptions', 'Spotify + iCloud');
+  if (m === 1) tx(on(14), 'income', 850, 'Freelance', 'Logo for a friend\'s café');
+  for (let w = 0; w < 4; w++) {
+    tx(on(2 + w * 7), 'expense', round(95 + rand() * 60, 2), 'Groceries', ['FairPrice', 'Sheng Siong', 'Cold Storage', 'FairPrice'][w]!);
+    tx(on(4 + w * 7), 'expense', round(40 + rand() * 50, 2), 'Transport', 'Grab and MRT');
+    for (const d of [1, 3, 5]) tx(on(Math.min(28, d + w * 7)), 'expense', round(6 + rand() * 18, 2), 'Food', ['Chicken rice', 'Nasi lemak', 'Mee rebus', 'Prata', 'Lunch with the team', 'Dinner out'][Math.floor(rand() * 6)]!);
+  }
+  tx(on(18), 'expense', round(120 + rand() * 260, 2), 'Shopping', ['Uniqlo', 'Shopee', 'IKEA'][m]!);
+  tx(on(20), 'expense', 50, 'Giving', 'Monthly sadaqah');
+  tx(on(22), 'expense', round(30 + rand() * 90, 2), 'Entertainment', 'Cinema and bowling');
+}
+addHolding(store, { kind: 'cash', name: 'DBS Multiplier', quantity: 14_600 });
+addHolding(store, { kind: 'cash', name: 'Trust Bank savings', quantity: 3_250 });
+addHolding(store, { kind: 'retirement', name: 'CPF Ordinary Account', quantity: 1, price: 61_400 });
+addHolding(store, { kind: 'fund', name: 'Endowus Core 80/20', symbol: 'ENDOWUS', quantity: 1, price: 8_920, costBasis: 8_200 });
+addHolding(store, { kind: 'stock', name: 'Vanguard S&P 500 ETF', symbol: 'VOO', quantity: 6, price: 548.2, costBasis: 2_910, currency: 'USD' });
+logTrade(store, { symbol: 'BTC', side: 'buy', quantity: 0.04, price: 81_200, fee: 3.2, date: day(70), venue: 'Coinhako' }, 'demo');
+logTrade(store, { symbol: 'ETH', side: 'buy', quantity: 1.2, price: 2_640, fee: 3.1, date: day(52), venue: 'Coinhako' }, 'demo');
+logTrade(store, { symbol: 'SOL', side: 'buy', quantity: 18, price: 141.5, fee: 2.5, date: day(30), venue: 'OKX' }, 'demo');
+logTrade(store, { symbol: 'BTC', side: 'buy', quantity: 0.02, price: 94_800, fee: 1.9, date: day(18), venue: 'Coinhako' }, 'demo');
+logTrade(store, { symbol: 'SOL', side: 'sell', quantity: 6, price: 176.2, fee: 1.1, date: day(6), venue: 'OKX' }, 'demo');
+addAlert(store, { symbol: 'BTC', price: 120_000, direction: 'above', note: 'Take a third off the table' });
+addAlert(store, { symbol: 'ETH', price: 2_400, direction: 'below', note: 'Buy the dip with the bonus' });
+const card = addDebt(store, { name: 'Citi Rewards card', kind: 'credit_card', lender: 'Citibank', balance: 3_840, original: 6_000, apr: 26.9, minPayment: 250, dueDay: 25 });
+payDebt(store, card.id, 400, day(20));
+const car = addDebt(store, { name: 'Car loan', kind: 'car', lender: 'Maybank', balance: 38_600, original: 62_000, apr: 2.78, minPayment: 980, dueDay: 8 });
+addDebt(store, { name: 'Laptop instalments', kind: 'bnpl', lender: 'Atome', balance: 600, original: 1_800, apr: 0, minPayment: 300, dueDay: 15 });
+// What comes round: pay and fixed bills log themselves, the utility bill waits to be marked paid.
+const nextOn = (dom: number) => (firstOf(0, dom) >= today ? firstOf(0, dom) : firstOf(-1, dom));
+// Paid on the last working day of the month: day 31 is each month's last, then back past weekends and holidays.
+const monthEndDay = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0).getDate();
+addRecurring(store, { kind: 'income', name: 'Salary', amount: 7200, category: 'Salary', cadence: 'monthly', next: `${today.slice(0, 8)}${monthEndDay}`, day: 31, weekend: 'before' }, today);
+addRecurring(store, { kind: 'expense', name: 'Rent', amount: 2400, category: 'Housing', cadence: 'monthly', next: nextOn(1) }, today);
+addRecurring(store, { kind: 'expense', name: 'Phone plan', amount: 45.9, category: 'Subscriptions', cadence: 'monthly', next: nextOn(5) }, today);
+addRecurring(store, { kind: 'expense', name: 'Spotify + iCloud', amount: 22.98, category: 'Subscriptions', cadence: 'monthly', next: nextOn(6) }, today);
+addRecurring(store, { kind: 'expense', name: 'Monthly sadaqah', amount: 50, category: 'Giving', cadence: 'monthly', next: nextOn(20) }, today);
+addRecurring(store, { kind: 'expense', name: 'SP Group', amount: 170, category: 'Utilities', cadence: 'monthly', next: day(-2), auto: false }, today);
+addRecurring(store, { kind: 'expense', name: 'Car loan instalment', amount: 980, category: 'Debt', cadence: 'monthly', next: nextOn(8), debtId: car.id }, today);
+addRecurring(store, { kind: 'expense', name: 'Travel insurance', amount: 289, category: 'Travel', cadence: 'yearly', next: day(-24), auto: false }, today);
+db.prepare("UPDATE activity SET ts = ? WHERE entity_type LIKE 'fin_%'").run(new Date(`${day(3)}T10:00:00`).toISOString());
 
 // ── Work ────────────────────────────────────────────────────────────────────
 at(88, () => store.updateSphere(sphere.work!, { vision: "Do work I'm proud to sign, and still leave at a decent hour." }));

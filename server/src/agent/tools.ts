@@ -64,7 +64,7 @@ function goalView(g: Goal, sphereName: string) {
   };
 }
 
-const taskView = (t: Task) => ({ id: t.id, title: t.title, due: t.dueDate, done: t.done, notes: t.notes || undefined, trip_id: t.tripId || undefined });
+const taskView = (t: Task) => ({ id: t.id, title: t.title, due: t.dueDate, done: t.done, notes: t.notes || undefined, trip_id: t.tripId || undefined, project_id: t.projectId || undefined });
 
 const habitView = (h: Habit) => ({
   id: h.id,
@@ -223,11 +223,12 @@ const TOOLS: ToolDef[] = [
       sphere_id: z.string().optional(),
       goal_id: z.string().optional().describe('The goal this task advances, if any'),
       trip_id: z.string().optional().describe('The trip this to-do is for (book the hotel, check in online), from the Travel section; it then shows with the trip'),
+      project_id: z.string().optional().describe('The project this to-do belongs to, from the PROJECTS in the snapshot; it then sits with that project. Pick it whenever the to-do clearly belongs to one'),
       due_date: date.optional(),
       notes: z.string().max(1000).optional(),
     }),
     (i, { store }) => {
-      const t = store.createTask({ title: i.title, sphereId: i.sphere_id, goalId: i.goal_id, tripId: i.trip_id, dueDate: i.due_date, notes: i.notes });
+      const t = store.createTask({ title: i.title, sphereId: i.sphere_id, goalId: i.goal_id, tripId: i.trip_id, projectId: i.project_id, dueDate: i.due_date, notes: i.notes });
       return { data: taskView(t), summary: `Added task: ${t.title}${t.dueDate ? ` (due ${prettyDay(t.dueDate)})` : ''}` };
     },
   ),
@@ -242,11 +243,22 @@ const TOOLS: ToolDef[] = [
       due_date: date.nullable().optional().describe('null clears the date'),
       notes: z.string().max(1000).optional(),
       trip_id: z.string().nullable().optional().describe('Attach to a trip, or null to detach'),
+      project_id: z.string().nullable().optional().describe('Move into a project, or null to take it out of one'),
     }),
     (i, { store }) => {
-      const t = store.updateTask(i.task_id, { done: i.done, title: i.title, dueDate: i.due_date, notes: i.notes, tripId: i.trip_id });
+      const t = store.updateTask(i.task_id, { done: i.done, title: i.title, dueDate: i.due_date, notes: i.notes, tripId: i.trip_id, projectId: i.project_id });
       const what = i.done === true ? 'Done' : i.due_date !== undefined ? 'Rescheduled' : 'Updated';
       return { data: taskView(t), summary: `${what}: ${t.title}` };
+    },
+  ),
+
+  tool(
+    'create_project',
+    'Start a project: a named group of to-dos within a sphere (a launch, a report, a workstream). Use it when the user names a piece of work that several to-dos belong to. Asking for a name that already exists in the sphere returns that project.',
+    z.object({ sphere_id: id('sphere'), name: z.string().min(1).max(80) }),
+    (i, { store }) => {
+      const p = store.createProject({ sphereId: i.sphere_id, name: i.name });
+      return { data: { id: p.id, name: p.name, sphere_id: p.sphereId }, summary: `Project: ${p.name}` };
     },
   ),
 

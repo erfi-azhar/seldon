@@ -188,6 +188,7 @@ export function Settings() {
             {sun.pref === 'sun' ? 'Dawn, day, dusk and evening colours from the sun where you are. ' : 'The sky on Today still follows the sun. '}
             It’s {PHASE_NAME[sun.phase].toLowerCase()} now. Today: dawn {clock(sun.marks.dawn)}, day {clock(sun.marks.day)}, dusk {clock(sun.marks.dusk)}, evening {clock(sun.marks.evening)}
             {sun.source === 'device' ? ', from this device’s location.' : sun.source === 'saved' ? ', from your prayer-times location.' : ', estimated from your time zone. Allow location, or set one for prayer times, to make it exact.'}
+            {sun.source !== 'guess' && ' The sky also shows the weather there, from Open-Meteo.'}
           </p>
         </div>
       </section>

@@ -2,20 +2,32 @@
 
 import { ArrowDownRight, ArrowUpRight, Flame, Pencil, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { Goal, Habit, Metric, Task } from '../../../shared/types.ts';
+import type { Goal, Habit, Metric, Project, Task } from '../../../shared/types.ts';
 import { useWrite, write } from '../api.ts';
-import { addDays, cx, dueLabel, formatNumber, hueStyle, parseDay, parseNumber, pct, relativeDay, todayStr } from '../lib.ts';
+import { addDays, cx, dueLabel, formatNumber, hueStyle, parseDay, parseNumber, pct, relativeDay, isoWeek, todayStr, weekMonday, weekRange } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { Check, ProgressBar, SphereSelect } from './ui.tsx';
 
 // ── Tasks ───────────────────────────────────────────────────────────────────
 
-export function TaskRow({ task, showSphere = true }: { task: Task; showSphere?: boolean }) {
+export function TaskRow({
+  task,
+  showSphere = true,
+  tag,
+  showDue = true,
+}: {
+  task: Task;
+  showSphere?: boolean;
+  /** A small label beside the date, such as the to-do's project. */
+  tag?: React.ReactNode;
+  /** Leave the date out where the list already says it, as under a day's heading. */
+  showDue?: boolean;
+}) {
   const { sphere, openSheet } = useApp();
   const today = todayStr();
   const s = sphere(task.sphereId);
   const toggle = useWrite((done: boolean) => write.patch(`/tasks/${task.id}`, { done }));
-  const due = task.dueDate && !task.done ? dueLabel(task.dueDate, today) : null;
+  const due = showDue && task.dueDate && !task.done ? dueLabel(task.dueDate, today) : null;
   // Shown immediately, before the server confirms.
   const done = toggle.isPending ? toggle.variables : task.done;
 
@@ -28,6 +40,7 @@ export function TaskRow({ task, showSphere = true }: { task: Task; showSphere?: 
         {showSphere && s && <span className="sr-only">, {s.name}</span>}
       </button>
       <span className="task-meta">
+        {tag && <span className="task-tag">{tag}</span>}
         {due && <span className={cx(due.late && 'late')}>{due.text}</span>}
         {showSphere && s && <span className="dot" title={s.name} aria-hidden />}
       </span>
@@ -39,18 +52,27 @@ export function AddTask({
   sphereId,
   goalId,
   tripId,
+  projectId,
+  projects,
   dueDate = '',
   placeholder = 'Add a task…',
+  autoFocus,
 }: {
   sphereId?: string;
   goalId?: string;
   tripId?: string;
+  /** The project a new to-do goes into. */
+  projectId?: string;
+  /** Projects to choose from while typing, when no project is fixed. */
+  projects?: Project[];
+  autoFocus?: boolean;
   /** The due date a new task starts with (it can still be changed). */
   dueDate?: string;
   placeholder?: string;
 }) {
   const [title, setTitle] = useState('');
   const [sphere, setSphere] = useState<string | null>(null);
+  const [project, setProject] = useState<string>('');
   const [due, setDue] = useState(dueDate);
   // A word after adding when the new task won't appear in this list (a list of what's due
   // on a day only shows that day), or when the add failed.
@@ -70,7 +92,14 @@ export function AddTask({
     if (!name) return;
     const chosenDue = due;
     add.mutate(
-      { title: name, sphereId: sphereId ?? sphere, goalId: goalId ?? null, ...(tripId ? { tripId } : {}), dueDate: chosenDue || null },
+      {
+        title: name,
+        sphereId: sphereId ?? sphere,
+        goalId: goalId ?? null,
+        ...(tripId ? { tripId } : {}),
+        ...(projectId || project ? { projectId: projectId || project } : {}),
+        dueDate: chosenDue || null,
+      },
       {
         onSuccess: () => {
           if (!dueDate || chosenDue === dueDate || (chosenDue && chosenDue < dueDate)) return say(null);
@@ -92,10 +121,20 @@ export function AddTask({
   return (
     <form className="add-row" onSubmit={submit}>
       <Plus size={16} className="faint" aria-hidden />
-      <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={placeholder} aria-label="New task" maxLength={200} />
+      <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={placeholder} aria-label="New task" maxLength={200} autoFocus={autoFocus} />
       {title.trim() && (
         <>
           {!sphereId && !goalId && !tripId && <SphereSelect className="mini-select" value={sphere} onChange={setSphere} noneLabel="Sphere" />}
+          {!projectId && !!projects?.length && (
+            <select className="select mini-select" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          )}
           <input type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Due date" />
           <button type="submit" className="btn btn-primary btn-sm">
             Add
@@ -113,13 +152,47 @@ export function AddTask({
 
 // ── Habits ──────────────────────────────────────────────────────────────────
 
+/** Which week a habit list shows, for beside the card's title: "Week 46 · Nov 9–15". */
+export function HabitWeekLabel() {
+  const today = todayStr();
+  return (
+    <span className="hint habit-week-label">
+      Week {isoWeek(today)}
+      <span className="week-range"> · {weekRange(today)}</span>
+    </span>
+  );
+}
+
+/** The first row of a habit list: a day letter over each dot. */
+export function HabitWeekHead() {
+  const today = todayStr();
+  const monday = weekMonday(today);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  return (
+    <li className="habit habit-week-head" aria-hidden>
+      <span className="check-spacer" />
+      <span className="habit-name" />
+      <span className="week">
+        {days.map((d) => (
+          <span key={d} className={cx(d === today && 'is-today')}>
+            {parseDay(d).toLocaleDateString(undefined, { weekday: 'narrow' })}
+          </span>
+        ))}
+      </span>
+      <span className="streak" />
+    </li>
+  );
+}
+
 export function HabitRow({ habit, showSphere = false }: { habit: Habit; showSphere?: boolean }) {
   const { sphere, openSheet } = useApp();
   const today = todayStr();
   const s = sphere(habit.sphereId);
   const log = useWrite((date: string) => write.post(`/habits/${habit.id}/log?date=${today}`, { date }));
   const done = new Set(habit.log);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
+  // This calendar week, Monday to Sunday; days still ahead can't be checked yet.
+  const monday = weekMonday(today);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const cadence = habit.cadence === 'daily' ? 'Daily' : `${habit.weekCount} of ${habit.targetPerWeek} this week`;
 
   return (
@@ -132,12 +205,13 @@ export function HabitRow({ habit, showSphere = false }: { habit: Habit; showSphe
           {cadence}
         </small>
       </button>
-      <div className="week" aria-label="Last seven days">
+      <div className="week" aria-label="This week, Monday to Sunday">
         {days.map((d) => (
           <button
             key={d}
             type="button"
             className={cx(d === today && 'is-today')}
+            disabled={d > today}
             aria-pressed={done.has(d)}
             aria-label={`${parseDay(d).toLocaleDateString(undefined, { weekday: 'long' })}: ${done.has(d) ? 'done' : 'not done'}`}
             title={parseDay(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}

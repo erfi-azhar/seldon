@@ -135,16 +135,21 @@ export function hijriLabel(date: string): string {
 
 /** The next (or current) Ramadan by the Umm al-Qura calendar. */
 export function ramadanFrom(date: string): FaithState['ramadan'] {
+  const endFrom = (start: string) => {
+    let end = start;
+    while (hijriParts(addDays(end, 1)).month === '9') end = addDays(end, 1);
+    return end;
+  };
   const now = hijriParts(date);
   if (now.month === '9') {
     let start = date;
     while (hijriParts(addDays(start, -1)).month === '9') start = addDays(start, -1);
-    return { start, daysUntil: 0, inRamadan: true, day: Number(now.day) };
+    return { start, end: endFrom(start), daysUntil: 0, inRamadan: true, day: Number(now.day) };
   }
   for (let i = 1; i < 400; i++) {
     const d = addDays(date, i);
     const p = hijriParts(d);
-    if (p.month === '9' && p.day === '1') return { start: d, daysUntil: i, inRamadan: false, day: null };
+    if (p.month === '9' && p.day === '1') return { start: d, end: endFrom(d), daysUntil: i, inRamadan: false, day: null };
   }
   return null;
 }
@@ -217,7 +222,7 @@ export function faithState(store: Store, today: string, now: Date = new Date()):
     .map((r) => ({ date: r.date, prayer: r.prayer }))
     .sort((a, b) => b.date.localeCompare(a.date) || PRAYERS.indexOf(b.prayer) - PRAYERS.indexOf(a.prayer));
 
-  return { configured, settings: s, today: day, current, next, week, autoMissed, owed: owed(store, s), hijri: hijriLabel(today), ramadan: ramadanFrom(today) };
+  return { configured, settings: s, today: day, tomorrow: timesFor(s, addDays(today, 1)), current, next, week, autoMissed, owed: owed(store, s), hijri: hijriLabel(today), ramadan: ramadanFrom(today) };
 }
 
 export function logPrayer(store: Store, date: string, prayer: PrayerName, status: PrayerStatus | null): void {
