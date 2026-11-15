@@ -9,6 +9,7 @@ import { SignalsCard } from '../components/Signals.tsx';
 import { HillBand } from '../components/Hill.tsx';
 import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill } from '../components/Travel.tsx';
+import { JourneyCard } from '../components/Journey.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
 import { Loading } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
@@ -334,6 +335,7 @@ export function Today() {
 
       <div className="today-grid">
         <div className="col">
+          <JourneyCard />
           <TravelModeCard />
           <SignalsCard />
           <Journal key={o.date} date={o.date} initial={o.journal?.body ?? ''} />

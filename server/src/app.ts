@@ -13,6 +13,7 @@ import type { DB } from './db.ts';
 import { read, today } from './http.ts';
 import { installFeatures } from './features/index.ts';
 import { hasCaptureToken } from './features/capture.ts';
+import { hasTrackKey } from './features/journey.ts';
 import { Scheduler } from './jobs.ts';
 import { screeningsSchema } from './screenings-schema.ts';
 import { actingAs, Invalid, localDate, NotFound, nowIso, Store } from './store.ts';
@@ -293,7 +294,9 @@ export function createApp(opts: AppOptions): Hono {
     }
     // Shortcuts and other apps save links with the capture token instead of a session.
     const tokenCapture = c.req.method === 'POST' && c.req.path === '/api/capture' && hasCaptureToken(store, c);
-    if (!c.req.path.startsWith('/api/auth/') && !tokenCapture && !signedIn(c)) {
+    // The phone's tracker app (OwnTracks) posts locations with its own key.
+    const tokenTrack = c.req.method === 'POST' && c.req.path === '/api/journey/owntracks' && hasTrackKey(store, c);
+    if (!c.req.path.startsWith('/api/auth/') && !tokenCapture && !tokenTrack && !signedIn(c)) {
       return c.json({ error: 'Sign in first.' }, 401);
     }
     // The browser says which zone it is in, so "today" and "quiet for 3 days" are its days.
