@@ -112,6 +112,15 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   day. Each shows how much is paid off, when it clears at the minimum and the interest on
   the way — or that the minimum doesn't cover the interest. With more than one, it names
   where extra money goes furthest (the highest rate). Payments can be taken back.
+- **Where your pay goes.** Each month the pay you expect (or recent months' average) is split,
+  in order: bills and debt minimums, a set-aside for yearly bills, everyday spending (your
+  recent average of what no recurring item covers), a little guilt-free money, a first month
+  of cash if you don't have one, extra on debt charging 8% or more (highest rate first), half
+  of what's spare into the emergency fund until it holds six months of essentials, and the
+  rest invested, with crypto held to a small share. Every amount says why; the months, the
+  crypto cap and the spending share are yours to change. When pay arrives it lands under
+  *Needs you* with the transfers to make as tasks, and Seldon can talk it through. A rule of
+  thumb, not financial advice.
 - **Net worth** is what you own less what you owe, at the top of the sphere. If the sphere
   tracks a *Net worth* number, it follows once a day.
 - **A crypto desk, live.** Prices stream tick by tick from Binance's public market data
@@ -248,7 +257,7 @@ named like `delete_*`) are never offered to Seldon.
 ## Seldon, concretely
 
 - **It works through the same rules you do.** Every tool is a validated wrapper over the
-  data layer the app itself uses. There are 60, from logging a habit to logging a crypto
+  data layer the app itself uses. There are 62, from logging a habit to logging a crypto
   trade or adding a book to your reading list, plus the read tools of any MCP server you connect.
 - **It cannot delete.** It can add, log, update and complete. What it adds or logs — tasks,
   goals, habits, check-ins, numbers, notes, food, workouts, trips — is attributed to it in

@@ -3,7 +3,7 @@ import { after, beforeEach, test } from 'node:test';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
 import { Store } from '../src/store.ts';
-import { addAlert, addDebt, addHolding, addRecurring, addTransaction, checkAlerts, countryOf, financeState, holidays, logTrade, markPaid, nthDate, payDebt, payoff, postDue, refreshHolidays, remindBills, skipNext, syncSymbols, toWorkingDay, updateRecurring } from '../src/features/finance.ts';
+import { addAlert, addDebt, addHolding, addRecurring, planSignal, addTransaction, checkAlerts, countryOf, financeState, holidays, logTrade, markPaid, nthDate, payDebt, payoff, postDue, refreshHolidays, remindBills, skipNext, syncSymbols, toWorkingDay, updateRecurring } from '../src/features/finance.ts';
 import { marketFor, parseTick, setMarketTransport, type MarketTransport } from '../src/features/markets.ts';
 import '../src/features/index.ts';
 
@@ -470,4 +470,129 @@ test('working days without a holiday list are weekdays, and unknown places fetch
   assert.equal(holidays(store).size, 0);
   const pay = addRecurring(store, { kind: 'income', name: 'Salary', amount: 1, category: 'Salary', cadence: 'monthly', next: '2027-01-31', day: 31, weekend: 'before' }, TODAY);
   assert.equal(pay.next, '2027-01-29', '31 Jan 2027 is a Sunday');
+});
+
+// ── Salary plan ────────────────────────────────────────────────────────────
+
+const PLAN_DAY = '2026-11-15';
+const planOf = (store: Store) => financeState(store, PLAN_DAY).plan!;
+const bucket = (store: Store, key: string) => planOf(store).buckets.find((b) => b.key === key)?.amount ?? 0;
+
+/** Pay, rent and two months of everyday spending: S$6,000 in, S$2,000 rent, S$1,500 everything else. */
+function planned(): Store {
+  const store = fresh();
+  addRecurring(store, { kind: 'income', name: 'Salary', amount: 6000, category: 'Salary', cadence: 'monthly', next: '2026-11-30', day: 31, weekend: 'before' }, PLAN_DAY);
+  addRecurring(store, { kind: 'expense', name: 'Rent', amount: 2000, category: 'Housing', cadence: 'monthly', next: '2026-12-01' }, PLAN_DAY);
+  for (const m of ['2026-09', '2026-10']) {
+    addTransaction(store, { kind: 'expense', amount: 2000, category: 'Housing', description: 'Rent', date: `${m}-01` });
+    addTransaction(store, { kind: 'expense', amount: 1000, category: 'Groceries', description: 'FairPrice', date: `${m}-05` });
+    addTransaction(store, { kind: 'expense', amount: 500, category: 'Food', description: 'Hawker', date: `${m}-12` });
+  }
+  addTransaction(store, { kind: 'expense', amount: 9999, category: 'Shopping', description: 'This month is not history yet', date: '2026-11-03' });
+  return store;
+}
+
+test('the plan: bills, everyday spending, then the safety net and investing, adding up to pay', () => {
+  const store = planned();
+  addHolding(store, { kind: 'cash', name: 'DBS Multiplier', quantity: 10_000 });
+  addHolding(store, { kind: 'fund', name: 'Endowus Core', quantity: 1, price: 20_000 });
+  const p = planOf(store);
+  assert.equal(p.pay, 6000);
+  assert.equal(p.payFrom, 'recurring');
+  assert.equal(bucket(store, 'bills'), 2000);
+  assert.equal(bucket(store, 'everyday'), 1500, 'past rent is matched to the recurring item, not counted twice; this month is left out');
+  assert.equal(p.essentials, 3500);
+  assert.equal(bucket(store, 'fun'), 300, '5% of pay');
+  assert.equal(bucket(store, 'buffer'), 0, 'already more than a month of cash');
+  // 2,200 spare: half to the emergency fund (target 21,000, have 10,000), half invested, 10% of that crypto room.
+  assert.equal(bucket(store, 'emergency'), 1100);
+  assert.equal(bucket(store, 'crypto'), 110, 'crypto gets 10% of what is invested this month, not all of it');
+  assert.equal(bucket(store, 'invest'), 990);
+  assert.equal(p.buckets.reduce((n, b) => n + b.amount, 0), 6000);
+  assert.deepEqual(p.emergency, { target: 21_000, have: 10_000 });
+  assert.match(p.buckets.find((b) => b.key === 'emergency')!.action!, /into savings \(DBS Multiplier\)/);
+});
+
+test('costly debt takes everything spare, on top of its minimum, highest rate first', () => {
+  const store = planned();
+  addHolding(store, { kind: 'cash', name: 'Savings', quantity: 6000 });
+  addDebt(store, { name: 'Citi card', kind: 'credit_card', balance: 1000, apr: 26.9, minPayment: 100 });
+  addDebt(store, { name: 'Atome', kind: 'bnpl', balance: 3000, apr: 18, minPayment: 200 });
+  addDebt(store, { name: 'Mortgage', kind: 'mortgage', balance: 300_000, apr: 2.6, minPayment: 1500 });
+  const p = planOf(store);
+  assert.equal(bucket(store, 'bills'), 2000 + 100 + 200 + 1500, 'minimums are bills');
+  // 6,000 − 5,300 essentials = 700 spare, less fun (5% = 300, capped at a quarter of spare = 175).
+  // Cash (6,000) already covers a month of essentials, so the rest goes to the 26.9% card.
+  assert.equal(bucket(store, 'fun'), 175);
+  assert.equal(bucket(store, 'debt'), 525);
+  assert.equal(bucket(store, 'emergency') + bucket(store, 'invest') + bucket(store, 'crypto'), 0);
+  assert.ok(!p.notes.some((n) => /crypto/i.test(n)), 'no word on crypto when nothing is being invested');
+  assert.match(p.buckets.find((b) => b.key === 'debt')!.action!, /^Pay SGD\s525 on Citi card \(26\.9%\) on top of the minimum$/);
+  assert.ok(!p.buckets.find((b) => b.key === 'debt')!.reason.includes('Mortgage'), 'a cheap mortgage is not costly debt');
+});
+
+test('no cash at all: a first month of essentials before anything else', () => {
+  const store = planned();
+  addDebt(store, { name: 'Card', kind: 'credit_card', balance: 5000, apr: 25, minPayment: 0 });
+  // 2,500 spare, 300 of it fun: the other 2,200 all goes towards the first month of cash (3,500).
+  assert.equal(bucket(store, 'buffer'), 2200);
+  assert.equal(bucket(store, 'debt'), 0);
+});
+
+test('crypto over its cap gets no new money; the rules can change', () => {
+  const store = planned();
+  addHolding(store, { kind: 'cash', name: 'Savings', quantity: 50_000 });
+  addHolding(store, { kind: 'fund', name: 'Fund', quantity: 1, price: 10_000 });
+  addHolding(store, { kind: 'crypto', name: 'BTC', symbol: 'BTC', quantity: 1, price: 10_000, currency: 'SGD' });
+  let p = planOf(store);
+  assert.equal(bucket(store, 'crypto'), 0);
+  assert.equal(bucket(store, 'emergency'), 0, 'the emergency fund is full');
+  assert.equal(bucket(store, 'invest'), 6000 - 3500 - 300);
+  assert.ok(p.notes.some((n) => /50% of your investments, above your 10% cap/.test(n)));
+  store.db.prepare("UPDATE settings SET value = json_set(value, '$.plan', json('{\"funPct\":0,\"cryptoCapPct\":60}')) WHERE key = 'finance'").run();
+  p = planOf(store);
+  assert.equal(bucket(store, 'fun'), 0);
+  assert.equal(p.rules.cryptoCapPct, 60);
+  assert.ok(bucket(store, 'crypto') > 0);
+});
+
+test('pay that falls short says so; pay comes from history when nothing recurs; no income, no plan', () => {
+  const short = fresh();
+  addRecurring(short, { kind: 'income', name: 'Salary', amount: 1000, category: 'Salary', cadence: 'monthly', next: '2026-11-30' }, PLAN_DAY);
+  addRecurring(short, { kind: 'expense', name: 'Rent', amount: 1500, category: 'Housing', cadence: 'monthly', next: '2026-12-01' }, PLAN_DAY);
+  assert.equal(planOf(short).shortfall, 500);
+  assert.deepEqual(planOf(short).buckets.map((b) => b.key), ['bills']);
+
+  const hist = fresh();
+  addTransaction(hist, { kind: 'income', amount: 4000, category: 'Freelance', date: '2026-09-20' });
+  addTransaction(hist, { kind: 'income', amount: 6000, category: 'Freelance', date: '2026-10-20' });
+  const p = planOf(hist);
+  assert.deepEqual([p.pay, p.payFrom], [5000, 'history']);
+  assert.ok(p.notes.some((n) => /average of the last 2 months/.test(n)));
+
+  assert.equal(financeState(fresh(), PLAN_DAY).plan, null);
+});
+
+test('payday brings the plan under Needs you, once a month, with the moves as tasks', () => {
+  const store = planned();
+  addHolding(store, { kind: 'cash', name: 'Savings', quantity: 10_000 });
+  assert.equal(planSignal(store, PLAN_DAY), false, 'no pay yet this month');
+  postDue(store, '2026-11-30');
+  assert.equal(planSignal(store, '2026-11-30'), true);
+  assert.equal(planSignal(store, '2026-11-30'), false, 'once a month');
+  const sig = store.db.prepare("SELECT title, body, actions FROM signals WHERE source = 'finance' AND kind = 'plan'").get() as { title: string; body: string; actions: string };
+  // Currency formatting puts a non-breaking space after the code.
+  assert.match(sig.title, /where SGD\s6,000 goes this month/);
+  assert.match(sig.body, /Emergency fund: SGD\s1,100/);
+  const actions = JSON.parse(sig.actions) as { type: string; title: string; dueDate: string }[];
+  assert.ok(actions.length > 0 && actions.every((a) => a.type === 'task' && a.dueDate === '2026-12-02'));
+  assert.ok(actions.some((a) => /^Move SGD\s1,100 into savings/.test(a.title)));
+});
+
+test('money paid straight into a holding, like CPF, is not pay to split', () => {
+  const store = planned();
+  const cpf = addHolding(store, { kind: 'retirement', name: 'CPF Ordinary', quantity: 1, price: 50_000 });
+  addRecurring(store, { kind: 'income', name: 'CPF contributions', amount: 2000, category: 'Savings', cadence: 'monthly', next: '2026-11-30', holdingId: cpf.id }, PLAN_DAY);
+  assert.equal(planOf(store).pay, 6000);
+  assert.equal(planOf(store).buckets.reduce((n, b) => n + b.amount, 0), 6000);
 });

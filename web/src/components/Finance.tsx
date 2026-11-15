@@ -3,7 +3,7 @@
 
 import { ArrowDownLeft, ArrowUpRight, Bell, ChevronRight, Pencil, Plus, RefreshCw, Repeat, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, MarketState, Quote, Recurring, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
+import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, MarketState, PlanBucketKey, PlanRules, Quote, Recurring, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { Link } from 'wouter';
 import { financeWrite, useFinance, useMarket, useSpheres, useWrite } from '../api.ts';
 import { addDays, cx, dueLabel, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
@@ -424,6 +424,123 @@ function BudgetSheet({ f, onClose }: { f: FinanceState; onClose: () => void }) {
         ))}
       </div>
       {wrong && <p className="error-text">{NOT_A_NUMBER}</p>}
+      {save.error && <p className="error-text">{save.error.message}</p>}
+    </Modal>
+  );
+}
+
+// ── Where your pay goes ─────────────────────────────────────────────────────
+
+const PLAN_HUE: Record<PlanBucketKey, number> = { bills: 255, yearly: 285, everyday: 220, fun: 330, buffer: 175, debt: 25, emergency: 155, crypto: 62, invest: 135 };
+const planColor = (key: PlanBucketKey) => `oklch(0.7 0.13 ${PLAN_HUE[key]})`;
+/** Plan amounts are whole units; they read without cents. */
+const whole = (n: number, c: string) => money(n, c).replace(/[.,]00(?=\D*$)/, '');
+const share = (part: number, of: number) => (part / of < 0.005 ? '<1%' : `${Math.round((part / of) * 100)}%`);
+
+/** This month's recommended split of pay, bucket by bucket, each saying why. */
+export function PlanCard() {
+  const f = useLiveFinance();
+  const { ask, agentName } = useApp();
+  const [rules, setRules] = useState(false);
+  if (!f) return null;
+  const c = f.currency;
+  const p = f.plan;
+  const monthName = new Date(`${f.month.key}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' });
+
+  return (
+    <section className="card fin-plan">
+      <div className="card-head">
+        <h2 className="card-title">Where your pay goes</h2>
+        {p && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRules(true)}>
+            <Pencil size={12} /> Rules
+          </button>
+        )}
+      </div>
+      {!p ? (
+        <p className="empty">Add your salary under Bills &amp; pay, or log a month of income, and a split for each month's pay appears here.</p>
+      ) : (
+        <>
+          <div className="fin-total">
+            <b className="num">{whole(p.pay, c)}</b>
+            <span className="muted">
+              {monthName}'s pay{p.payFrom === 'history' ? ', from recent months' : ''}
+            </span>
+          </div>
+          <div className="fin-plan-bar" aria-hidden>
+            {p.buckets.map((b) => (
+              <i key={b.key} style={{ flexGrow: b.amount, background: planColor(b.key) }} title={`${b.label}: ${whole(b.amount, c)}`} />
+            ))}
+          </div>
+          {p.shortfall !== null && <p className="fin-tip is-bad">{whole(p.shortfall, c)} short of bills and everyday spending this month.</p>}
+          <ol className="fin-plan-list">
+            {p.buckets.map((b) => (
+              <li key={b.key}>
+                <i className="fin-kind" style={{ background: planColor(b.key) }} aria-hidden />
+                <div className="grow">
+                  <div className="fin-plan-line">
+                    <b>{b.label}</b>
+                    <span className="num">{whole(b.amount, c)}</span>
+                    <span className="faint num fin-plan-pct">{share(b.amount, p.pay)}</span>
+                  </div>
+                  {b.reason && <p className="fin-plan-why">{b.reason}</p>}
+                  {b.action && b.key !== 'yearly' && <p className="fin-plan-do">→ {b.action}</p>}
+                </div>
+              </li>
+            ))}
+          </ol>
+          {p.notes.map((n) => (
+            <p key={n} className="fin-tip">
+              {n}
+            </p>
+          ))}
+          <div className="fin-plan-foot">
+            <span className="hint">
+              Emergency fund {money(p.emergency.have, c, true)} of {money(p.emergency.target, c, true)} · a rule of thumb, not financial advice
+            </span>
+            <button type="button" className="btn btn-tint btn-sm" onClick={() => ask(`Look at my salary plan for ${monthName} and talk me through it. Is anything off given what you know about me, and what would you change?`)}>
+              <span className="btn-text">Talk it through with {agentName}</span> <ArrowUpRight size={14} />
+            </button>
+          </div>
+        </>
+      )}
+      {rules && p && <PlanRulesSheet rules={p.rules} onClose={() => setRules(false)} />}
+    </section>
+  );
+}
+
+function PlanRulesSheet({ rules, onClose }: { rules: PlanRules; onClose: () => void }) {
+  const [r, setR] = useState({ emergencyMonths: String(rules.emergencyMonths), cryptoCapPct: String(rules.cryptoCapPct), funPct: String(rules.funPct) });
+  const save = useWrite(() => financeWrite.put('/settings', { plan: { emergencyMonths: Math.round(parseNumber(r.emergencyMonths)), cryptoCapPct: parseNumber(r.cryptoCapPct), funPct: parseNumber(r.funPct) } }));
+  const months = parseNumber(r.emergencyMonths);
+  const cap = parseNumber(r.cryptoCapPct);
+  const fun = parseNumber(r.funPct);
+  const ok = months >= 1 && months <= 24 && cap >= 0 && cap <= 100 && fun >= 0 && fun <= 30;
+  return (
+    <Modal
+      title="Rules for the plan"
+      onClose={onClose}
+      footer={
+        <>
+          <span className="hint">The order stays: bills, a first month of cash, costly debt, the emergency fund, then investing.</span>
+          <button className="btn btn-primary btn-sm" disabled={!ok || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+            Save
+          </button>
+        </>
+      }
+    >
+      <div className="field-row">
+        <Field label="Emergency fund (months)" hint="Of bills and everyday spending. 3 to 6 is usual; more if your income is uneven">
+          <input className="input num" inputMode="numeric" value={r.emergencyMonths} onChange={(e) => setR({ ...r, emergencyMonths: e.target.value })} data-autofocus />
+        </Field>
+        <Field label="Crypto cap (% of investments)" hint="New money stops going to crypto above this">
+          <input className="input num" inputMode="decimal" value={r.cryptoCapPct} onChange={(e) => setR({ ...r, cryptoCapPct: e.target.value })} />
+        </Field>
+        <Field label="Yours to spend (% of pay)" hint="Guilt-free money, up to 30%">
+          <input className="input num" inputMode="decimal" value={r.funPct} onChange={(e) => setR({ ...r, funPct: e.target.value })} />
+        </Field>
+      </div>
+      {!ok && <p className="error-text">Months from 1 to 24, crypto from 0 to 100%, spending money from 0 to 30%.</p>}
       {save.error && <p className="error-text">{save.error.message}</p>}
     </Modal>
   );
