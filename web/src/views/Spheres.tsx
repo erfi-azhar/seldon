@@ -195,11 +195,11 @@ export function SphereDetail({ id }: { id: string }) {
       <div className="band-label">Today</div>
       {s.key === 'travels' && <TravelTrips />}
       {s.key === 'finances' && <MoneyHero />}
+      {/* Work's to-dos are the heart of the sphere, so they get the full width. */}
+      {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} />}
       {/* With a daily card on the left, tasks join habits on the right so the columns even out. */}
       <div className="detail-grid">
         <div className="col">
-          {/* Work leads with the work itself; everywhere else, what needs you comes first. */}
-          {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} />}
           <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
           {s.key === 'health' && <HealthToday />}
           {s.key === 'faith' && <PrayerCard />}
