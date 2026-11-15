@@ -141,7 +141,9 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
 - **Hide amounts.** The eye on the net worth card (and on Today's crypto card) masks every
   amount of yours: balances, pay, bills, the plan, positions, quantities and P&L. Market
   prices and percentages stay. It's remembered on that device, for checking in public.
-- **Net worth** is what you own less what you owe, at the top of the sphere. If the sphere
+- **Net worth** is what you own less what you owe, at the top of the sphere, split into liquid
+  (cash, coins, listed shares and funds: sellable within days) and illiquid (CPF, property,
+  locked-up shares). Any holding can be marked either way, for RSUs you can only sell in a buyback. If the sphere
   tracks a *Net worth* number, it follows once a day.
 - **A crypto desk, live.** Prices stream tick by tick from Binance's public market data
   (no account or key), with Coinbase taking over for coins Binance doesn't list or where it

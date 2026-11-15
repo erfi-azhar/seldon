@@ -727,6 +727,10 @@ export interface Holding {
   gainPct: number | null;
   valueBase: number | null;
   change24hPct: number | null;
+  /** Can be turned into cash within days (cash, coins, listed shares); CPF, property and the like can't. */
+  liquid: boolean;
+  /** Your own call on liquidity; null when it follows the kind. */
+  liquidSet: boolean | null;
 }
 
 export interface Trade {
@@ -895,7 +899,7 @@ export interface FinanceState {
   debts: Debt[];
   alerts: PriceAlert[];
   watchlist: string[];
-  netWorth: { assets: number; debts: number; net: number; unpriced: string[] };
+  netWorth: { assets: number; debts: number; net: number; unpriced: string[]; liquid: number; illiquid: number };
   market: MarketState;
   /** This month's recommended split of pay; null until there's income to plan. */
   plan: SalaryPlan | null;
