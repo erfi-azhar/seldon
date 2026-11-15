@@ -9,6 +9,7 @@ import type {
   ConversationSummary,
   FaithState,
   FinanceState,
+  BankruptcyState,
   XWatchState,
   MarketState,
   Goal,
@@ -359,4 +360,16 @@ export const xwatchWrite = {
   check: () => api<XWatchState>('POST', '/xwatch/check', {}),
   account: (id: string, body: object) => api<XWatchState>('PATCH', `/xwatch/accounts/${id}`, body),
   disconnect: () => api<XWatchState>('DELETE', '/xwatch'),
+};
+
+// ── Bankruptcy ──────────────────────────────────────────────────────────────
+
+export const useBankruptcy = () => useQuery({ queryKey: ['bankruptcy', todayStr()], queryFn: () => api<BankruptcyState>('GET', withDate('/bankruptcy')) });
+
+export const bankruptcyWrite = {
+  setCase: (body: object) => api<BankruptcyState>('PUT', withDate('/bankruptcy'), body),
+  pay: (body: object) => api<BankruptcyState>('POST', withDate('/bankruptcy/payments'), body),
+  unpay: (id: string) => api<BankruptcyState>('DELETE', withDate(`/bankruptcy/payments/${id}`)),
+  approve: (body: object) => api<BankruptcyState>('POST', withDate('/bankruptcy/approvals'), body),
+  unapprove: (id: string) => api<BankruptcyState>('DELETE', withDate(`/bankruptcy/approvals/${id}`)),
 };

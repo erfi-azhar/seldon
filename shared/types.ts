@@ -1468,3 +1468,68 @@ export interface PlaceGuideSection {
   /** Each item names the materials (note ids) it came from. */
   items: { name: string; text: string; sources: string[] }[];
 }
+
+// ── Bankruptcy ──────────────────────────────────────────────────────────────
+
+export interface BankruptcyCase {
+  reference: string;
+  trustee: string;
+  trusteeEmail: string;
+  /** From the Statement of Affairs: what was owed when the case began. */
+  declaredLiabilities: number | null;
+  /** Trustee and estate fees, once known. */
+  feesKnown: number | null;
+  /** The trustee's own figure for settling the estate (annulment), once given. */
+  settlementQuote: { amount: number; asOf: string } | null;
+  monthlyContribution: number | null;
+  /** Months of contributions in the target (52 for a first-time bankrupt). */
+  targetMonths: number;
+  /** The first month contributions were due, YYYY-MM. */
+  contributionsFrom: string | null;
+  status: 'active' | 'annulled' | 'discharged';
+}
+
+export interface BankruptcyPayment {
+  id: string;
+  date: string;
+  amount: number;
+  reference: string;
+  note: string;
+}
+
+export interface TravelApproval {
+  id: string;
+  place: string;
+  from: string;
+  to: string;
+  reference: string;
+  note: string;
+}
+
+/** A trip checked against the approvals: when you'd leave and get back, and whether that's covered. */
+export interface TripCheck {
+  tripId: string;
+  title: string;
+  /** The day you'd leave: the evening before an early-morning flight, since that's when you clear the airport. */
+  leave: string;
+  back: string;
+  earlyFlight: boolean;
+  status: 'covered' | 'outside' | 'none';
+  message: string;
+}
+
+export interface BankruptcyState {
+  active: boolean;
+  case: BankruptcyCase;
+  paid: number;
+  payments: BankruptcyPayment[];
+  /** Settling the estate: the trustee's quote when there is one, else declared liabilities plus known fees. */
+  settlement: { target: number; estimated: boolean; remaining: number } | null;
+  /** The contribution route: monthly × target months. */
+  contribution: { target: number; remaining: number } | null;
+  /** Paid against what the monthly contribution schedule expects by now. */
+  schedule: { months: number; expected: number; behind: number } | null;
+  thisMonth: { due: number; paid: number } | null;
+  approvals: TravelApproval[];
+  trips: TripCheck[];
+}

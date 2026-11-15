@@ -22,6 +22,7 @@ import './followups.ts';
 import './weather.ts';
 import './finance.ts';
 import './xwatch.ts';
+import './bankruptcy.ts';
 import './reading.ts';
 import './quran.ts';
 

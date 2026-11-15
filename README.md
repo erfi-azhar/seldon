@@ -138,6 +138,13 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   day, and the accounts, each one yours to watch or not. X's API is pay-per-use (about
   $0.005 a post), so every read is counted against a monthly budget you set, paced across the
   month. Without a brain, crypto words in bios and $tickers in posts do the sorting.
+- **A bankruptcy case, kept straight.** For anyone in bankruptcy or a court repayment plan: the
+  case reference and trustee, contributions paid with their receipts, how far the estate is from
+  settled (the trustee's quote once given, an estimate from the declared liabilities until then)
+  and from the contribution target, whether this month's contribution is in, and how far behind
+  the schedule it is. Travel approvals are checked against your trips, counting the evening before
+  an early-morning flight, and a one-tap email asks the trustee for a statement of account. It
+  only appears once a case is set up (from the Debts card, or by telling Seldon).
 - **Hide amounts.** The eye on the net worth card (and on Today's crypto card) masks every
   amount of yours: balances, pay, bills, the plan, positions, quantities and P&L. Market
   prices and percentages stay. It's remembered on that device, for checking in public.
@@ -279,7 +286,7 @@ named like `delete_*`) are never offered to Seldon.
 ## Seldon, concretely
 
 - **It works through the same rules you do.** Every tool is a validated wrapper over the
-  data layer the app itself uses. There are 65, from logging a habit to logging a crypto
+  data layer the app itself uses. There are 75, from logging a habit to logging a crypto
   trade or adding a book to your reading list, plus the read tools of any MCP server you connect.
 - **It cannot delete.** It can add, log, update and complete. What it adds or logs — tasks,
   goals, habits, check-ins, numbers, notes, food, workouts, trips — is attributed to it in
