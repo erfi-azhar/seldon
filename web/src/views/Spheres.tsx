@@ -447,11 +447,41 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
   );
 }
 
+/**
+ * Groups folded away, kept in this browser like the view choice. `keep` lets go of keys that no
+ * longer mean anything (a day gone by, a project archived), so the list doesn't grow forever.
+ */
+function useFolds(storageKey: string, keep: (key: string) => boolean) {
+  const [folded, setFolded] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]');
+      return new Set(Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string' && keep(k)) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggle = (key: string, open: boolean) =>
+    setFolded((prev) => {
+      if (open !== prev.has(key)) return prev;
+      const next = new Set(prev);
+      if (open) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify([...next]));
+      } catch {
+        /* the folds just aren't remembered */
+      }
+      return next;
+    });
+  return { folded, toggle };
+}
+
 /** To-dos under their projects, the project with the most pressing to-do first. */
 function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; work: Task[]; projects: Project[]; today: string }) {
   const [adding, setAdding] = useState<string | null>(null);
   const [naming, setNaming] = useState(false);
   const known = new Set(projects.map((p) => p.id));
+  const { folded, toggle } = useFolds('work-todos-folded-projects', (k) => k === 'none' || known.has(k));
   const groups = [
     ...projects.map((p) => ({ id: p.id, project: p as Project | null, name: p.name, list: work.filter((t) => t.projectId === p.id).sort(byDue) })),
     { id: 'none', project: null, name: 'No project', list: work.filter((t) => !t.projectId || !known.has(t.projectId)).sort(byDue) },
@@ -473,7 +503,13 @@ function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; 
         const due = next ? dueLabel(next, today) : null;
         const late = g.list.filter((t) => t.dueDate && t.dueDate < today).length;
         return (
-          <details key={g.id} className={cx('todo-group', !g.list.length && 'is-empty')} open={g.list.length > 0 || adding === g.id}>
+          <details
+            key={g.id}
+            className={cx('todo-group', !g.list.length && 'is-empty')}
+            // Open while adding to it; otherwise open unless you folded it (an empty one stays shut).
+            open={adding === g.id || (g.list.length > 0 && !folded.has(g.id))}
+            onToggle={(e) => g.list.length > 0 && adding !== g.id && toggle(g.id, e.currentTarget.open)}
+          >
             <summary>
               <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
               <span className="todo-group-name clamp-1">{g.name}</span>
@@ -578,37 +614,13 @@ function NewProject({ sphereId, onDone }: { sphereId: string; onDone: (created?:
   );
 }
 
-/** Days folded away in the By day view, kept in this browser like the view itself. */
-const FOLDED_KEY = 'work-todos-folded-days';
-function readFolded(today: string): Set<string> {
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(FOLDED_KEY) ?? '[]');
-    // A day that has passed joins Late, so its fold is let go rather than kept forever.
-    return new Set(Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string' && (k === 'late' || k === 'none' || k >= today)) : []);
-  } catch {
-    return new Set();
-  }
-}
-
 /**
  * Every open to-do by its due day: late ones together, then each day in turn, then undated.
- * Each day folds like a project does; the ones you fold stay folded next time.
+ * Each day folds like a project does, and the ones you fold stay folded next time.
  */
 function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; label: (t: Task) => string | undefined }) {
-  const [folded, setFolded] = useState(() => readFolded(today));
-  const toggle = (key: string, open: boolean) =>
-    setFolded((prev) => {
-      if (open !== prev.has(key)) return prev;
-      const next = new Set(prev);
-      if (open) next.delete(key);
-      else next.add(key);
-      try {
-        localStorage.setItem(FOLDED_KEY, JSON.stringify([...next]));
-      } catch {
-        /* the folds just aren't remembered */
-      }
-      return next;
-    });
+  // A day that has passed joins Late, so its fold is let go.
+  const { folded, toggle } = useFolds('work-todos-folded-days', (k) => k === 'late' || k === 'none' || k >= today);
   const groups = new Map<string, Task[]>();
   for (const t of [...tasks].sort(byDue)) {
     const key = !t.dueDate ? 'none' : t.dueDate < today ? 'late' : t.dueDate;
