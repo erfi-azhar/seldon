@@ -12063,10 +12063,12 @@ button.xw-coin:hover,
   font-weight: 600;
   color: var(--ink-2);
 }
+/* The facts spread evenly across the card, the last flush with its right edge. */
 .fc-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 18px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
@@ -12074,6 +12076,11 @@ button.xw-coin:hover,
   display: grid;
   gap: 1px;
   min-width: 0;
+  flex: 0 1 auto;
+}
+.fc-fact:last-child {
+  justify-items: end;
+  text-align: right;
 }
 .fc-fact small {
   font-size: 11px;
