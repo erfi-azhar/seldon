@@ -1916,8 +1916,14 @@ function TripCountdown({ trip }: { trip: Trip }) {
   const days = daysFrom(today, trip.startDate);
   const flights = trip.segments.filter((s) => s.kind === 'flight');
   const stays = trip.segments.filter((s) => s.kind === 'stay');
+  const { data: travel } = useTravel();
+  const home = travel?.settings.homeAirport ?? 'SIN';
   const out = flights[0];
-  const back = flights.length > 1 ? flights[flights.length - 1] : undefined;
+  // The way home is a flight back to your home airport (or to where the trip began), not just the last flight booked.
+  const back = flights
+    .slice(1)
+    .reverse()
+    .find((f) => f.toCode === home || (!!out && f.toCode === out.fromCode));
   const openTodos = trip.todos.filter((x) => !x.done).length;
   const legs = globeLegs(flights);
   const [showTodos, toggleTodos] = useTodosShown();
@@ -1952,9 +1958,9 @@ function TripCountdown({ trip }: { trip: Trip }) {
           <dd className="trip-hero-sub">{out ? leg(out) : 'No flight booked yet'}</dd>
         </div>
         <div>
-          <dt>{back ? 'Flies home' : 'Ends'}</dt>
+          <dt>{back || out ? 'Flies home' : 'Ends'}</dt>
           <dd>{weekdayShort(back ? back.startLocal.slice(0, 10) : trip.endDate)}</dd>
-          <dd className="trip-hero-sub">{back ? leg(back) : stays[0]?.title || plural(daysFrom(trip.startDate, trip.endDate) + 1, 'day')}</dd>
+          <dd className="trip-hero-sub">{back ? leg(back) : out ? 'Return not booked yet' : stays[0]?.title || plural(daysFrom(trip.startDate, trip.endDate) + 1, 'day')}</dd>
         </div>
       </dl>
       {!trip.itinerary.length && trip.segments.length > 0 && (
