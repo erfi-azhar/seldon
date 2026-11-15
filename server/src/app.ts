@@ -139,6 +139,7 @@ const S = {
     sphereId: optId,
     goalId: optId,
     tripId: optId,
+    projectId: optId,
     dueDate: date.nullable().optional(),
   }),
   taskPatch: z.object({
@@ -147,9 +148,12 @@ const S = {
     sphereId: optId,
     goalId: optId,
     tripId: optId,
+    projectId: optId,
     dueDate: date.nullable().optional(),
     done: z.boolean().optional(),
   }),
+  projectCreate: z.object({ sphereId: z.string().min(1), name: text(80) }),
+  projectPatch: z.object({ name: text(80).optional(), archived: z.boolean().optional() }),
   habitCreate: z.object({
     sphereId: z.string().min(1),
     name: text(120),
@@ -413,6 +417,16 @@ export function createApp(opts: AppOptions): Hono {
   app.patch('/api/tasks/:id', async (c) => c.json(store.updateTask(c.req.param('id'), await read(c, S.taskPatch))));
   app.delete('/api/tasks/:id', (c) => {
     store.deleteTask(c.req.param('id'));
+    return c.json({ ok: true });
+  });
+
+  // ── Projects ──────────────────────────────────────────────────────────────
+
+  app.get('/api/projects', (c) => c.json(store.listProjects({ sphereId: c.req.query('sphereId') || undefined, archived: c.req.query('archived') === '1' })));
+  app.post('/api/projects', async (c) => c.json(store.createProject(await read(c, S.projectCreate)), 201));
+  app.patch('/api/projects/:id', async (c) => c.json(store.updateProject(c.req.param('id'), await read(c, S.projectPatch))));
+  app.delete('/api/projects/:id', (c) => {
+    store.deleteProject(c.req.param('id'));
     return c.json({ ok: true });
   });
 

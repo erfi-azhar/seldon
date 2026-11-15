@@ -56,6 +56,8 @@ export function renderSnapshot(store: Store, today: string): string {
   const o = store.overview(today);
   const goals = store.listGoals({ status: 'active' });
   const metrics = store.listMetrics();
+  const projects = store.listProjects();
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const lines: string[] = [];
 
   lines.push('SPHERES');
@@ -71,6 +73,7 @@ export function renderSnapshot(store: Store, today: string): string {
       for (const m of g.milestones) lines.push(`    ${m.done ? '[x]' : '[ ]'} ${m.title} [milestone ${m.id}]`);
       if (!next && g.milestones.length > 0) lines.push('    (all steps done — is the goal reached?)');
     }
+    for (const p of projects.filter((x) => x.sphereId === s.id)) lines.push(`  Project: ${p.name} [project ${p.id}]`);
     for (const h of o.habits.filter((x) => x.sphereId === s.id)) {
       const cadence = h.cadence === 'daily' ? 'daily' : `${h.targetPerWeek}×/week`;
       lines.push(`  Habit: ${h.name} [habit ${h.id}] — ${cadence}, ${h.weekCount}/${h.targetPerWeek} this week (since Monday), ${h.doneToday ? 'done today' : 'not yet today'}, streak ${h.streak}`);
@@ -81,9 +84,10 @@ export function renderSnapshot(store: Store, today: string): string {
     }
   }
 
-  const taskLine = (t: { id: string; title: string; dueDate: string | null; sphereId: string | null }): string => {
+  const taskLine = (t: { id: string; title: string; dueDate: string | null; sphereId: string | null; projectId?: string | null }): string => {
     const sphere = o.spheres.find((s) => s.id === t.sphereId)?.name;
-    return `- ${t.title} [task ${t.id}]${t.dueDate ? ` — due ${t.dueDate}` : ''}${sphere ? ` — ${sphere}` : ''}`;
+    const project = t.projectId ? projectName.get(t.projectId) : undefined;
+    return `- ${t.title} [task ${t.id}]${t.dueDate ? ` — due ${t.dueDate}` : ''}${sphere ? ` — ${sphere}` : ''}${project ? ` / ${project}` : ''}`;
   };
   lines.push('\nTASKS DUE TODAY OR OVERDUE');
   lines.push(...(o.tasks.due.length ? o.tasks.due.map(taskLine) : ['(none)']));

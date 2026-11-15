@@ -557,6 +557,19 @@ const MIGRATIONS: string[] = [
   ALTER TABLE fin_transactions ADD COLUMN recurring_id TEXT REFERENCES fin_recurring(id) ON DELETE SET NULL;
   ALTER TABLE fin_transactions ADD COLUMN recurring_n INTEGER;
   `,
+  // Projects: named groups of to-dos within a sphere (Work's "Personal Loan (BR)").
+  `
+  CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    sphere_id TEXT NOT NULL REFERENCES spheres(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX projects_by_sphere ON projects(sphere_id, archived);
+  ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+  CREATE INDEX tasks_by_project ON tasks(project_id, done);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
