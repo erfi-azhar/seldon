@@ -912,6 +912,14 @@ function zoneToday(store: Store): string {
 // Where a month's pay should go, as a waterfall: what has to be paid, then a cushion, then the
 // costliest debt, then the emergency fund, then investing. Every number says why.
 
+/**
+ * A weekly-to-monthly item whose first occurrence is more than five weeks off hasn't started yet
+ * (CPF at a new age band, a raise from next year). It doesn't count towards a typical month.
+ */
+export function notStarted(r: Recurring, today: string): boolean {
+  return r.active && ['weekly', 'biweekly', 'monthly'].includes(r.cadence) && r.anchor > plusDays(today, 35);
+}
+
 /** Debt at or above this rate is cleared before investing: few investments reliably earn more. */
 const HIGH_APR = 8;
 const BILL_CADENCES = new Set(['weekly', 'biweekly', 'monthly']);
@@ -942,7 +950,7 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
   const rules: PlanRules = { ...PLAN_DEFAULTS, ...getSettings(store).plan };
   const c = p.currency;
   const base = (amount: number, currency: string) => p.toBase(amount, currency) ?? 0;
-  const active = p.recurring.filter((r) => r.active);
+  const active = p.recurring.filter((r) => r.active && !notStarted(r, p.today));
   const notes: string[] = [];
   const months = completeMonths(p.today, 3);
   const since = `${months[0]}-01`;
@@ -1150,7 +1158,7 @@ export function financeState(store: Store, today: string): FinanceState {
   const hol = holidays(store);
   const recurring = (store.db.prepare('SELECT * FROM fin_recurring ORDER BY active DESC, kind DESC, amount DESC').all() as Row[]).map((r) => recurringFromRow(r, hol));
   const recurringMonthly = { income: 0, expense: 0 };
-  for (const r of recurring) if (r.active && !r.debtId && !r.holdingId) recurringMonthly[r.kind] += toBase(r.monthly, r.currency) ?? 0;
+  for (const r of recurring) if (r.active && !notStarted(r, today) && !r.debtId && !r.holdingId) recurringMonthly[r.kind] += toBase(r.monthly, r.currency) ?? 0;
 
   // Portfolio.
   const holdings = (store.db.prepare('SELECT * FROM fin_holdings ORDER BY kind, name').all() as Row[]).map((r) => valueHolding(r, isLive(r.kind, r.symbol, r.price) ? feed.quote(r.symbol) : null, fx, base));

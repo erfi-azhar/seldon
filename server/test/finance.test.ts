@@ -596,3 +596,12 @@ test('money paid straight into a holding, like CPF, is not pay to split', () => 
   assert.equal(planOf(store).pay, 6000);
   assert.equal(planOf(store).buckets.reduce((n, b) => n + b.amount, 0), 6000);
 });
+
+test("items that haven't started yet stay out of a typical month and the plan", () => {
+  const store = planned();
+  // A raise from May: monthly, first paid more than five weeks away.
+  addRecurring(store, { kind: 'income', name: 'Salary from May', amount: 9000, category: 'Salary', cadence: 'monthly', next: '2027-05-31' }, PLAN_DAY);
+  const f = financeState(store, PLAN_DAY);
+  assert.equal(f.recurringMonthly.income, 6000);
+  assert.equal(f.plan!.pay, 6000);
+});

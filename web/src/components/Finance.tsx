@@ -578,6 +578,65 @@ export function scheduleText(r: Recurring): string {
   }
 }
 
+// Grouping: CPF and the like arrive as several items that differ only by a bracketed part —
+// "CPF contribution (OA)", "(SA)", "(MA)" — and come round together. They read as one row, with
+// the parts as chips.
+
+/** "CPF contribution (OA)" → ["CPF contribution", "OA"]; a name without a bracketed end stays whole. */
+function splitName(name: string): [string, string | null] {
+  const m = /^(.*\S)\s*\(([^()]{1,24})\)$/.exec(name.trim());
+  return m ? [m[1]!, m[2]!] : [name.trim(), null];
+}
+
+interface Grouped<T> {
+  key: string;
+  name: string;
+  items: T[];
+  /** The bracketed part of each item's name, or its whole name when it has none. */
+  label: (t: T) => string;
+}
+
+/** Group items whose names share a stem and whose `sameWhen` key matches; order is kept, by first member. */
+function groupItems<T extends { name: string }>(items: T[], sameWhen: (t: T) => string | null): Grouped<T>[] {
+  const out: Grouped<T>[] = [];
+  const byKey = new Map<string, Grouped<T>>();
+  for (const t of items) {
+    const [stem, part] = splitName(t.name);
+    const when = part ? sameWhen(t) : null;
+    const key = when === null ? `one:${out.length}` : `${stem}|${when}`;
+    const g = byKey.get(key);
+    if (g) g.items.push(t);
+    else {
+      const fresh: Grouped<T> = { key, name: stem, items: [t], label: (x) => splitName(x.name)[1] ?? x.name };
+      byKey.set(key, fresh);
+      out.push(fresh);
+    }
+  }
+  // A group of one reads by its full name.
+  return out.map((g) => (g.items.length === 1 ? { ...g, name: g.items[0]!.name } : g));
+}
+
+const sumOf = <T extends { amount: number }>(items: T[]) => items.reduce((n, t) => n + t.amount, 0);
+
+// CPF's own order for its accounts; anything else alphabetically after.
+const PART_ORDER = ['OA', 'SA', 'MA', 'RA'];
+const partRank = (label: string) => {
+  const i = PART_ORDER.indexOf(label.toUpperCase());
+  return i < 0 ? PART_ORDER.length : i;
+};
+function inPartOrder<T extends { name: string }>(g: Grouped<T>): T[] {
+  return [...g.items].sort((a, b) => partRank(g.label(a)) - partRank(g.label(b)) || g.label(a).localeCompare(g.label(b)));
+}
+
+/** Matches the server: a weekly-to-monthly item more than five weeks from its first date hasn't started. */
+const notYet = (r: Recurring, today: string) => r.active && (r.cadence === 'weekly' || r.cadence === 'biweekly' || r.cadence === 'monthly') && r.anchor > addDays(today, 35);
+
+/** "into CPF" when every holding shares a first word, else "into your holdings". */
+function intoWords(names: string[]): string {
+  const first = new Set(names.map((n) => n.split(/\s+/)[0]));
+  return first.size === 1 && names.length ? `into ${[...first][0]}` : 'into your holdings';
+}
+
 export function BillsCard() {
   const f = useLiveFinance();
   const { agentName } = useApp();
@@ -590,11 +649,27 @@ export function BillsCard() {
   const soon = addDays(today, 3);
   const byId = new Map(f.recurring.map((r) => [r.id, r]));
   const holdingName = new Map(f.holdings.map((h) => [h.id, h.name]));
-  const into = (id: string) => `adds to ${holdingName.get(id) ?? 'a holding'}`;
-  // One line per item: its next date, so a weekly gym doesn't fill the list.
+  const rate = (cur: string) => (cur === c ? 1 : f.fx?.rates[cur] && f.fx.rates[c] ? f.fx.rates[c] / f.fx.rates[cur] : null);
+
+  // One line per item (its next date), then items that come round together as one line.
   const seen = new Set<string>();
   const next = f.upcoming.filter((u) => !seen.has(u.recurringId) && (seen.add(u.recurringId), true));
-  const paused = f.recurring.filter((r) => !r.active);
+  const upcoming = groupItems(next, (u) => (u.auto && u.holdingId ? `${u.date}|into` : null));
+
+  const later = f.recurring.filter((r) => notYet(r, today));
+  const active = f.recurring.filter((r) => r.active && !notYet(r, today));
+  const into = active.filter((r) => r.holdingId);
+  const intoMonthly = into.reduce((n, r) => n + r.monthly * (rate(r.currency) ?? 0), 0);
+  const intoLabel = intoWords(into.map((r) => holdingName.get(r.holdingId!) ?? ''));
+  const sections: { title: string; items: Recurring[] }[] = [
+    { title: 'Pay and income', items: active.filter((r) => r.kind === 'income' && !r.holdingId) },
+    { title: 'Bills and payments', items: active.filter((r) => r.kind === 'expense') },
+    { title: `Paid ${intoLabel}`, items: into },
+    { title: 'Starting later', items: later },
+    { title: 'Paused', items: f.recurring.filter((r) => !r.active) },
+  ].filter((x) => x.items.length);
+  const rows = (items: Recurring[]) => groupItems(items, (r) => (r.holdingId ? `${r.cadence}|${r.next ?? ''}|${r.active}` : null));
+  const rowCount = sections.reduce((n, x) => n + rows(x.items).length, 0);
   // The fold earns its place only when it holds something the list above doesn't:
   // a paused item, or one not due in the next five weeks (a yearly renewal, say).
   const hidden = f.recurring.some((r) => !r.active || !seen.has(r.id));
@@ -612,33 +687,55 @@ export function BillsCard() {
         <p className="empty">Salary, rent, bills, subscriptions, instalments — set them up once and they log themselves, or remind you to pay. Or tell {agentName}: “my salary is $7,200 on the 25th”.</p>
       ) : (
         <>
-          <div className="fin-total">
-            {income > 0 && <b className="num is-up">+{money(income, c, true)}</b>}
-            {expense > 0 && <b className="num">−{money(expense, c, true)}</b>}
-            <span className="muted">
-              {income > 0 && expense > 0
-                ? `a typical month · ${income >= expense ? 'leaves' : 'short by'} ${money(Math.abs(income - expense), c, true)}`
-                : `in a typical month`}
-            </span>
+          <div className="fin-bills-sum">
+            {income > 0 && (
+              <div>
+                <span className="fin-label">Pay</span>
+                <b className="num is-up">+{money(income, c, true)}</b>
+              </div>
+            )}
+            {expense > 0 && (
+              <div>
+                <span className="fin-label">Bills</span>
+                <b className="num">−{money(expense, c, true)}</b>
+              </div>
+            )}
+            {income > 0 && expense > 0 && (
+              <div>
+                <span className="fin-label">{income >= expense ? 'Leaves' : 'Short by'}</span>
+                <b className={cx('num', income < expense && 'is-down')}>{money(Math.abs(income - expense), c, true)}</b>
+              </div>
+            )}
+            {intoMonthly >= 1 && (
+              <div>
+                <span className="fin-label">{intoLabel[0]!.toUpperCase() + intoLabel.slice(1)}</span>
+                <b className="num fin-into">{money(intoMonthly, c, true)}</b>
+              </div>
+            )}
           </div>
-          {next.length === 0 && <p className="empty">Nothing due in the next five weeks.</p>}
+          <p className="fin-bills-note hint">A typical month{intoMonthly >= 1 ? `; what goes ${intoLabel} never reaches your bank` : ''}.</p>
+
+          {upcoming.length === 0 && <p className="empty">Nothing due in the next five weeks.</p>}
           <ul className="fin-upcoming">
-            {next.map((u) => {
+            {upcoming.map((g) => {
+              const u = g.items[0]!;
               const r = byId.get(u.recurringId);
               const due = dueLabel(u.date, today);
-              const waiting = !u.auto && u.date <= soon;
+              const waiting = g.items.length === 1 && !u.auto && u.date <= soon;
+              const grouped = g.items.length > 1;
+              const meta = grouped
+                ? [r && scheduleText(r), `${intoWords(g.items.map((x) => holdingName.get(x.holdingId!) ?? ''))} · ${inPartOrder(g).map(g.label).join(', ')}`]
+                : [r && scheduleText(r), u.holdingId ? intoWords([holdingName.get(u.holdingId) ?? '']) : u.debtId ? 'pays down a debt' : u.auto ? 'logs itself' : !waiting && 'mark it paid'];
               return (
-                <li key={`${u.recurringId}-${u.date}`} className={cx(u.overdue && 'is-late')}>
+                <li key={g.key} className={cx(u.overdue && 'is-late')}>
                   <span className={cx('fin-due', due.late && 'late')}>{due.text}</span>
                   <button type="button" className="fin-up-name" onClick={() => r && setEditing(r)}>
-                    <span className="clamp-1">{u.name}</span>
-                    <span className="faint clamp-1">
-                      {[r && scheduleText(r), u.holdingId ? into(u.holdingId) : u.debtId ? 'pays down a debt' : u.auto ? 'logs itself' : !waiting && 'mark it paid'].filter(Boolean).join(' · ')}
-                    </span>
+                    <span className="clamp-1">{g.name}</span>
+                    <span className="faint clamp-1">{meta.filter(Boolean).join(' · ')}</span>
                   </button>
-                  <span className={cx('num', u.kind === 'income' && 'is-up')}>
+                  <span className={cx('num', u.holdingId ? 'fin-into' : u.kind === 'income' && 'is-up')}>
                     {u.kind === 'income' ? '+' : '−'}
-                    {money(u.amount, u.currency)}
+                    {money(sumOf(g.items), u.currency)}
                   </span>
                   {waiting && (
                     <span className="fin-up-acts">
@@ -654,34 +751,50 @@ export function BillsCard() {
               );
             })}
           </ul>
+
           {hidden && (
-          <details className="todo-fold">
-            <summary>
-              <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
-              <span className="grow">Everything recurring</span>
-              <span className="todo-fold-meta">
-                {plural(f.recurring.length - paused.length, 'item')}
-                {paused.length > 0 && ` · ${paused.length} paused`}
-              </span>
-            </summary>
-            <ul>
-              {f.recurring.map((r) => (
-                <li key={r.id}>
-                  <button type="button" className={cx('fin-rec', !r.active && 'is-paused')} onClick={() => setEditing(r)}>
-                    <span className="grow">
-                      <span className="clamp-1">{r.name}</span>
-                      <span className="faint">
-                        {r.active ? scheduleText(r) : 'Paused'}
-                        {r.active && r.next && ` · next ${shortDay(r.next)}`}
-                        {r.holdingId && ` · ${into(r.holdingId)}`}
-                      </span>
-                    </span>
-                    <span className={cx('num', r.kind === 'income' && 'is-up')}>{money(r.amount, r.currency)}</span>
-                  </button>
-                </li>
+            <details className="todo-fold">
+              <summary>
+                <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+                <span className="grow">Everything recurring</span>
+                <span className="todo-fold-meta">{plural(rowCount, 'entry', 'entries')}</span>
+              </summary>
+              {sections.map((sec) => (
+                <div key={sec.title} className="fin-rec-section">
+                  <div className="list-label">{sec.title}</div>
+                  <ul>
+                    {rows(sec.items).map((g) => {
+                      const r = g.items[0]!;
+                      const grouped = g.items.length > 1;
+                      return (
+                        <li key={g.key} className={cx('fin-rec', !r.active && 'is-paused')}>
+                          <button type="button" className="fin-rec-main" onClick={() => setEditing(r)} disabled={grouped} aria-label={grouped ? undefined : `Edit ${r.name}`}>
+                            <span className="grow">
+                              <span className="clamp-1">{g.name}</span>
+                              <span className="faint clamp-1">
+                                {r.active ? scheduleText(r) : 'Paused'}
+                                {r.active && r.next && (notYet(r, today) ? ` · starts ${shortDay(r.next)}` : ` · next ${shortDay(r.next)}`)}
+                                {!grouped && r.holdingId && ` · ${intoWords([holdingName.get(r.holdingId) ?? ''])}`}
+                              </span>
+                            </span>
+                            <span className={cx('num', r.holdingId ? 'fin-into' : r.kind === 'income' && 'is-up')}>{money(sumOf(g.items), r.currency)}</span>
+                          </button>
+                          {grouped && (
+                            <span className="fin-rec-parts">
+                              {inPartOrder(g).map((x) => (
+                                <button key={x.id} type="button" className="chip chip-outline" onClick={() => setEditing(x)} aria-label={`Edit ${x.name}`}>
+                                  {g.label(x)} <span className="num">{money(x.amount, x.currency, true)}</span>
+                                </button>
+                              ))}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               ))}
-            </ul>
-          </details>
+            </details>
           )}
         </>
       )}
