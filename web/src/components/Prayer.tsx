@@ -287,7 +287,33 @@ function QadaPanel({ owed }: { owed: FaithState['owed'] }) {
   );
 }
 
-function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramadan']> }) {
+// Imsak, the customary time to finish sahur: ten minutes before Subuh, as in the
+// Singapore and Malaysian timetables. The fast itself begins at Subuh.
+const IMSAK_MS = 10 * 60_000;
+
+/** During Ramadan: today's fasting times, with the next one counting down. */
+function FastTimes({ times, now, tz }: { times: PrayerDay['times']; now: number; tz: string }) {
+  const rows = [
+    { label: 'Fast begins', at: times.fajr, sub: `Imsak ${hhmm(new Date(Date.parse(times.fajr) - IMSAK_MS).toISOString(), tz)}` },
+    { label: 'Syuruk', at: times.sunrise, sub: 'Sunrise' },
+    { label: 'Fast ends', at: times.maghrib, sub: 'Maghrib · iftar' },
+    { label: 'Isyak', at: times.isha, sub: 'Then tarawih' },
+  ];
+  const next = rows.findIndex((r) => Date.parse(r.at) > now);
+  return (
+    <dl className="ramadan-dates ramadan-times">
+      {rows.map((r, i) => (
+        <div key={r.label} className={cx(i === next && 'is-next', next !== -1 && i < next && 'is-past', next === -1 && 'is-past')}>
+          <dt>{r.label}</dt>
+          <dd className="ramadan-time">{hhmm(r.at, tz)}</dd>
+          <dd className="ramadan-sub">{i === next ? `in ${untilLabel(r.at, now)}` : r.sub}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function RamadanCountdown({ ramadan, faith, now }: { ramadan: NonNullable<FaithState['ramadan']>; faith: FaithState; now: number }) {
   const long = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
   const short = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   if (ramadan.inRamadan)
@@ -299,7 +325,10 @@ function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramada
           <b>Ramadan</b>
           <MoonStar size={22} className="ramadan-moon" />
         </div>
-        <p className="ramadan-note">Ramadan Mubarak — began {long(ramadan.start)}.</p>
+        {faith.configured && faith.today && <FastTimes times={faith.today.times} now={now} tz={faith.settings.timezone} />}
+        <p className="ramadan-note">
+          Ramadan Mubarak — began {long(ramadan.start)}.{faith.configured ? ` Times for ${faith.settings.label || faith.settings.timezone.replaceAll('_', ' ')}.` : ''}
+        </p>
       </div>
     );
   // Islamic days begin at sunset, so the first tarawih is prayed after Isha on the
@@ -549,7 +578,7 @@ export function PrayerCard() {
   return (
     <>
       {fast && <NiyyahCard fast={fast} now={now} tz={tz} />}
-      {faith.ramadan && (faith.ramadan.inRamadan || faith.ramadan.daysUntil <= 100) && <RamadanCountdown ramadan={faith.ramadan} />}
+      {faith.ramadan && (faith.ramadan.inRamadan || faith.ramadan.daysUntil <= 100) && <RamadanCountdown ramadan={faith.ramadan} faith={faith} now={now} />}
       <section className="card prayer-card">
         <div className="card-head">
           <div>
