@@ -8,6 +8,7 @@ import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, HabitWeekHead, HabitWeekLabel, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
 import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
+import { QuranStudyCard } from '../components/QuranStudy.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
@@ -226,6 +227,7 @@ export function SphereDetail({ id }: { id: string }) {
         </div>
         <div className="col">
           {s.key === 'faith' && <FaithVerse />}
+          {s.key === 'faith' && <QuranStudyCard />}
           {s.key === 'work' ? <JobAlertsCard /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
           {s.key === 'finances' && <BillsCard />}
           {hasDaily && s.key !== 'work' && (
