@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import type { Weather } from '../../../shared/types.ts';
 import { useWeather } from '../api.ts';
-import { closeIn, discShows, fallPainter, FLASH, flashLevel, hazeOf, lookOf, moving, nextFlashIn, precipitation, weatherSky, type Look } from '../weather.ts';
+import { closeIn, discShows, fallPainter, FLASH, flashLevel, fogPainter, lookOf, moving, nextFlashIn, precipitation, weatherSky, type Look } from '../weather.ts';
 import { moonPhase, moonPosition, sunPosition, useSun, type Blend, type Phase, type SunState } from '../sun.ts';
 
 type RGB = [number, number, number];
@@ -309,7 +309,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   const flash = look.storm ? flashLevel(seconds - scene.flashAt) : 0;
   // Under heavy cloud the sun's disc is only a pale shape behind it.
   const veil = discShows(look);
-  const haze = hazeOf(pal);
+  const paintFog = fogPainter(look, pal, seconds, { x: moon.x, y: moon.y, shows: moonShows, fraction: lit.fraction });
   for (let j = 0; j < rows; j++) {
     const v = (j + 0.5) / rows;
     const k = v / HZ;
@@ -365,7 +365,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
         }
       }
 
-      if (look.fog > 0) c = mix(c, haze, look.fog * (0.35 + 0.45 * Math.min(1, k)));
+      if (paintFog) c = paintFog(c, x, v, k);
       if (flash > 0) c = mix(c, FLASH, flash * (0.05 + 0.4 * clouded));
 
       if (sun.y < HZ + SUN_R) {
