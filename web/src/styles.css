@@ -387,11 +387,6 @@ ul {
   padding: 2px 4px;
 }
 
-.wordmark {
-  display: none;
-  font-size: 27px;
-  line-height: 1;
-}
 .icon-btn.only-mobile {
   display: none;
 }
@@ -2688,9 +2683,6 @@ code,
   .topbar .agent-button {
     display: none;
   }
-  .wordmark {
-    display: block;
-  }
   .icon-btn.only-mobile {
     display: inline-grid;
   }
@@ -4285,20 +4277,6 @@ body:has(.sky)::before {
   }
   .page {
     padding-bottom: calc(110px + env(safe-area-inset-bottom));
-  }
-}
-
-@media (max-width: 720px) {
-  /* Nothing sits behind the top bar any more, so the wordmark carries its own glass. */
-  .wordmark {
-    padding: 7px 16px 9px;
-    border-radius: 999px;
-    font-size: 23px;
-    background: var(--glass-float);
-    border: 1px solid var(--glass-edge);
-    box-shadow: var(--glass-float-shadow);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
   }
 }
 

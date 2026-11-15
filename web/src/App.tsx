@@ -149,11 +149,7 @@ function Shell({ settings }: { settings: SettingsData }) {
       <div className="app">
         <div className="app-main">
           <header className="topbar">
-            <div className="topbar-left">
-              <Link href="/" className="wordmark serif">
-                Terminus
-              </Link>
-            </div>
+            <div className="topbar-left" />
             <nav className="nav" aria-label="Main">
               <button type="button" className="nav-search" onClick={() => setPaletteOpen(true)} aria-label="Search and commands">
                 <Search size={15} />
