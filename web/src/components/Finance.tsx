@@ -3,7 +3,7 @@
 
 import { ArrowDownLeft, ArrowUpRight, Bell, ChevronRight, Pencil, Plus, RefreshCw, Repeat, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, MarketState, PlanBucketKey, PlanRules, Quote, Recurring, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
+import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, MarketState, PlanBucketKey, PlanRules, Quote, Recurring, SalaryPlan, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { Link } from 'wouter';
 import { financeWrite, useFinance, useMarket, useSpheres, useWrite } from '../api.ts';
 import { addDays, cx, dueLabel, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
@@ -431,7 +431,7 @@ function BudgetSheet({ f, onClose }: { f: FinanceState; onClose: () => void }) {
 
 // ── Where your pay goes ─────────────────────────────────────────────────────
 
-const PLAN_HUE: Record<PlanBucketKey, number> = { bills: 255, yearly: 285, everyday: 220, fun: 330, buffer: 175, debt: 25, emergency: 155, crypto: 62, invest: 135 };
+const PLAN_HUE: Record<PlanBucketKey, number> = { bills: 255, yearly: 285, everyday: 220, fun: 330, buffer: 175, debt: 25, emergency: 155, relief: 300, crypto: 62, invest: 135 };
 const planColor = (key: PlanBucketKey) => `oklch(0.7 0.13 ${PLAN_HUE[key]})`;
 /** Plan amounts are whole units; they read without cents. */
 const whole = (n: number, c: string) => money(n, c).replace(/[.,]00(?=\D*$)/, '');
@@ -442,9 +442,11 @@ export function PlanCard() {
   const f = useLiveFinance();
   const { ask, agentName } = useApp();
   const [rules, setRules] = useState(false);
+  const [recording, setRecording] = useState(false);
   if (!f) return null;
   const c = f.currency;
   const p = f.plan;
+  const r = p?.relief ?? null;
   const monthName = new Date(`${f.month.key}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' });
 
   return (
@@ -475,6 +477,7 @@ export function PlanCard() {
           </div>
           )}
           {p.shortfall !== null && <p className="fin-tip is-bad">{whole(p.shortfall, c)} short of bills and everyday spending this month.</p>}
+          {p.buckets.length > 0 && (
           <ol className="fin-plan-list">
             {p.buckets.map((b) => (
               <li key={b.key}>
@@ -491,14 +494,47 @@ export function PlanCard() {
               </li>
             ))}
           </ol>
+          )}
           {p.notes.map((n) => (
             <p key={n} className="fin-tip">
               {n}
             </p>
           ))}
+          {r && (
+            <div className="fin-relief">
+              <div className="fin-relief-head">
+                <b>Tax relief {r.year}</b>
+                <span className="hint">due 31 Dec</span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRecording(true)}>
+                  <Plus size={13} /> Record
+                </button>
+              </div>
+              <div className="fin-relief-row">
+                <span>SRS</span>
+                <ProgressBar value={r.srs.cap ? r.srs.done / r.srs.cap : 0} />
+                <span className="num">
+                  {whole(r.srs.done, c)} <span className="faint">/ {whole(r.srs.cap, c)}</span>
+                </span>
+              </div>
+              {r.cpf && (
+                <div className="fin-relief-row">
+                  <span>CPF top-up</span>
+                  <ProgressBar value={r.cpf.cap ? r.cpf.done / r.cpf.cap : 0} />
+                  <span className="num">
+                    {whole(r.cpf.done, c)} <span className="faint">/ {whole(r.cpf.cap, c)}</span>
+                  </span>
+                </div>
+              )}
+              <p className="hint">
+                {r.srs.left + (r.cpf?.left ?? 0) >= 1
+                  ? `Using the rest saves about ${whole(r.saving, c)} on next year's tax, at a top rate of about ${Math.round(r.rate * 1000) / 10}% (estimated from your pay; a bonus or RSUs make it more).`
+                  : 'All used for this year.'}
+              </p>
+            </div>
+          )}
           <div className="fin-plan-foot">
             <span className="hint">
-              Emergency fund {money(p.emergency.have, c, true)} of {money(p.emergency.target, c, true)} · a rule of thumb, not financial advice
+              {p.emergency.target > 0 && `Emergency fund ${money(p.emergency.have, c, true)} of ${money(p.emergency.target, c, true)} · `}a rule of thumb, not financial advice
             </span>
             <button type="button" className="btn btn-tint btn-sm" onClick={() => ask(`Look at my salary plan for ${monthName} and talk me through it. Is anything off given what you know about me, and what would you change?`)}>
               <span className="btn-text">Talk it through with {agentName}</span> <ArrowUpRight size={14} />
@@ -507,13 +543,47 @@ export function PlanCard() {
         </>
       )}
       {rules && p && <PlanRulesSheet rules={p.rules} onClose={() => setRules(false)} />}
+      {recording && r && <ReliefSheet relief={r} currency={c} onClose={() => setRecording(false)} />}
     </section>
   );
 }
 
+function ReliefSheet({ relief, currency, onClose }: { relief: NonNullable<SalaryPlan['relief']>; currency: string; onClose: () => void }) {
+  const [v, setV] = useState({ srs: String(relief.srs.done || ''), cpf: String(relief.cpf?.done || '') });
+  const save = useWrite(() => financeWrite.put('/relief', { srs: numOrNull(v.srs) ?? 0, ...(relief.cpf ? { cpf: numOrNull(v.cpf) ?? 0 } : {}) }));
+  const wrong = bad(v.srs, v.cpf);
+  return (
+    <Modal
+      title={`Tax relief so far in ${relief.year}`}
+      onClose={onClose}
+      footer={
+        <>
+          <span className="hint">Totals for the year, in {currency}. The plan paces what's left.</span>
+          <button className="btn btn-primary btn-sm" disabled={wrong || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+            Save
+          </button>
+        </>
+      }
+    >
+      <div className="field-row">
+        <Field label={`Into SRS (of ${whole(relief.srs.cap, currency)})`}>
+          <input className="input num" inputMode="decimal" value={v.srs} onChange={(e) => setV({ ...v, srs: e.target.value })} placeholder="0" data-autofocus />
+        </Field>
+        {relief.cpf && (
+          <Field label={`CPF top-up to your SA (of ${whole(relief.cpf.cap, currency)})`}>
+            <input className="input num" inputMode="decimal" value={v.cpf} onChange={(e) => setV({ ...v, cpf: e.target.value })} placeholder="0" />
+          </Field>
+        )}
+      </div>
+      {wrong && <p className="error-text">{NOT_A_NUMBER}</p>}
+      {save.error && <p className="error-text">{save.error.message}</p>}
+    </Modal>
+  );
+}
+
 function PlanRulesSheet({ rules, onClose }: { rules: PlanRules; onClose: () => void }) {
-  const [r, setR] = useState({ emergencyMonths: String(rules.emergencyMonths), cryptoCapPct: String(rules.cryptoCapPct), funPct: String(rules.funPct) });
-  const save = useWrite(() => financeWrite.put('/settings', { plan: { emergencyMonths: Math.round(parseNumber(r.emergencyMonths)), cryptoCapPct: parseNumber(r.cryptoCapPct), funPct: parseNumber(r.funPct) } }));
+  const [r, setR] = useState({ emergencyMonths: String(rules.emergencyMonths), cryptoCapPct: String(rules.cryptoCapPct), funPct: String(rules.funPct), reliefs: rules.reliefs, srsCap: rules.srsCap });
+  const save = useWrite(() => financeWrite.put('/settings', { plan: { emergencyMonths: Math.round(parseNumber(r.emergencyMonths)), cryptoCapPct: parseNumber(r.cryptoCapPct), funPct: parseNumber(r.funPct), reliefs: r.reliefs, srsCap: r.srsCap } }));
   const months = parseNumber(r.emergencyMonths);
   const cap = parseNumber(r.cryptoCapPct);
   const fun = parseNumber(r.funPct);
@@ -540,6 +610,22 @@ function PlanRulesSheet({ rules, onClose }: { rules: PlanRules; onClose: () => v
         </Field>
         <Field label="Yours to spend (% of pay)" hint="Guilt-free money, up to 30%">
           <input className="input num" inputMode="decimal" value={r.funPct} onChange={(e) => setR({ ...r, funPct: e.target.value })} />
+        </Field>
+      </div>
+      <div className="field-row">
+        <Field label="Tax relief (Singapore)" hint="Paced so the year's room is used by 31 December">
+          <select className="select" value={r.reliefs} onChange={(e) => setR({ ...r, reliefs: e.target.value as PlanRules['reliefs'] })}>
+            <option value="auto">SRS when my top tax rate is 11.5% or more</option>
+            <option value="srs">Always SRS</option>
+            <option value="srs+cpf">SRS, then a CPF top-up to my Special Account</option>
+            <option value="off">Off</option>
+          </select>
+        </Field>
+        <Field label="SRS cap">
+          <select className="select" value={r.srsCap} onChange={(e) => setR({ ...r, srsCap: Number(e.target.value) })}>
+            <option value={15300}>S$15,300 (citizen or PR)</option>
+            <option value={35700}>S$35,700 (foreigner)</option>
+          </select>
         </Field>
       </div>
       {!ok && <p className="error-text">Months from 1 to 24, crypto from 0 to 100%, spending money from 0 to 30%.</p>}

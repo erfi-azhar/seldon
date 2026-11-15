@@ -3,7 +3,7 @@ import { after, beforeEach, test } from 'node:test';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
 import { Store } from '../src/store.ts';
-import { addAlert, addDebt, addHolding, addRecurring, planSignal, addTransaction, checkAlerts, countryOf, financeState, holidays, logTrade, markPaid, nthDate, payDebt, payoff, postDue, refreshHolidays, remindBills, skipNext, syncSymbols, toWorkingDay, updateRecurring } from '../src/features/finance.ts';
+import { addAlert, addDebt, addHolding, addRecurring, planSignal, recordRelief, reliefReminder, sgTax, sgTopRate, addTransaction, checkAlerts, countryOf, financeState, holidays, logTrade, markPaid, nthDate, payDebt, payoff, postDue, refreshHolidays, remindBills, skipNext, syncSymbols, toWorkingDay, updateRecurring } from '../src/features/finance.ts';
 import { marketFor, parseTick, setMarketTransport, type MarketTransport } from '../src/features/markets.ts';
 import '../src/features/index.ts';
 
@@ -615,4 +615,120 @@ test('with nothing known about spending, the plan says what it needs rather than
   assert.ok(p.notes.some((n) => /nothing on file about what you spend/.test(n)));
   postDue(store, '2026-11-30');
   assert.equal(planSignal(store, '2026-11-30'), false, 'no plan to send');
+});
+
+// ── Year-end tax relief ────────────────────────────────────────────────────
+
+/** Paid S$12,000 a month in Singapore, with S$3,500 of essentials and an emergency fund already full. */
+function sgEarner(day: string, pay = 12_000): Store {
+  const store = fresh();
+  store.setZone('Asia/Singapore');
+  addRecurring(store, { kind: 'income', name: 'Salary', amount: pay, category: 'Salary', cadence: 'monthly', next: `${day.slice(0, 8)}28`, day: 31, weekend: 'before' }, day);
+  addRecurring(store, { kind: 'expense', name: 'Rent', amount: 2000, category: 'Housing', cadence: 'monthly', next: `${day.slice(0, 8)}28` }, day);
+  const [y, m] = day.split('-').map(Number) as [number, number];
+  for (const back of [1, 2]) {
+    const d = new Date(Date.UTC(y, m - 1 - back, 10)).toISOString().slice(0, 10);
+    addTransaction(store, { kind: 'expense', amount: 1500, category: 'Food', description: 'Everyday', date: d });
+  }
+  addHolding(store, { kind: 'cash', name: 'Savings', quantity: 100_000 });
+  return store;
+}
+const reliefOf = (store: Store, day: string) => financeState(store, day).plan!;
+
+test('Singapore resident tax: the bands and the top rate', () => {
+  assert.equal(Math.round(sgTax(135_080)), 10_212);
+  assert.equal(sgTax(20_000), 0);
+  assert.equal(Math.round(sgTax(80_000)), 3_350);
+  assert.equal(sgTopRate(130_280), 0.15);
+  assert.equal(sgTopRate(35_000), 0.035);
+});
+
+test('tax relief is paced through the year and comes out of what would be invested', () => {
+  const store = sgEarner('2026-05-10');
+  const p = reliefOf(store, '2026-05-10');
+  assert.ok(p.relief);
+  assert.equal(p.relief!.chargeable, 12 * 12_000 - 1_000);
+  assert.equal(p.relief!.rate, 0.15);
+  // 15,300 over the seven months May to November.
+  const relief = p.buckets.find((b) => b.key === 'relief')!;
+  assert.equal(relief.amount, Math.round(15_300 / 7));
+  assert.match(relief.action!, /^Put SGD\s2,186 into SRS$/);
+  assert.equal(p.buckets.reduce((n, b) => n + b.amount, 0), 12_000, 'still adds up to pay');
+  assert.ok(p.relief!.saving > 2_000);
+});
+
+test('in November whatever room is left comes due, with the rest from savings; recorded contributions shrink it', () => {
+  const store = sgEarner('2026-11-10');
+  recordRelief(store, 2026, { srs: 3_000 }, 'add');
+  let p = reliefOf(store, '2026-11-10');
+  assert.equal(p.relief!.srs.left, 12_300);
+  const spare = 12_000 - 3_500 - 600; // pay less essentials and 5% to spend
+  const r = p.buckets.find((b) => b.key === 'relief')!;
+  assert.equal(r.amount, spare, 'all that is spare this month');
+  assert.match(r.action!, new RegExp(`and SGD\\s${(12_300 - spare).toLocaleString('en')} more from savings by 15 Dec`));
+  assert.equal(p.buckets.find((b) => b.key === 'invest'), undefined, 'nothing else to invest this month');
+
+  recordRelief(store, 2026, { srs: 15_300 }, 'set');
+  p = reliefOf(store, '2026-11-10');
+  assert.equal(p.buckets.find((b) => b.key === 'relief'), undefined);
+  assert.ok(p.notes.some((n) => /2026's tax relief is used up/.test(n)));
+  assert.equal(reliefOf(store, '2027-01-10').relief!.srs.left, 15_300, 'a new year starts from nothing');
+});
+
+test('in December, pay that lands after mid-month can only point to savings', () => {
+  const store = sgEarner('2026-12-02');
+  const p = reliefOf(store, '2026-12-02');
+  assert.equal(p.buckets.find((b) => b.key === 'relief'), undefined);
+  assert.ok(p.notes.some((n) => /SGD\s15,300 of 2026's tax-relief room is left/.test(n) && /from savings/.test(n)));
+  // The December reminder: once, in December, not after the 24th.
+  assert.equal(reliefReminder(store, '2026-11-30'), false);
+  assert.equal(reliefReminder(store, '2026-12-02'), true);
+  assert.equal(reliefReminder(store, '2026-12-03'), false);
+  const sig = store.db.prepare("SELECT title, actions FROM signals WHERE kind = 'relief'").get() as { title: string; actions: string };
+  assert.match(sig.title, /^29 days left to save about SGD\s[\d,]+ in tax$/);
+  assert.equal(JSON.parse(sig.actions)[0].dueDate, '2026-12-15');
+  assert.equal(reliefReminder(sgEarner('2026-12-26'), '2026-12-26'), false, 'too late to be useful');
+});
+
+test('SRS first, then the CPF top-up when the rules include it; off, low earners and other countries get nothing', () => {
+  // Enough spare (30,000 − 3,500 − 1,500 to spend) to cover both in November.
+  const both = sgEarner('2026-11-10', 30_000);
+  both.db.prepare("UPDATE settings SET value = json_set(value, '$.plan', json('{\"reliefs\":\"srs+cpf\"}')) WHERE key = 'finance'").run();
+  const p = reliefOf(both, '2026-11-10');
+  const r = p.buckets.find((b) => b.key === 'relief')!;
+  assert.equal(r.label, 'Tax relief: SRS and CPF');
+  assert.equal(r.amount, 15_300 + 8_000);
+  assert.match(r.action!, /^Put SGD\s15,300 into SRS and SGD\s8,000 into your CPF Special Account$/);
+
+  assert.equal(reliefOf(sgEarner('2026-05-10', 3_000), '2026-05-10').relief, null, 'a 3.5% top rate is not worth locking money away for');
+  const abroad = sgEarner('2026-05-10');
+  abroad.setZone('Europe/London');
+  assert.equal(reliefOf(abroad, '2026-05-10').relief, null);
+  const off = sgEarner('2026-05-10');
+  off.db.prepare("UPDATE settings SET value = json_set(value, '$.plan', json('{\"reliefs\":\"off\"}')) WHERE key = 'finance'").run();
+  assert.equal(reliefOf(off, '2026-05-10').relief, null);
+});
+
+test('while the emergency fund fills, only the investing half goes to tax relief', () => {
+  const store = sgEarner('2026-11-10');
+  store.db.prepare("UPDATE fin_holdings SET quantity = 5000 WHERE kind = 'cash'").run();
+  const p = reliefOf(store, '2026-11-10');
+  const em = p.buckets.find((b) => b.key === 'emergency')!.amount;
+  const relief = p.buckets.find((b) => b.key === 'relief')!.amount;
+  assert.ok(em > 0 && Math.abs(em - relief) <= 1, `emergency ${em}, relief ${relief}`);
+  assert.ok(p.notes.some((n) => /emergency fund isn't full yet/.test(n)));
+});
+
+test('the API records relief contributions', async () => {
+  const db = openDb(':memory:');
+  const app = createApp({ db });
+  const call = async (method: string, path: string, body?: unknown) => (await app.request(`http://localhost${path}`, { method, headers: body === undefined ? {} : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })).status;
+  await call('POST', '/api/onboarding', { userName: 'Sam', agentName: '', sphereKeys: ['finances'] });
+  assert.equal(await call('POST', '/api/finance/relief?date=2026-11-15', { srs: 5000 }), 201);
+  assert.equal(await call('PUT', '/api/finance/relief?date=2026-11-15', { srs: 15_300, cpf: 8_000 }), 200);
+  assert.equal(await call('PUT', '/api/finance/settings', { plan: { reliefs: 'srs+cpf', srsCap: 35_700 } }), 200);
+  assert.equal(await call('PUT', '/api/finance/settings', { plan: { srsCap: 20_000 } }), 400);
+  const store = new Store(db);
+  assert.equal((store.db.prepare("SELECT json_extract(value, '$.relief') AS r FROM settings WHERE key = 'finance'").get() as { r: string }).r, '{"year":2026,"srs":15300,"cpf":8000}');
+  marketFor(store).stop();
 });
