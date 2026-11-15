@@ -15,6 +15,7 @@ import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
 import { RouteCard } from './Journey.tsx';
 import { journeys } from '../../../shared/journey.ts';
+import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
 
@@ -691,6 +692,8 @@ export function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip;
   // On the day: the time it is at the connecting airport, from a day before landing until departure.
   const onTheDay = now > Date.parse(from.endUtc) - 24 * 3_600_000 && now < Date.parse(to.startUtc);
   const outOfCredit = /\b402\b|credit/i.test(find.error?.message ?? '');
+  const { data: travel } = useTravel();
+  const plan = layoverPlan(from, to, travel?.settings.homeAirport ?? 'SIN');
   const flight = (x: Segment) => `${x.carrier} ${x.number}`.trim();
   const kf = loyalty.find((a) => a.program === 'KrisFlyer');
   const cards = loyalty.filter((a) => a.kind === 'lounge');
@@ -710,7 +713,7 @@ export function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip;
   const best = usable[0];
 
   return (
-    <Modal title={`Lounges in ${city}`} onClose={onClose}>
+    <Modal title={`Layover in ${city}`} onClose={onClose}>
       <div className="lx-route" aria-label={`${hm(wait)} in ${city} between ${flight(from)} and ${flight(to)}`}>
         <div className="lx-leg">
           <AirlineTail code={from.carrier} size={28} />
@@ -739,6 +742,8 @@ export function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip;
           <Clock size={12} aria-hidden /> It’s <b className="num">{clockIn(to.startTz, now)}</b> in {city} now
         </p>
       )}
+
+      {plan.verdict === 'out' && <BeyondAirport plan={plan} to={to} city={city} />}
 
       <section className="lx-block">
         <h3 className="lx-h">Lounge for you</h3>
@@ -794,6 +799,8 @@ export function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip;
           </>
         )}
       </section>
+
+      {plan.verdict === 'tight' && <BeyondAirport plan={plan} to={to} city={city} />}
 
       <section className="lx-block">
         <h3 className="lx-h">Your way in</h3>
@@ -855,6 +862,61 @@ export function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip;
         )}
       </footer>
     </Modal>
+  );
+}
+
+/** Time enough to leave the airport: when to be out and back, how to get in, and what to do there. */
+function BeyondAirport({ plan, to, city }: { plan: LayoverPlan; to: Segment; city: string }) {
+  const at = (t: number) => clockIn(to.startTz, t);
+  const g = plan.guide;
+  const where = plan.atHome ? 'at home' : `in ${g?.city ?? city}`;
+  return (
+    <section className={cx('lx-block lx-out', plan.verdict === 'tight' && 'is-tight')}>
+      <h3 className="lx-h">{plan.atHome ? 'You’re home' : 'Beyond the airport'}</h3>
+      <p className="lx-out-verdict">
+        {plan.verdict === 'out'
+          ? plan.atHome
+            ? `Time to go home: about ${hm(plan.free)} there before heading back.`
+            : `Worth leaving the airport: about ${hm(plan.free)} ${where}.`
+          : `Possible, but tight: about ${hm(plan.free)} ${where}. Only if you clear passport control quickly.`}
+      </p>
+      <ol className="lx-out-times">
+        <li>
+          <small>Out of the airport</small>
+          <b className="num">{at(plan.outBy)}</b>
+        </li>
+        <li>
+          <small>{plan.atHome ? 'Leave home' : 'Head back'}</small>
+          <b className="num">{at(plan.leaveCity)}</b>
+        </li>
+        <li>
+          <small>At the airport</small>
+          <b className="num">{at(plan.backBy)}</b>
+        </li>
+      </ol>
+      {!plan.atHome && (
+        <p className="lx-out-how">
+          <MapPin size={13} aria-hidden />
+          {g ? `${g.toCity.how}: about ${g.toCity.minutes} min to ${g.toCity.to}.` : 'Allow about 45 minutes each way to the centre.'}
+        </p>
+      )}
+      {!plan.atHome && plan.ideas.length > 0 && (
+        <ul className="lx-ideas">
+          {plan.ideas.map((i) => (
+            <li key={i.title}>
+              <b>{i.title}</b>
+              <span>{i.note}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {g?.dayRoom && !plan.atHome && (
+        <p className="lx-out-note">
+          <b>Rather rest?</b> {g.dayRoom}
+        </p>
+      )}
+      {!plan.atHome && <p className="lx-out-note faint">{g?.entry ?? 'Whether you can leave the airport depends on your passport and the country’s entry rules; check before you go.'}</p>}
+    </section>
   );
 }
 
@@ -1102,15 +1164,17 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
     if (s.kind !== 'flight') return <StayRow key={s.id} s={s} onEdit={() => setBooking(s)} />;
     const next = flights[flights.indexOf(s) + 1];
     const wait = next && s.toCode && s.toCode === next.fromCode ? minutesBetween(s.endUtc, next.startUtc) : 0;
+    // Long enough to leave the airport, by the same reckoning as the layover sheet.
+    const long = !!next && wait > 0 && wait < 24 * 60 && layoverPlan(s, next, home).verdict === 'out';
     return (
       <Fragment key={s.id}>
         <FlightRow s={s} onEdit={() => setBooking(s)} />
         {wait > 0 && wait < 24 * 60 && (
-          <div className={cx('layover-gap', wait < 60 && 'is-tight', wait >= 6 * 60 && 'is-long')}>
+          <div className={cx('layover-gap', wait < 60 && 'is-tight', long && 'is-long')}>
             <button type="button" className="layover-pill" onClick={() => setConnection({ from: s, to: next })} aria-haspopup="dialog">
               <Clock size={12} aria-hidden />
               <b>{hm(wait)}</b> layover in {s.toCity || s.toName || s.toCode}
-              {wait < 60 ? ' · tight' : wait >= 6 * 60 ? ' · long' : ''}
+              {wait < 60 ? ' · tight' : long ? ' · time to go out' : ''}
               <Sofa size={12} className="layover-lounge" aria-label="See lounges" />
             </button>
           </div>
