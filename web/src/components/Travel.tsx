@@ -1817,7 +1817,7 @@ export function WorkTrips() {
   const trips = t?.trips.filter((x) => x.purpose === 'work' && x.endDate >= today) ?? [];
   if (!trips.length) return null;
   return (
-    <section className="card">
+    <section className="card" style={{ paddingBottom: 10 }}>
       <div className="card-head">
         <h2 className="card-title">Work travel</h2>
       </div>

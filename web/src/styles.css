@@ -7466,9 +7466,6 @@ button.layover-pill:hover .layover-lounge {
   color: inherit;
   text-decoration: none;
 }
-.horizon-link:hover {
-  background: var(--surface-2);
-}
 
 /* A trip's own page */
 .trip-page-head .trip-sub {
