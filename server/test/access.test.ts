@@ -111,3 +111,9 @@ test('unknown, revoked and expired tokens are refused; the owner manages tokens 
   db.prepare('UPDATE access_tokens SET expires_at = ? WHERE id = ?').run('2020-01-01T00:00:00.000Z', old.record.id);
   assert.equal((await as(old.token)('GET', '/overview')).status, 401);
 });
+
+test('Seldon is told to file lasting answers as notes in their sphere', async () => {
+  const { buildSystemPrompt } = await import('../src/agent/prompt.ts');
+  const prompt = buildSystemPrompt({ userName: 'Sam', agentName: 'Seldon', onboarded: true } as never);
+  assert.match(prompt, /save it as a note in the sphere it belongs to/);
+});
