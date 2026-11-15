@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Goal, Habit, Metric, Project, Task } from '../../../shared/types.ts';
 import { useWrite, write } from '../api.ts';
 import { addDays, cx, dueLabel, formatNumber, hueStyle, parseDay, parseNumber, pct, relativeDay, isoWeek, todayStr, weekMonday, weekRange } from '../lib.ts';
+import { MASK, useAmountsHidden } from '../privacy.ts';
 import { useApp } from '../state.tsx';
 import { Check, ProgressBar, SphereSelect } from './ui.tsx';
 
@@ -256,7 +257,11 @@ function Sparkline({ values }: { values: number[] }) {
 }
 
 export function MetricCard({ metric }: { metric: Metric }) {
-  const { openSheet } = useApp();
+  const { openSheet, sphere } = useApp();
+  // Money numbers (net worth, savings) follow "hide amounts"; a weight or a sleep count doesn't.
+  const [amountsOff] = useAmountsHidden();
+  const masked = amountsOff && sphere(metric.sphereId)?.key === 'finances';
+  const shown = (n: number) => (masked ? MASK : formatNumber(n));
   const [draft, setDraft] = useState('');
   const log = useWrite((value: number) => write.post(`/metrics/${metric.id}/entries?date=${todayStr()}`, { value }));
 
@@ -281,14 +286,14 @@ export function MetricCard({ metric }: { metric: Metric }) {
         </button>
       </div>
       <div className="metric-value">
-        {metric.latest === null ? <span className="faint">—</span> : formatNumber(metric.latest)}
+        {metric.latest === null ? <span className="faint">—</span> : shown(metric.latest)}
         {metric.unit && metric.latest !== null && <small>{metric.unit}</small>}
       </div>
       <div className={cx('metric-delta', better === true && 'good', better === false && 'bad')}>
         {change !== null && change !== 0 ? (
           <>
             {change > 0 ? <ArrowUpRight size={12} style={{ verticalAlign: -2 }} /> : <ArrowDownRight size={12} style={{ verticalAlign: -2 }} />}{' '}
-            {formatNumber(Math.abs(change))} since {parseDay(metric.entries[0]!.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            {shown(Math.abs(change))} since {parseDay(metric.entries[0]!.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
           </>
         ) : lastDate ? (
           `Logged ${relativeDay(lastDate, todayStr())}`

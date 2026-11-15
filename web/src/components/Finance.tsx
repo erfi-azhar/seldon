@@ -1,10 +1,11 @@
 // Finances sphere panels: net worth at a glance, this month's money in and out against
 // budgets, a live crypto desk (prices, positions, trades, alerts), the portfolio, and debts.
 
-import { ArrowDownLeft, ArrowUpRight, Bell, ChevronRight, Pencil, Plus, RefreshCw, Repeat, Trash2, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Bell, ChevronRight, Eye, EyeOff, Pencil, Plus, RefreshCw, Repeat, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, MarketState, PlanBucketKey, PlanRules, Quote, Recurring, SalaryPlan, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { Link } from 'wouter';
+import { amountsHidden, maskAmount, maskAmountsIn, useAmountsHidden } from '../privacy.ts';
 import { financeWrite, useFinance, useMarket, useSpheres, useWrite } from '../api.ts';
 import { addDays, cx, dueLabel, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -18,13 +19,22 @@ const DEBT_LABEL: Record<DebtKind, string> = { credit_card: 'Credit card', loan:
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
+/** An amount of yours, in a currency. Masked while amounts are hidden. */
 export function money(n: number, currency: string, compact = false): string {
+  const shown = formatMoney(n, currency, compact);
+  return amountsHidden() ? maskAmount(shown) : shown;
+}
+
+function formatMoney(n: number, currency: string, compact: boolean): string {
   try {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency, notation: compact && Math.abs(n) >= 100_000 ? 'compact' : 'standard', maximumFractionDigits: compact || Math.abs(n) >= 1000 ? 0 : 2 }).format(n);
   } catch {
     return `${currency} ${n.toFixed(2)}`;
   }
 }
+
+/** A dollar amount of yours (a position, a gain): masked while amounts are hidden. Market prices use usd(). */
+const usdMine = (n: number): string => (amountsHidden() ? maskAmount(usd(n)) : usd(n));
 
 /** A coin price: cents for most, more digits for coins worth less than a dollar. */
 export function usd(n: number): string {
@@ -36,7 +46,8 @@ const signed = (s: string, n: number) => (n > 0 ? `+${s}` : n < 0 ? `−${s.repl
 const pctText = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(2)}%`;
 /** A live price as a form starts it: enough digits to be right, not a float's worth. */
 const priceText = (n: number) => String(Number(n.toFixed(n >= 100 ? 2 : n >= 1 ? 4 : 8)));
-const qty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: n < 1 ? 8 : 4 });
+const qty = (n: number) => (amountsHidden() ? maskAmount('0') : qtyShown(n));
+const qtyShown = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: n < 1 ? 8 : 4 });
 const numOrNull = (s: string) => (s.trim() === '' ? null : parseNumber(s));
 const bad = (...boxes: string[]) => boxes.some((s) => s.trim() !== '' && Number.isNaN(parseNumber(s)));
 const NOT_A_NUMBER = 'Enter numbers only, like 1200 or 0.05.';
@@ -73,8 +84,20 @@ function reprice(f: FinanceState, market: MarketState): FinanceState {
   return { ...f, holdings, crypto, market, netWorth: { ...f.netWorth, assets: f.netWorth.assets + delta, net: f.netWorth.net + delta } };
 }
 
+/** The eye: hides every amount of yours across Finances, and remembers it on this device. */
+export function HideAmounts() {
+  const [hidden, toggle] = useAmountsHidden();
+  return (
+    <button type="button" className="icon-btn icon-btn-sm fin-eye" aria-pressed={hidden} aria-label={hidden ? 'Show amounts' : 'Hide amounts'} title={hidden ? 'Show amounts' : 'Hide amounts'} onClick={toggle}>
+      {hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+    </button>
+  );
+}
+
 /** The Finances data with live prices folded in. */
 export function useLiveFinance(): FinanceState | undefined {
+  // Every finance card reads through here, so a flip of "hide amounts" redraws them all.
+  useAmountsHidden();
   const { data } = useFinance();
   const market = useMarket(data?.market);
   return useMemo(() => (data && market ? reprice(data, market) : data), [data, market]);
@@ -160,13 +183,16 @@ export function MoneyHero() {
         {f.crypto && (
           <div>
             <span className="fin-label">Crypto 24h</span>
-            <Delta n={f.crypto.change24h}>{signed(usd(Math.abs(f.crypto.change24h)), f.crypto.change24h)}</Delta>
+            <Delta n={f.crypto.change24h}>{signed(usdMine(Math.abs(f.crypto.change24h)), f.crypto.change24h)}</Delta>
           </div>
         )}
       </div>
-      <button type="button" className="btn btn-ghost btn-sm fin-currency" onClick={() => setSettings(true)} title="Base currency">
-        {c}
-      </button>
+      <div className="fin-hero-tools">
+        <HideAmounts />
+        <button type="button" className="btn btn-ghost btn-sm fin-currency" onClick={() => setSettings(true)} title="Base currency">
+          {c}
+        </button>
+      </div>
       {settings && <CurrencySheet current={c} onClose={() => setSettings(false)} />}
     </section>
   );
@@ -432,6 +458,9 @@ function BudgetSheet({ f, onClose }: { f: FinanceState; onClose: () => void }) {
 // ── Where your pay goes ─────────────────────────────────────────────────────
 
 const PLAN_HUE: Record<PlanBucketKey, number> = { bills: 255, yearly: 285, everyday: 220, fun: 330, buffer: 175, debt: 25, emergency: 155, relief: 300, crypto: 62, invest: 135 };
+/** Sentences the server wrote, with their amounts masked while amounts are hidden. */
+const hide = (text: string) => (amountsHidden() ? maskAmountsIn(text) : text);
+
 const planColor = (key: PlanBucketKey) => `oklch(0.7 0.13 ${PLAN_HUE[key]})`;
 /** Plan amounts are whole units; they read without cents. */
 const whole = (n: number, c: string) => money(n, c).replace(/[.,]00(?=\D*$)/, '');
@@ -488,8 +517,8 @@ export function PlanCard() {
                     <span className="num">{whole(b.amount, c)}</span>
                     <span className="faint num fin-plan-pct">{share(b.amount, p.pay)}</span>
                   </div>
-                  {b.reason && <p className="fin-plan-why">{b.reason}</p>}
-                  {b.action && b.key !== 'yearly' && <p className="fin-plan-do">→ {b.action}</p>}
+                  {b.reason && <p className="fin-plan-why">{hide(b.reason)}</p>}
+                  {b.action && b.key !== 'yearly' && <p className="fin-plan-do">→ {hide(b.action)}</p>}
                 </div>
               </li>
             ))}
@@ -497,7 +526,7 @@ export function PlanCard() {
           )}
           {p.notes.map((n) => (
             <p key={n} className="fin-tip">
-              {n}
+              {hide(n)}
             </p>
           ))}
           {r && (
@@ -1213,7 +1242,7 @@ function CryptoSummary({ crypto }: { crypto: FinanceState['crypto'] }) {
       {cells.map(([label, n, delta]) => (
         <div key={label}>
           <span className="fin-label">{label}</span>
-          {delta ? <Delta n={n}>{signed(usd(Math.abs(n)), n)}</Delta> : <b className="num">{usd(n)}</b>}
+          {delta ? <Delta n={n}>{signed(usdMine(Math.abs(n)), n)}</Delta> : <b className="num">{usdMine(n)}</b>}
         </div>
       ))}
     </div>
@@ -1241,8 +1270,8 @@ function CryptoTicker({ v, sheets, onUnwatch }: { v: CryptoView; sheets: CryptoS
             <span className="fin-pos">
               {h && h.value !== null && (
                 <>
-                  <span className="num">{usd(h.value)}</span>
-                  {h.gain !== null && <Delta n={h.gain}>{signed(usd(Math.abs(h.gain)), h.gain)}</Delta>}
+                  <span className="num">{usdMine(h.value)}</span>
+                  {h.gain !== null && <Delta n={h.gain}>{signed(usdMine(Math.abs(h.gain)), h.gain)}</Delta>}
                 </>
               )}
             </span>
@@ -1329,10 +1358,10 @@ export function CryptoDesk() {
               <li key={t.id} className="fin-trade">
                 <span className={cx('chip', t.side === 'buy' ? 'fin-buy' : 'fin-sell')}>{t.side}</span>
                 <span className="grow clamp-1 num">
-                  {qty(t.quantity)} {t.symbol} @ {usd(t.price)}
+                  {qty(t.quantity)} {t.symbol} @ {usdMine(t.price)}
                   <span className="faint"> · {shortDay(t.date)}{t.venue ? ` · ${t.venue}` : ''}</span>
                 </span>
-                {t.realized !== null && <Delta n={t.realized}>{signed(usd(Math.abs(t.realized)), t.realized)}</Delta>}
+                {t.realized !== null && <Delta n={t.realized}>{signed(usdMine(Math.abs(t.realized)), t.realized)}</Delta>}
                 <button type="button" className="icon-btn icon-btn-sm" aria-label="Remove this trade" onClick={() => removeTrade.mutate(t.id, { onError: (err) => toast({ message: err.message }) })}>
                   <Trash2 size={13} />
                 </button>
@@ -1363,6 +1392,7 @@ export function TodayCrypto() {
   return (
     <section className="card fin-desk fin-desk-today">
       <CryptoHead market={v.market} sheets={sheets}>
+        <HideAmounts />
         {financesId && (
           <Link href={`/spheres/${financesId}`} className="icon-btn icon-btn-sm" aria-label="Open the crypto desk in Finances" title="Watchlist, trades and alerts in Finances">
             <ArrowUpRight size={14} />

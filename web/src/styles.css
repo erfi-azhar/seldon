@@ -9205,12 +9205,22 @@ button.layover-pill:hover .layover-lounge {
   font: 500 18px/1.2 var(--mono);
   letter-spacing: -0.03em;
 }
-.fin-currency {
+.fin-hero-tools {
   position: absolute;
   top: 12px;
   right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.fin-currency {
   font-family: var(--mono);
   font-size: 12px;
+}
+/* The eye reads as on when amounts are hidden. */
+.fin-eye[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--glass-press);
 }
 
 /* This month */
