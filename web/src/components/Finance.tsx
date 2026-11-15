@@ -4,7 +4,8 @@
 import { ArrowDownLeft, ArrowUpRight, Bell, ChevronRight, Pencil, Plus, RefreshCw, Repeat, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, MarketState, Quote, Recurring, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
-import { financeWrite, useFinance, useMarket, useWrite } from '../api.ts';
+import { Link } from 'wouter';
+import { financeWrite, useFinance, useMarket, useSpheres, useWrite } from '../api.ts';
 import { addDays, cx, dueLabel, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { Field, Modal, ProgressBar, Seg, Spinner } from './ui.tsx';
@@ -753,9 +754,16 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
 
 // ── Crypto desk ─────────────────────────────────────────────────────────────
 
-export function CryptoDesk() {
+/**
+ * The crypto card. On the Finances sphere it is the whole desk; `compact` (on Today) keeps the
+ * live prices, positions and quick actions, leaves the watchlist box and trade log to Finances,
+ * and stays away entirely until a coin is held or watched.
+ */
+export function CryptoDesk({ compact = false }: { compact?: boolean }) {
   const f = useLiveFinance();
   const { toast } = useApp();
+  const { data: spheres } = useSpheres();
+  const financesId = spheres?.find((x) => x.key === 'finances')?.id;
   const [coin, setCoin] = useState('');
   const [trade, setTrade] = useState<{ symbol?: string; side?: 'buy' | 'sell' } | null>(null);
   const [alert, setAlert] = useState<Quote | null | undefined>(undefined);
@@ -770,9 +778,10 @@ export function CryptoDesk() {
   const symbols = [...new Set([...held.keys(), ...f.watchlist])];
   const quotes = new Map(m.quotes.map((q) => [q.symbol, q]));
   const openAlerts = f.alerts.filter((a) => !a.triggeredAt);
+  if (compact && symbols.length === 0) return null;
 
   return (
-    <section className="card fin-desk">
+    <section className={cx('card fin-desk', compact && 'is-compact')}>
       <div className="card-head">
         <h2 className="card-title">
           Crypto <LiveDot m={m} />
@@ -784,9 +793,17 @@ export function CryptoDesk() {
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAlert(null)}>
             <Bell size={13} /> Alert
           </button>
-          <button type="button" className="icon-btn icon-btn-sm" aria-label="Refresh prices" title="Refresh prices" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-            {refresh.isPending ? <Spinner /> : <RefreshCw size={13} />}
-          </button>
+          {compact ? (
+            financesId && (
+              <Link href={`/spheres/${financesId}`} className="icon-btn icon-btn-sm" aria-label="Open the crypto desk in Finances" title="Watchlist, trades and alerts in Finances">
+                <ArrowUpRight size={14} />
+              </Link>
+            )
+          ) : (
+            <button type="button" className="icon-btn icon-btn-sm" aria-label="Refresh prices" title="Refresh prices" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+              {refresh.isPending ? <Spinner /> : <RefreshCw size={13} />}
+            </button>
+          )}
         </div>
       </div>
 
@@ -845,7 +862,7 @@ export function CryptoDesk() {
                   <button type="button" className="icon-btn icon-btn-sm" aria-label={`Alert on ${s}`} title="Price alert" onClick={() => setAlert(q ?? { symbol: s, price: 0, open: 0, high: 0, low: 0, changePct: 0, volume: 0, source: 'binance', at: 0 })}>
                     <Bell size={13} />
                   </button>
-                  {!h && f.watchlist.includes(s) && (
+                  {!compact && !h && f.watchlist.includes(s) && (
                     <button type="button" className="icon-btn icon-btn-sm" aria-label={`Stop watching ${s}`} title="Stop watching" onClick={() => unwatch.mutate(s)}>
                       <X size={13} />
                     </button>
@@ -857,20 +874,22 @@ export function CryptoDesk() {
         </ul>
       )}
 
-      <form
-        className="describe"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (coin.trim()) watch.mutate(coin.trim(), { onSuccess: () => setCoin(''), onError: (err) => toast({ message: err.message }) });
-        }}
-      >
-        <input value={coin} onChange={(e) => setCoin(e.target.value.toUpperCase())} placeholder="Watch a coin — PEPE, SUI, LINK…" aria-label="Coin to watch" maxLength={12} />
-        <button type="submit" className="btn btn-primary btn-sm" disabled={!coin.trim() || watch.isPending}>
-          Watch
-        </button>
-      </form>
+      {!compact && (
+        <form
+          className="describe"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (coin.trim()) watch.mutate(coin.trim(), { onSuccess: () => setCoin(''), onError: (err) => toast({ message: err.message }) });
+          }}
+        >
+          <input value={coin} onChange={(e) => setCoin(e.target.value.toUpperCase())} placeholder="Watch a coin — PEPE, SUI, LINK…" aria-label="Coin to watch" maxLength={12} />
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!coin.trim() || watch.isPending}>
+            Watch
+          </button>
+        </form>
+      )}
 
-      {openAlerts.length > 0 && (
+      {!compact && openAlerts.length > 0 && (
         <div className="fin-alerts">
           {openAlerts.map((a) => (
             <span key={a.id} className="chip chip-outline">
@@ -883,7 +902,7 @@ export function CryptoDesk() {
         </div>
       )}
 
-      {f.trades.length > 0 && (
+      {!compact && f.trades.length > 0 && (
         <details className="todo-fold fin-trades">
           <summary>
             <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
@@ -907,7 +926,7 @@ export function CryptoDesk() {
           </ul>
         </details>
       )}
-      <p className="fin-foot hint">Prices in US dollars from {m.source ?? 'Binance, or Coinbase where Binance is unavailable'}.</p>
+      {!compact && <p className="fin-foot hint">Prices in US dollars from {m.source ?? 'Binance, or Coinbase where Binance is unavailable'}.</p>}
 
       {trade && <TradeSheet init={trade} quotes={quotes} held={held} onClose={() => setTrade(null)} />}
       {alert !== undefined && <AlertSheet quote={alert} onClose={() => setAlert(undefined)} />}

@@ -120,7 +120,8 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   records its realized profit or loss, and holdings show unrealized P&L and the day's move.
   Set a price alert and it arrives under *Needs you* once it's crossed — checked on every
   tick while the page is open and every minute otherwise. Seldon can read live prices,
-  log trades and set alerts too.
+  log trades and set alerts too. A compact version sits on Today: live prices, positions and
+  quick trade and alert buttons, once you hold or watch a coin.
 
 ### Faith, for a Muslim
 
