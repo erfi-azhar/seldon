@@ -923,6 +923,9 @@ export interface Segment {
   cabin: string;
   seat: string;
   confirmation: string;
+  /** Flights: the terminals it leaves from and lands at ("3", "1", "T2"), empty when unknown. */
+  fromTerminal: string;
+  toTerminal: string;
   address: string;
   notes: string;
   source: string;

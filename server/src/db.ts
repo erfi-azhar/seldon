@@ -642,6 +642,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE itinerary_items ADD COLUMN route TEXT;
   ALTER TABLE itinerary_items ADD COLUMN details TEXT NOT NULL DEFAULT '[]';
   `,
+  // The terminals a flight leaves from and lands at, for the card at a glance.
+  `
+  ALTER TABLE trip_segments ADD COLUMN from_terminal TEXT NOT NULL DEFAULT '';
+  ALTER TABLE trip_segments ADD COLUMN to_terminal TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

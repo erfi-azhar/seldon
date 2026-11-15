@@ -15,7 +15,7 @@ import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
 import { RouteCard } from './Journey.tsx';
 import { ItemModules } from './ItemModules.tsx';
-import { journeys } from '../../../shared/journey.ts';
+import { boardsAt, clock, journeys } from '../../../shared/journey.ts';
 import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
@@ -355,11 +355,13 @@ function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment
     cabin: segment?.cabin ?? 'Economy',
     seat: segment?.seat ?? '',
     confirmation: segment?.confirmation ?? '',
+    fromTerminal: segment?.fromTerminal ?? '',
+    toTerminal: segment?.toTerminal ?? '',
   });
   // Fields this form does not show are left out, so an edit keeps them (a hotel's brand, a train's operator).
   const body = () =>
     kind === 'flight'
-      ? { kind, carrier: f.carrier, number: f.number, fromCode: f.fromCode, toCode: f.toCode, startLocal: f.startLocal, endLocal: f.endLocal, cabin: f.cabin, seat: f.seat, confirmation: f.confirmation }
+      ? { kind, carrier: f.carrier, number: f.number, fromCode: f.fromCode, toCode: f.toCode, startLocal: f.startLocal, endLocal: f.endLocal, cabin: f.cabin, seat: f.seat, confirmation: f.confirmation, fromTerminal: f.fromTerminal, toTerminal: f.toTerminal }
       : kind === 'stay'
         ? { kind, title: f.title, address: f.address, startLocal: f.startLocal, endLocal: f.endLocal, confirmation: f.confirmation }
         : { kind, title: f.title, address: f.address, startLocal: f.startLocal, endLocal: f.endLocal, seat: f.seat, confirmation: f.confirmation };
@@ -438,6 +440,14 @@ function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment
             </Field>
             <Field label="To">
               <input className="input num" value={f.toCode} onChange={set('toCode')} placeholder="HND" maxLength={3} />
+            </Field>
+          </div>
+          <div className="field-row">
+            <Field label="Departure terminal">
+              <input className="input num" value={f.fromTerminal} onChange={set('fromTerminal')} placeholder="3" maxLength={12} />
+            </Field>
+            <Field label="Arrival terminal">
+              <input className="input num" value={f.toTerminal} onChange={set('toTerminal')} placeholder="1" maxLength={12} />
             </Field>
           </div>
           <div className="field-row">
@@ -611,6 +621,7 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
         <span className="fc-end">
           <b className="fc-time">{time(s.startLocal)}</b>
           <span className="fc-place">{place(s.fromCode, s.fromCity, s.fromName)}</span>
+          {s.fromTerminal && <span className="fc-terminal">Terminal {s.fromTerminal}</span>}
         </span>
         <span className="fc-mid">
           <span className="fc-dur">{duration(s)}</span>
@@ -629,13 +640,30 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
             {plus > 0 && <sup>+{plus}</sup>}
           </b>
           <span className="fc-place">{place(s.toCode, s.toCity, s.toName)}</span>
+          {s.toTerminal && <span className="fc-terminal">Terminal {s.toTerminal}</span>}
         </span>
       </span>
-      <span className="fc-foot">
-        <span className="fc-details">{details || (until >= 0 ? 'Add your cabin and seat' : weekday(day))}</span>
+      <span className="fc-facts">
+        {until >= 0 && (
+          <>
+            <span className="fc-fact">
+              <small>Check-in closes</small>
+              <b className="num">{clock(Date.parse(s.startUtc) - 60 * 60_000, s.startTz)}</b>
+            </span>
+            <span className="fc-fact">
+              <small>Boards</small>
+              <b className="num">~{clock(boardsAt(s), s.startTz)}</b>
+            </span>
+          </>
+        )}
+        <span className="fc-fact">
+          <small>{s.cabin ? 'Cabin' : 'Seat'}</small>
+          <b>{details || (until >= 0 ? <span className="fc-add">Add cabin and seat</span> : '—')}</b>
+        </span>
         {s.confirmation && (
-          <span className="fc-ref">
-            <b>{s.confirmation}</b> ref
+          <span className="fc-fact">
+            <small>Booking ref</small>
+            <b className="num">{s.confirmation}</b>
           </span>
         )}
       </span>

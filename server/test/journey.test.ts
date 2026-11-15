@@ -6,6 +6,7 @@ import { openDb } from '../src/db.ts';
 import { recordLocation, sendDueNotices, setPushSender, tripTrack } from '../src/features/journey.ts';
 import { addSegment, createTrip, getTrip } from '../src/features/travel.ts';
 import { Store } from '../src/store.ts';
+import { anthropicMessage, fakeModel } from './helpers.ts';
 
 function journeyStore(): Store {
   const store = new Store(openDb(':memory:'));
@@ -163,4 +164,30 @@ test('plan items carry the way there: stored, kept through other edits, dropped 
   const withDetails = updateItem(store, item!.id, { details });
   assert.equal(withDetails.details.length, 2, 'empty modules are dropped');
   assert.equal(withDetails.details[1]!.url, undefined, 'only https links are kept');
+});
+
+test('stops added without their route and details get them filled in, once each; online ones are left alone', async () => {
+  const { addItems, completeItinerary } = await import('../src/features/travel.ts');
+  const store = journeyStore();
+  const trip = brazil(store);
+  const [masp, , done] = addItems(store, trip.id, [
+    { date: '2026-12-05', time: '10:00', title: 'MASP', place: 'MASP, Av. Paulista 1578' },
+    { date: '2026-12-05', time: '23:00', title: 'Daily sync with Beijing', place: 'Online' },
+    { date: '2026-12-05', time: '12:00', title: 'Already planned', place: 'Somewhere', details: [{ kind: 'tip', label: 'Known', text: 'x' }] },
+  ]);
+  const reply = (obj: unknown) => ({ sse: anthropicMessage([{ type: 'text', text: JSON.stringify(obj) }], 'end_turn') });
+  const answer = { items: [{ id: masp!.id, route: { from: 'The hotel', mode: 'transit', minutes: 25, steps: ['Line 4 to Paulista', 'Line 2 to Trianon-MASP'] }, details: [{ kind: 'hours', label: 'Open 10:00–18:00', text: 'Free on Tuesdays.' }] }] };
+  const model = await fakeModel([reply(answer)]);
+  store.addConnection({ provider: 'anthropic', baseUrl: model.url, apiKey: 'k' });
+  assert.equal(await completeItinerary(store, trip.id), 1);
+  const items = getTrip(store, trip.id).itinerary;
+  const got = items.find((i) => i.id === masp!.id)!;
+  assert.equal(got.route?.minutes, 25);
+  assert.equal(got.details[0]!.label, 'Open 10:00–18:00');
+  assert.match(model.seen[0]!.body.messages[0].content, /MASP/);
+  assert.doesNotMatch(model.seen[0]!.body.messages[0].content, /Daily sync/, 'online items are not asked about');
+  assert.doesNotMatch(model.seen[0]!.body.messages[0].content, /Already planned/, 'items with details are left alone');
+  assert.equal(items.find((i) => i.id === done!.id)!.details[0]!.label, 'Known');
+  assert.equal(await completeItinerary(store, trip.id), 0, 'nothing left to ask about');
+  assert.equal(model.seen.length, 1);
 });
