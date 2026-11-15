@@ -587,7 +587,7 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
     <button type="button" className={cx('flight-card', until < 0 && 'is-past')} onClick={onEdit} aria-label={`${airline} ${s.carrier} ${s.number}, ${s.fromCode} to ${s.toCode}, ${weekday(day)} at ${time(s.startLocal)}. Edit`}>
       <span className="fc-head">
         <span className="fc-logo" aria-hidden>
-          <AirlineTail code={code} size={30} />
+          <AirlineTail code={code} size={40} />
         </span>
         <span className="fc-airline">
           <b>{airline}</b>

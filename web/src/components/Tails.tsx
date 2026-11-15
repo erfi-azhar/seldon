@@ -1,6 +1,7 @@
-// Airline tails: a tail fin in each airline's livery colours, to tell flights apart at a glance.
-// These are abstractions of the liveries (their colours and broad patterns), not the airlines'
-// logos, which are their own artwork. Airlines not listed get a neutral fin with their code.
+// Airline tails, to tell flights apart at a glance. Star Alliance airlines use illustrated tails
+// from public/tails (sources and licences in its ATTRIBUTION.md); the airlines' names, logos and
+// liveries remain theirs. Other airlines get a fin drawn in their livery colours and broad
+// pattern, or a neutral fin with their code.
 
 import { useId, type ReactNode } from 'react';
 
@@ -171,10 +172,23 @@ const PLANES: Record<string, PlanePaint> = {
 /** An airline's paint for the globe's plane; a plain grey-tailed airliner for airlines not listed. */
 export const planePaint = (code?: string): PlanePaint => PLANES[(code ?? '').toUpperCase()] ?? paint('#5b6b86', '#9aa8bd');
 
+/**
+ * Star Alliance airlines whose tails are full livery illustrations, served from /tails/<code>.svg
+ * (see public/tails/ATTRIBUTION.md for where each comes from). Others get the drawn fin below.
+ */
+const ILLUSTRATED = new Set(['A3', 'AC', 'AI', 'AV', 'AZ', 'BR', 'CA', 'CM', 'ET', 'LH', 'LO', 'LX', 'MS', 'NH', 'NZ', 'OS', 'OU', 'OZ', 'SA', 'SN', 'SQ', 'TG', 'TK', 'TP', 'UA', 'ZH']);
+
 /** An airline's tail on a small tile. */
 export function AirlineTail({ code, size = 38 }: { code: string; size?: number }) {
+  const key = code.trim().toUpperCase();
+  if (ILLUSTRATED.has(key)) return <img className="airline-tail" src={`/tails/${key}.svg`} width={size} height={size} alt={`${key} tail`} draggable={false} />;
+  return <DrawnTail code={key} size={size} />;
+}
+
+/** The drawn fin: the livery's colours and broad pattern, for airlines without an illustration. */
+function DrawnTail({ code, size }: { code: string; size: number }) {
   const clip = `t${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
-  const key = code.toUpperCase();
+  const key = code;
   const livery = LIVERIES[key];
   return (
     <svg className="airline-tail" width={size} height={size} viewBox="0 0 40 40" role="img" aria-label={key ? `${key} tail` : 'Flight'}>
