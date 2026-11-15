@@ -217,7 +217,13 @@ test('ahead of a trip Seldon drafts the plan and prepares the airport; without a
   assert.match(sig.body, /KrisFlyer Gold Lounge/);
   assert.equal(getTrip(store, trip.id).itinerary.length, 0);
 
-  const companion = { lounges: ['KrisFlyer Gold Lounge, Terminal 3, level 3'], plan: ['Jewel’s Rain Vortex is 10 minutes away by Skytrain', 'The prayer room is near gate A1'] };
+  const companion = {
+    lounges: [
+      { name: 'Priority Lounge', where: 'Terminal 1, landside', access: 'Revolut Ultra', reachable: false, note: 'Before security' },
+      { name: 'KrisFlyer Gold Lounge', where: 'Terminal 3, level 3', access: 'KrisFlyer Elite Gold', reachable: true, note: 'Showers' },
+    ],
+    plan: ['Jewel’s Rain Vortex is 10 minutes away by Skytrain', 'The prayer room is near gate A1'],
+  };
   const plan = {
     items: [
       { date: '2026-11-15', time: '19:30', title: 'Dinner at Halal Ramen Ouka', place: 'Shinjuku', notes: 'Muslim-friendly', kind: 'food' },
@@ -231,6 +237,9 @@ test('ahead of a trip Seldon drafts the plan and prepares the airport; without a
   await prepareTravel(store, now);
   const t = getTrip(store, trip.id);
   assert.deepEqual(t.companion[seg.id]!.plan, companion.plan);
+  assert.deepEqual(t.companion[seg.id]!.picks!.map((l) => l.name), ['KrisFlyer Gold Lounge', 'Priority Lounge'], 'lounges you can reach come first');
+  assert.equal(t.companion[seg.id]!.lounges[0], 'KrisFlyer Gold Lounge — Terminal 3, level 3 · KrisFlyer Elite Gold');
+  assert.match(t.companion[seg.id]!.lounges[1]!, /not on this connection/);
   assert.deepEqual(t.itinerary.map((i) => i.title), ['Dinner at Halal Ramen Ouka', 'TeamLab Planets'], 'items outside the trip are dropped');
   sig = listSignals(store).find((s) => s.kind === 'flight')!;
   assert.match(sig.body, /Terminal 3, level 3/);

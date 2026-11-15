@@ -8157,97 +8157,6 @@ button.layover-pill:hover .layover-lounge {
   --m: transparent 83%, #000 100%;
 }
 
-/* The lounges at a connection, opened from its layover pill. */
-.lounge-lede {
-  margin: 0 0 14px;
-  font-size: 13.5px;
-  color: var(--ink-2);
-}
-.lounge-lede b {
-  color: var(--ink);
-}
-.lounge-h {
-  margin: 16px 0 8px;
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.lounge-rules,
-.lounge-list,
-.lounge-plan {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.lounge-rules li,
-.lounge-list li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-.lounge-rules li > svg {
-  flex: none;
-  margin-top: 3px;
-  color: var(--good);
-}
-.lounge-list li > svg {
-  flex: none;
-  margin-top: 2px;
-  color: var(--ink-3);
-}
-.lounge-rules span,
-.lounge-list span {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  font-size: 13.5px;
-}
-.lounge-rules b,
-.lounge-list b {
-  font-weight: 600;
-}
-.lounge-rules small,
-.lounge-list small {
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-.lounge-none {
-  margin: 0;
-  font-size: 13px;
-  color: var(--ink-2);
-}
-.lounge-here {
-  margin-top: 4px;
-}
-.lounge-here-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.lounge-here-head .lounge-h {
-  margin-bottom: 8px;
-}
-.lounge-plan {
-  gap: 6px;
-  padding-left: 18px;
-  list-style: disc;
-  font-size: 13px;
-  color: var(--ink-2);
-}
-.lounge-foot {
-  margin: 18px 0 0;
-  font-size: 12px;
-  color: var(--ink-4);
-}
 
 /* Today's to-dos: work beside everything else, one column on a phone. */
 .today-todos {
@@ -8295,5 +8204,239 @@ button.layover-pill:hover .layover-lounge {
     border-left: 0;
     border-top: 1px solid var(--line);
     padding-top: 8px;
+  }
+}
+
+/* The lounges at a connection, opened from its layover pill. */
+.lx-route {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.lx-leg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lx-leg > span {
+  display: grid;
+  line-height: 1.25;
+}
+.lx-leg.is-out > span {
+  text-align: right;
+}
+.lx-leg b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.lx-leg small {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.lx-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.lx-wait i {
+  flex: 1;
+  border-top: 1.5px dashed var(--line-2);
+}
+.lx-wait span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.lx-wait.is-tight span {
+  color: oklch(0.55 0.15 40);
+}
+.lx-block {
+  margin-top: 20px;
+}
+.lx-h {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.lx-finding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.lx-best {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, oklch(0.62 0.12 160 / 0.1), oklch(0.62 0.12 160 / 0.04));
+  box-shadow: inset 0 0 0 1px oklch(0.62 0.12 160 / 0.35);
+}
+.lx-best.is-none {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.lx-best-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--good);
+}
+.lx-best-name {
+  font-size: 16px;
+  font-weight: 650;
+}
+.lx-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lx-access {
+  justify-self: start;
+  margin-top: 2px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--ink-2);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.lx-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lx-sub {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.lx-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lx-list li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 13.5px;
+}
+.lx-list li b {
+  font-weight: 600;
+}
+.lx-list.is-off li {
+  opacity: 0.72;
+}
+.lx-row-meta,
+.lx-row-note {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.lx-access-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lx-access-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+}
+.lx-access-list li > span:last-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.lx-access-list b {
+  font-weight: 600;
+}
+.lx-access-list small {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.lx-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+}
+.is-yes > .lx-mark {
+  color: #fff;
+  background: var(--good);
+}
+.is-no > .lx-mark {
+  color: var(--ink-3);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.lx-plan {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lx-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-4);
+}
+@media (max-width: 520px) {
+  .lx-leg small {
+    font-size: 11.5px;
+  }
+  .lx-route {
+    gap: 6px;
+    padding: 10px;
   }
 }

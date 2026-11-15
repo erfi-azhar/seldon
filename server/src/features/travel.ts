@@ -849,7 +849,17 @@ const describeSegment = (s: Segment) =>
     : `${s.kind === 'stay' ? 'Stay' : s.kind} ${s.title}${s.address ? `, ${s.address}` : ''}, ${s.startLocal.replace('T', ' ')} to ${s.endLocal.replace('T', ' ')}`;
 
 const Companion = z.object({
-  lounges: z.array(z.string().max(200)).max(5),
+  lounges: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(80),
+        where: z.string().max(140),
+        access: z.string().max(80),
+        reachable: z.boolean(),
+        note: z.string().max(220),
+      }),
+    )
+    .max(6),
   plan: z.array(z.string().max(300)).max(8),
 });
 
@@ -869,22 +879,27 @@ export async function buildCompanion(store: Store, segmentId: string, now: Date 
   const trip = getTrip(store, r.trip_id);
   const seg = trip.segments.find((s) => s.id === segmentId)!;
   const layover = connectionBefore(trip, seg) ?? travelContext(store, localDate(now), now).layovers.find((l) => l.nextSegmentId === segmentId);
+  const flights = trip.segments.filter((x) => x.kind === 'flight');
+  const arriving = layover ? flights[flights.findIndex((x) => x.id === seg.id) - 1] : undefined;
   const where = airport(seg.fromCode);
   const res = await think({
     store,
     task: `You are preparing a short airport companion for someone about to fly. Using what you know of ${where ? `${where.name} airport in ${where.city}` : `the departure airport (${seg.fromCode || seg.fromName})`}:
-- "lounges": the specific lounge(s) they can use, matching the eligibility given (name, terminal or area, and anything worth knowing such as showers or the best one if several qualify). Start each with the lounge's name, then " — " and the details, and end with how they get in (e.g. "· Revolut Ultra"). Revolut Ultra and LoungeKey mean the LoungeKey network; Priority Pass its own. On a connection only lounges airside of where they land and leave count: say plainly if a card lounge is landside or in another terminal. If they are eligible for none, say so once and name the best pay-in option.
+- "lounges": up to 5 lounges, best first, each {"name", "where", "access", "reachable", "note"}. "where" is the terminal, concourse or gates and whether airside or landside. "access" is how they get in, matching the eligibility given ("Revolut Ultra", "Business fare", "Star Alliance Gold"), or "Pay at the door, about €40" for a pay-in option. "reachable" is true only if they can actually use it on this flight: on a connection, airside in the terminal and area they land in and leave from (with the departure gates' passport and security rules in mind), and open at that hour. Revolut Ultra and LoungeKey mean the LoungeKey network; Priority Pass its own. Include a card lounge that is landside or in another terminal with "reachable": false and say why in "note", so they know. If nothing they are eligible for is reachable, add the best pay-in lounge they can reach. "note" is one line worth knowing (showers, quiet, the better of two).
 - "plan": 3 to 6 concrete suggestions that fit the time they have${layover ? ` (a ${layover.hours}-hour layover)` : ' before boarding'}, e.g. what to see or eat (halal options), where the prayer room (musolla) is, whether there is time to leave the airport, and when to head to the gate. They are Muslim; on a long journey mention that a traveller may shorten and combine prayers.
-Be specific and brief. Say if you are unsure of a detail. Reply {"lounges": [...], "plan": [...]}.`,
+Be specific and brief. If you are unsure of a detail, such as which concourse a flight leaves from, say so in the note. Reply {"lounges": [...], "plan": [...]}.`,
     input: [
       `Trip purpose: ${trip.purpose}.`,
-      wrapUntrusted('booking', `Trip: ${trip.title}\n${describeSegment(seg)}`, 2400),
+      wrapUntrusted('booking', `Trip: ${trip.title}\n${describeSegment(seg)}${arriving ? `\nArriving on: ${describeSegment(arriving)}` : ''}`, 2400),
       `Eligibility from their fare and status: ${seg.lounges.length ? seg.lounges.map((l) => `${l.access} (${l.basis})`).join('; ') : 'none known'}.`,
-      layover ? `This is a connection: ${layover.hours} hours at ${layover.airport}.` : `Departing from ${seg.fromCode}.`,
+      layover ? `This is a connection: ${layover.hours} hours at ${layover.airport}${arriving ? ', arriving on the flight given above' : ''}.` : `Departing from ${seg.fromCode}.`,
     ].join('\n'),
     schema: Companion,
   });
-  const companion = { ...trip.companion, [segmentId]: { lounges: res.lounges, plan: res.plan, generatedAt: nowIso() } };
+  // Plain lines for the places that show a lounge as text (Today's card, the departure notice), usable ones first.
+  const picks = [...res.lounges].sort((a, b) => Number(b.reachable) - Number(a.reachable));
+  const lines = picks.map((l) => `${l.name} — ${[l.where, l.reachable ? '' : 'not on this connection'].filter(Boolean).join(', ')} · ${l.access}`);
+  const companion = { ...trip.companion, [segmentId]: { lounges: lines.slice(0, 5), plan: res.plan, picks, generatedAt: nowIso() } };
   store.db.prepare('UPDATE trips SET companion = ? WHERE id = ?').run(JSON.stringify(companion), trip.id);
   return getTrip(store, trip.id);
 }
