@@ -40,6 +40,7 @@ import type {
   SphereDetail,
   SphereStats,
   SphereWithStats,
+  Project,
   Task,
   ToolCallView,
 } from '../../shared/types.ts';
@@ -140,6 +141,7 @@ const GROUP = 'activity_group';
 const UNDOABLE = new Set([
   'created:goal',
   'created:task',
+  'created:project',
   'created:habit',
   'created:metric',
   'created:note',
@@ -603,6 +605,7 @@ export class Store {
       sphereId: r.sphere_id,
       goalId: r.goal_id,
       tripId: r.trip_id ?? null,
+      projectId: r.project_id ?? null,
       dueDate: r.due_date,
       done: !!r.done,
       doneAt: r.done_at,
@@ -610,7 +613,7 @@ export class Store {
     };
   }
 
-  listTasks(filter: { status?: 'open' | 'done' | 'all'; sphereId?: string; goalId?: string; tripId?: string; limit?: number } = {}): Task[] {
+  listTasks(filter: { status?: 'open' | 'done' | 'all'; sphereId?: string; goalId?: string; tripId?: string; projectId?: string; limit?: number } = {}): Task[] {
     const where: string[] = [];
     const params: SqlValue[] = [];
     const status = filter.status ?? 'open';
@@ -626,6 +629,10 @@ export class Store {
     if (filter.tripId) {
       where.push('trip_id = ?');
       params.push(filter.tripId);
+    }
+    if (filter.projectId) {
+      where.push('project_id = ?');
+      params.push(filter.projectId);
     }
     const order = status === 'done' ? 'done_at DESC' : 'done, due_date IS NULL, due_date, created_at';
     const rows = this.all(
@@ -646,10 +653,12 @@ export class Store {
     if (!this.get('SELECT 1 AS x FROM trips WHERE id = ?', id)) throw new NotFound('Trip');
   }
 
-  createTask(input: { title: string; notes?: string; sphereId?: string | null; goalId?: string | null; tripId?: string | null; dueDate?: string | null }): Task {
+  createTask(input: { title: string; notes?: string; sphereId?: string | null; goalId?: string | null; tripId?: string | null; projectId?: string | null; dueDate?: string | null }): Task {
     const title = input.title.trim();
     if (!title) throw new Invalid('A task needs a title');
     let sphereId = input.sphereId ?? null;
+    // A project's to-do lives in the project's sphere.
+    if (input.projectId != null) sphereId = this.getProject(input.projectId).sphereId;
     if (input.goalId != null) {
       const goal = this.getGoal(input.goalId);
       sphereId = sphereId ?? goal.sphereId;
@@ -665,13 +674,14 @@ export class Store {
     if (sphereId != null) this.getSphere(sphereId);
     const id = newId();
     this.run(
-      'INSERT INTO tasks (id, title, notes, sphere_id, goal_id, trip_id, due_date, created_at) VALUES (?,?,?,?,?,?,?,?)',
+      'INSERT INTO tasks (id, title, notes, sphere_id, goal_id, trip_id, project_id, due_date, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
       id,
       title,
       input.notes ?? '',
       sphereId,
       input.goalId ?? null,
       input.tripId ?? null,
+      input.projectId ?? null,
       input.dueDate ?? null,
       nowIso(),
     );
@@ -681,18 +691,28 @@ export class Store {
 
   updateTask(
     id: string,
-    patch: { title?: string; notes?: string; sphereId?: string | null; goalId?: string | null; tripId?: string | null; dueDate?: string | null; done?: boolean },
+    patch: { title?: string; notes?: string; sphereId?: string | null; goalId?: string | null; tripId?: string | null; projectId?: string | null; dueDate?: string | null; done?: boolean },
   ): Task {
     const before = this.getTask(id);
     if (patch.sphereId != null) this.getSphere(patch.sphereId);
     if (patch.goalId != null) this.getGoal(patch.goalId);
     if (patch.tripId != null) this.checkTrip(patch.tripId);
+    // Moving into a project moves the to-do into the project's sphere; moving to another
+    // sphere takes it out of a project that isn't there.
+    let projectId = patch.projectId;
+    let sphereId = patch.sphereId;
+    if (projectId != null) sphereId = this.getProject(projectId).sphereId;
+    else if (sphereId !== undefined && projectId === undefined && before.projectId) {
+      const p = this.get('SELECT sphere_id FROM projects WHERE id = ?', before.projectId);
+      if (!p || p.sphere_id !== sphereId) projectId = null;
+    }
     this.patch('tasks', id, {
       title: patch.title?.trim() || undefined,
       notes: patch.notes,
-      sphere_id: patch.sphereId,
+      sphere_id: sphereId,
       goal_id: patch.goalId,
       trip_id: patch.tripId,
+      project_id: projectId,
       due_date: patch.dueDate,
       done: patch.done === undefined ? undefined : Number(patch.done),
       done_at: patch.done === undefined ? undefined : patch.done ? nowIso() : null,
@@ -705,6 +725,58 @@ export class Store {
   deleteTask(id: string): void {
     this.getTask(id);
     this.run('DELETE FROM tasks WHERE id = ?', id);
+  }
+
+  // ── Projects ──────────────────────────────────────────────────────────────
+
+  private projectFromRow(r: Row): Project {
+    return { id: r.id, sphereId: r.sphere_id, name: r.name, archived: !!r.archived, createdAt: r.created_at };
+  }
+
+  listProjects(filter: { sphereId?: string; archived?: boolean } = {}): Project[] {
+    const where: string[] = [];
+    const params: SqlValue[] = [];
+    if (filter.sphereId) {
+      where.push('sphere_id = ?');
+      params.push(filter.sphereId);
+    }
+    if (!filter.archived) where.push('archived = 0');
+    return this.all(`SELECT * FROM projects ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at`, ...params).map((r) => this.projectFromRow(r));
+  }
+
+  getProject(id: string): Project {
+    const r = this.get('SELECT * FROM projects WHERE id = ?', id);
+    if (!r) throw new NotFound('Project');
+    return this.projectFromRow(r);
+  }
+
+  createProject(input: { sphereId: string; name: string }): Project {
+    const name = input.name.trim();
+    if (!name) throw new Invalid('A project needs a name');
+    const sphere = this.getSphere(input.sphereId);
+    // Asking for a project that already exists (by name, in this sphere) hands that one back.
+    const same = this.get('SELECT * FROM projects WHERE sphere_id = ? AND lower(name) = lower(?)', sphere.id, name);
+    if (same) {
+      if (same.archived) this.run('UPDATE projects SET archived = 0 WHERE id = ?', same.id);
+      return this.getProject(same.id);
+    }
+    const id = newId();
+    this.run('INSERT INTO projects (id, sphere_id, name, created_at) VALUES (?,?,?,?)', id, sphere.id, name, nowIso());
+    this.log('created', 'project', id, sphere.id, `New project in ${sphere.name}: ${name}`);
+    return this.getProject(id);
+  }
+
+  updateProject(id: string, patch: { name?: string; archived?: boolean }): Project {
+    this.getProject(id);
+    if (patch.name !== undefined && !patch.name.trim()) throw new Invalid('A project needs a name');
+    this.patch('projects', id, { name: patch.name?.trim(), archived: patch.archived === undefined ? undefined : Number(patch.archived) });
+    return this.getProject(id);
+  }
+
+  /** Deletes the project; its to-dos stay, with no project. */
+  deleteProject(id: string): void {
+    this.getProject(id);
+    this.run('DELETE FROM projects WHERE id = ?', id);
   }
 
   // ── Habits ────────────────────────────────────────────────────────────────
@@ -1203,6 +1275,10 @@ export class Store {
       case 'created:task':
         this.run('DELETE FROM tasks WHERE id = ?', a.entityId);
         break;
+      case 'created:project':
+        // Its to-dos stay, with no project.
+        this.run('DELETE FROM projects WHERE id = ?', a.entityId);
+        break;
       case 'created:habit':
         this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'habit_log' AND entity_id LIKE ? ESCAPE '\\'", `${likeEscape(a.entityId)}|%`);
         this.run("UPDATE activity SET undone = 1 WHERE entity_type = 'habit' AND entity_id = ?", a.entityId);
@@ -1320,6 +1396,7 @@ export class Store {
       habits: this.listHabits(today, id),
       metrics: this.listMetrics(id),
       tasks: this.listTasks({ sphereId: id, status: 'open' }),
+      projects: this.listProjects({ sphereId: id }),
       notes: this.listNotes({ sphereId: id, limit: 50 }),
       activity: this.listActivity({ sphereId: id, limit: 12 }),
     };
@@ -1631,6 +1708,7 @@ export class Store {
     'metric_entries',
     'goals',
     'milestones',
+    'projects',
     'tasks',
     'habits',
     'habit_logs',

@@ -69,6 +69,15 @@ export interface Goal {
   completedAt: string | null;
 }
 
+/** A named group of to-dos within a sphere, like "Personal Loan (BR)" in Work. */
+export interface Project {
+  id: string;
+  sphereId: string;
+  name: string;
+  archived: boolean;
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -77,6 +86,8 @@ export interface Task {
   goalId: string | null;
   /** The trip this to-do is for, if any. */
   tripId: string | null;
+  /** The project this to-do belongs to, if any. */
+  projectId: string | null;
   dueDate: string | null;
   done: boolean;
   doneAt: string | null;
@@ -235,6 +246,8 @@ export interface SphereDetail {
   habits: Habit[];
   metrics: Metric[];
   tasks: Task[];
+  /** The sphere's projects, archived ones left out. */
+  projects: Project[];
   notes: Note[];
   activity: Activity[];
 }

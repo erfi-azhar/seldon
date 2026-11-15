@@ -1,8 +1,8 @@
-import { ArrowLeft, ArrowUpRight, ChevronRight, Pencil, Plane, Plus, Stethoscope } from 'lucide-react';
+import { Archive, ArrowLeft, ArrowUpRight, ChevronRight, Pencil, Plane, Plus, Stethoscope } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'wouter';
 import { CATALOG_BY_KEY } from '../../../shared/catalog.ts';
-import type { Task } from '../../../shared/types.ts';
+import type { Project, Task } from '../../../shared/types.ts';
 import { useHealth, useSphere, useSpheres, useTravel, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
 import { AddTask, GoalRow, HabitRow, HabitWeekHead, HabitWeekLabel, MetricCard, TaskRow } from '../components/rows.tsx';
@@ -12,8 +12,8 @@ import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { BillsCard, CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PortfolioCard } from '../components/Finance.tsx';
-import { InlineEdit, Loading } from '../components/ui.tsx';
-import { cx, dueLabel, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
+import { InlineEdit, Loading, Seg } from '../components/ui.tsx';
+import { addDays, cx, dueLabel, hueStyle, parseDay, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { normalise, useScreenings } from './Screenings.tsx';
 import { Lately } from './Today.tsx';
@@ -117,7 +117,7 @@ export function SphereDetail({ id }: { id: string }) {
     );
   if (!data) return <Loading />;
 
-  const { sphere: s, goals, habits, metrics, tasks, notes, activity } = data;
+  const { sphere: s, goals, habits, metrics, tasks, projects, notes, activity } = data;
   const kit = s.key ? CATALOG_BY_KEY[s.key] : undefined;
   const active = goals.filter((g) => g.status === 'active');
   const closed = goals.filter((g) => g.status !== 'active');
@@ -196,7 +196,7 @@ export function SphereDetail({ id }: { id: string }) {
       {s.key === 'travels' && <TravelTrips />}
       {s.key === 'finances' && <MoneyHero />}
       {/* Work's to-dos are the heart of the sphere, so they get the full width. */}
-      {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} />}
+      {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} projects={projects} />}
       {/* With a daily card on the left, tasks join habits on the right so the columns even out. */}
       <div className="detail-grid">
         <div className="col">
@@ -354,55 +354,246 @@ function TrainingAndBody({ part }: { part: 'training' | 'body' }) {
  * hotel, check in online) are logistics rather than work, so they fold into one line per
  * trip below, still a tap away and still on time.
  */
-function WorkTodos({ sphereId, tasks }: { sphereId: string; tasks: Task[] }) {
+type TodoView = 'project' | 'day';
+const VIEW_KEY = 'work-todos-view';
+function readView(): TodoView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'day' ? 'day' : 'project';
+  } catch {
+    return 'project';
+  }
+}
+
+/** Earliest due date first; to-dos with no date sort after every dated one. */
+const byDue = (a: Task, b: Task) => (a.dueDate ?? '9999') < (b.dueDate ?? '9999') ? -1 : (a.dueDate ?? '9999') > (b.dueDate ?? '9999') ? 1 : 0;
+
+function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Task[]; projects: Project[] }) {
   const { data: travel } = useTravel();
+  const [view, setViewState] = useState<TodoView>(readView);
+  const setView = (v: TodoView) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* the choice just isn't remembered */
+    }
+  };
   const today = todayStr();
   const work = tasks.filter((t) => !t.tripId);
   const byTrip = new Map<string, Task[]>();
   for (const t of tasks) if (t.tripId) byTrip.set(t.tripId, [...(byTrip.get(t.tripId) ?? []), t]);
   const tripTitle = (tripId: string) => travel?.trips.find((x) => x.id === tripId)?.title ?? 'a trip';
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const lateCount = work.filter((t) => t.dueDate && t.dueDate < today).length;
 
   return (
     <section className="card work-todos">
       <div className="card-head">
-        <h2 className="card-title">To-dos</h2>
-        {work.length > 0 && (
-          <span className="hint">
-            {plural(work.length, 'open', 'open')}
-            {lateCount > 0 && <span className="late"> · {lateCount} late</span>}
-          </span>
-        )}
+        <div className="row" style={{ gap: 10 }}>
+          <h2 className="card-title">To-dos</h2>
+          {work.length > 0 && (
+            <span className="hint">
+              {plural(work.length, 'open', 'open')}
+              {lateCount > 0 && <span className="late"> · {lateCount} late</span>}
+            </span>
+          )}
+        </div>
+        <Seg
+          label="Group to-dos"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'project', label: 'Projects' },
+            { value: 'day', label: 'By day' },
+          ]}
+        />
       </div>
-      {work.length === 0 && <p className="empty">Nothing on your plate at work. Add what you're working on.</p>}
-      <ul>
-        {work.map((t) => (
-          <TaskRow key={t.id} task={t} showSphere={false} />
-        ))}
-      </ul>
-      <AddTask sphereId={sphereId} placeholder="Add a work to-do…" />
-      {[...byTrip].map(([tripId, list]) => {
-        const next = list.find((t) => t.dueDate)?.dueDate;
+      {view === 'project' ? (
+        <ProjectGroups sphereId={sphereId} work={work} projects={projects} today={today} />
+      ) : (
+        <DayGroups tasks={tasks} today={today} label={(t) => (t.tripId ? `✈ ${tripTitle(t.tripId)}` : t.projectId ? projectName.get(t.projectId) : undefined)} />
+      )}
+      <AddTask sphereId={sphereId} projects={projects} placeholder="Add a work to-do…" />
+      {view === 'project' &&
+        [...byTrip].map(([tripId, list]) => {
+          const next = list.find((t) => t.dueDate)?.dueDate;
+          const due = next ? dueLabel(next, today) : null;
+          return (
+            <details key={tripId} className="todo-fold">
+              <summary>
+                <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+                <Plane size={14} className="faint" aria-hidden />
+                <span className="grow clamp-1">For {tripTitle(tripId)}</span>
+                <span className={cx('todo-fold-meta', due?.late && 'late')}>
+                  {plural(list.length, 'to-do')}
+                  {due && ` · next ${due.text}`}
+                </span>
+              </summary>
+              <ul>
+                {list.map((t) => (
+                  <TaskRow key={t.id} task={t} showSphere={false} />
+                ))}
+              </ul>
+            </details>
+          );
+        })}
+    </section>
+  );
+}
+
+/** To-dos under their projects, the project with the most pressing to-do first. */
+function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; work: Task[]; projects: Project[]; today: string }) {
+  const [adding, setAdding] = useState<string | null>(null);
+  const [naming, setNaming] = useState(false);
+  const known = new Set(projects.map((p) => p.id));
+  const groups = [
+    ...projects.map((p) => ({ id: p.id, project: p as Project | null, name: p.name, list: work.filter((t) => t.projectId === p.id).sort(byDue) })),
+    { id: 'none', project: null, name: 'No project', list: work.filter((t) => !t.projectId || !known.has(t.projectId)).sort(byDue) },
+  ]
+    .filter((g) => g.project || g.list.length)
+    // Most urgent first: the earliest due date leads; undated work, then empty projects, go last.
+    .sort((a, b) => {
+      const ka = a.list.length ? (a.list[0]!.dueDate ?? '9999') : '~';
+      const kb = b.list.length ? (b.list[0]!.dueDate ?? '9999') : '~';
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+
+  return (
+    <div className="todo-groups">
+      {groups.map((g) => {
+        const next = g.list.find((t) => t.dueDate)?.dueDate;
         const due = next ? dueLabel(next, today) : null;
+        const late = g.list.filter((t) => t.dueDate && t.dueDate < today).length;
         return (
-          <details key={tripId} className="todo-fold">
+          <details key={g.id} className={cx('todo-group', !g.list.length && 'is-empty')} open={g.list.length > 0}>
             <summary>
               <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
-              <Plane size={14} className="faint" aria-hidden />
-              <span className="grow clamp-1">For {tripTitle(tripId)}</span>
-              <span className={cx('todo-fold-meta', due?.late && 'late')}>
-                {plural(list.length, 'to-do')}
-                {due && ` · next ${due.text}`}
+              <span className="todo-group-name clamp-1">{g.name}</span>
+              <span className={cx('todo-fold-meta', late > 0 && 'late')}>
+                {g.list.length ? plural(g.list.length, 'to-do') : 'Nothing open'}
+                {late > 0 ? ` · ${late} late` : due ? ` · next ${due.text}` : ''}
               </span>
+              {g.project && <ProjectActions project={g.project} onAdd={() => setAdding(g.id)} />}
             </summary>
             <ul>
-              {list.map((t) => (
+              {g.list.map((t) => (
                 <TaskRow key={t.id} task={t} showSphere={false} />
               ))}
             </ul>
+            {adding === g.id && g.project && (
+              <div className="todo-group-add">
+                <AddTask sphereId={sphereId} projectId={g.project.id} placeholder={`Add to ${g.project.name}…`} autoFocus />
+              </div>
+            )}
           </details>
         );
       })}
-    </section>
+      {naming ? (
+        <NewProject sphereId={sphereId} onDone={() => setNaming(false)} />
+      ) : (
+        <button type="button" className="todo-new-project" onClick={() => setNaming(true)}>
+          <Plus size={13} /> New project
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ProjectActions({ project, onAdd }: { project: Project; onAdd: () => void }) {
+  const rename = useWrite((name: string) => write.patch(`/projects/${project.id}`, { name }));
+  const archive = useWrite(() => write.patch(`/projects/${project.id}`, { archived: true }));
+  // The buttons sit inside the fold's summary, so a click must not also open or close it.
+  const act = (fn: () => void) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fn();
+  };
+  return (
+    <span className="todo-group-actions">
+      <button type="button" className="icon-btn" title={`Add a to-do to ${project.name}`} aria-label={`Add a to-do to ${project.name}`} onClick={act(onAdd)}>
+        <Plus size={14} />
+      </button>
+      <button
+        type="button"
+        className="icon-btn"
+        title="Rename"
+        aria-label={`Rename ${project.name}`}
+        onClick={act(() => {
+          const next = window.prompt('Rename project', project.name)?.trim();
+          if (next && next !== project.name) rename.mutate(next);
+        })}
+      >
+        <Pencil size={13} />
+      </button>
+      <button
+        type="button"
+        className="icon-btn"
+        title="Archive"
+        aria-label={`Archive ${project.name}`}
+        onClick={act(() => {
+          if (window.confirm(`Archive ${project.name}? Its to-dos stay, under No project.`)) archive.mutate();
+        })}
+      >
+        <Archive size={13} />
+      </button>
+    </span>
+  );
+}
+
+function NewProject({ sphereId, onDone }: { sphereId: string; onDone: () => void }) {
+  const [name, setName] = useState('');
+  const create = useWrite((n: string) => write.post('/projects', { sphereId, name: n }));
+  return (
+    <form
+      className="add-row todo-new-project-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const n = name.trim();
+        if (n) create.mutate(n, { onSuccess: onDone });
+      }}
+    >
+      <Plus size={16} className="faint" aria-hidden />
+      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" aria-label="Project name" maxLength={80} autoFocus onKeyDown={(e) => e.key === 'Escape' && onDone()} />
+      <button type="submit" className="btn btn-primary btn-sm" disabled={!name.trim() || create.isPending}>
+        Add
+      </button>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={onDone}>
+        Cancel
+      </button>
+    </form>
+  );
+}
+
+/** Every open to-do by its due day: late ones together, then each day in turn, then undated. */
+function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; label: (t: Task) => string | undefined }) {
+  const groups = new Map<string, Task[]>();
+  for (const t of [...tasks].sort(byDue)) {
+    const key = !t.dueDate ? 'none' : t.dueDate < today ? 'late' : t.dueDate;
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+  }
+  const heading = (key: string) => {
+    if (key === 'late') return 'Late';
+    if (key === 'none') return 'No date';
+    if (key === today) return 'Today';
+    if (key === addDays(today, 1)) return 'Tomorrow';
+    return parseDay(key).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+  };
+  if (!tasks.length) return null;
+  return (
+    <div className="todo-days">
+      {[...groups].map(([key, list]) => (
+        <div key={key} className="todo-day">
+          <div className={cx('todo-day-head', key === 'late' && 'late')}>
+            <span>{heading(key)}</span>
+            <span className="todo-fold-meta">{list.length}</span>
+          </div>
+          <ul>
+            {list.map((t) => (
+              <TaskRow key={t.id} task={t} showSphere={false} showDue={key === 'late'} tag={label(t)} />
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
   );
 }

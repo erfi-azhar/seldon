@@ -6,7 +6,7 @@ import { ExternalLink, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { CATALOG, CATALOG_BY_KEY, HORIZON_LABEL } from '../../../shared/catalog.ts';
-import type { Cadence, Direction, Goal, Habit, Horizon, Metric, Note, Task } from '../../../shared/types.ts';
+import type { Cadence, Direction, Goal, Habit, Horizon, Metric, Note, Project, Task } from '../../../shared/types.ts';
 import { api, useGoal, useMetrics, useTasks, useWrite, write } from '../api.ts';
 import { cx, formatNumber, hueStyle, monthDay, parseNumber, pct, shortDay, todayStr, weekdayLong } from '../lib.ts';
 import { useApp, type Sheet } from '../state.tsx';
@@ -280,7 +280,14 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes);
   const [sphereId, setSphereId] = useState(task.sphereId);
+  const [projectId, setProjectId] = useState(task.projectId);
   const [dueDate, setDueDate] = useState(task.dueDate ?? '');
+  // The projects of the sphere chosen here; picking another sphere leaves its project behind.
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects', sphereId],
+    queryFn: () => api<Project[]>('GET', `/projects?sphereId=${encodeURIComponent(sphereId!)}`),
+    enabled: !!sphereId,
+  });
   const { ask } = useApp();
   const save = useWrite((body: object) => write.patch(`/tasks/${task.id}`, body));
   const remove = useWrite(() => write.del(`/tasks/${task.id}`));
@@ -290,6 +297,8 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
     if (title.trim() && title !== task.title) body.title = title;
     if (notes !== task.notes) body.notes = notes;
     if (sphereId !== task.sphereId) body.sphereId = sphereId;
+    const project = sphereId === task.sphereId || projects.some((p) => p.id === projectId) ? projectId : null;
+    if (project !== task.projectId) body.projectId = project;
     if ((dueDate || null) !== task.dueDate) body.dueDate = dueDate || null;
     if (Object.keys(body).length === 0) then();
     else save.mutate(body, { onSuccess: then });
@@ -325,9 +334,27 @@ function TaskForm({ task, onClose }: { task: Task; onClose: () => void }) {
           <input type="date" className="input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
         </Field>
         <Field label="Sphere">
-          <SphereSelect value={sphereId} onChange={setSphereId} />
+          <SphereSelect
+            value={sphereId}
+            onChange={(v) => {
+              setSphereId(v);
+              setProjectId(null);
+            }}
+          />
         </Field>
       </div>
+      {projects.length > 0 && (
+        <Field label="Project">
+          <select className="select" value={projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)}>
+            <option value="">No project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field label="Notes">
         <AutoTextarea className="textarea" minRows={3} value={notes} onChange={setNotes} maxLength={2000} placeholder="Anything worth remembering about this." />
       </Field>
