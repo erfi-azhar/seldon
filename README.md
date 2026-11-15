@@ -121,6 +121,13 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   crypto cap and the spending share are yours to change. When pay arrives it lands under
   *Needs you* with the transfers to make as tasks, and Seldon can talk it through. A rule of
   thumb, not financial advice.
+- **Year-end tax relief, in Singapore.** When your top tax rate is 11.5% or more (estimated
+  from your pay), the plan sets money aside for SRS all year: an even share each month to
+  November, out of what would otherwise be invested, so the year's S$15,300 (S$35,700 for
+  foreigners) is in by the 31 December deadline. Add a CPF cash top-up to your own Special
+  Account if you like. November takes whatever room is left, the rest from savings by mid-
+  December; a reminder arrives on 1 December with what it's worth. Record what you've put in
+  and the plan paces the rest; resident tax bands are built in for the saving.
 - **Net worth** is what you own less what you owe, at the top of the sphere. If the sphere
   tracks a *Net worth* number, it follows once a day.
 - **A crypto desk, live.** Prices stream tick by tick from Binance's public market data
@@ -257,7 +264,7 @@ named like `delete_*`) are never offered to Seldon.
 ## Seldon, concretely
 
 - **It works through the same rules you do.** Every tool is a validated wrapper over the
-  data layer the app itself uses. There are 62, from logging a habit to logging a crypto
+  data layer the app itself uses. There are 63, from logging a habit to logging a crypto
   trade or adding a book to your reading list, plus the read tools of any MCP server you connect.
 - **It cannot delete.** It can add, log, update and complete. What it adds or logs — tasks,
   goals, habits, check-ins, numbers, notes, food, workouts, trips — is attributed to it in

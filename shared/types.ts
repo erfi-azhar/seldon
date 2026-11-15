@@ -789,9 +789,16 @@ export interface PlanRules {
   cryptoCapPct: number;
   /** Pay kept as guilt-free spending each month, in percent. */
   funPct: number;
+  /**
+   * Singapore tax relief through the year: 'auto' suggests SRS when the top tax rate is 11.5% or
+   * more; 'srs' always; 'srs+cpf' adds a CPF cash top-up to your own Special Account; 'off' never.
+   */
+  reliefs: 'auto' | 'srs' | 'srs+cpf' | 'off';
+  /** The yearly SRS contribution cap: S$15,300 for citizens and PRs, S$35,700 for foreigners. */
+  srsCap: number;
 }
 
-export type PlanBucketKey = 'bills' | 'yearly' | 'everyday' | 'fun' | 'buffer' | 'debt' | 'emergency' | 'crypto' | 'invest';
+export type PlanBucketKey = 'bills' | 'yearly' | 'everyday' | 'fun' | 'buffer' | 'debt' | 'emergency' | 'relief' | 'crypto' | 'invest';
 
 export interface PlanBucket {
   key: PlanBucketKey;
@@ -801,6 +808,21 @@ export interface PlanBucket {
   reason: string;
   /** The move to make this month, when there is one (a transfer, an extra payment). */
   action: string | null;
+}
+
+/** The year's tax relief: room left, and what using it would save. */
+export interface ReliefPlan {
+  year: number;
+  /** The last day a contribution counts for the year. */
+  deadline: string;
+  srs: { cap: number; done: number; left: number };
+  /** A CPF cash top-up to your own Special Account; null unless the rules include it. */
+  cpf: { cap: number; done: number; left: number } | null;
+  /** A rough taxable income from pay (bonuses and RSUs add to it), and its top rate. */
+  chargeable: number;
+  rate: number;
+  /** Tax saved if all the room left is used. */
+  saving: number;
 }
 
 /** Where this month's pay should go, worked out from what's on file. A rule of thumb, not advice. */
@@ -817,6 +839,8 @@ export interface SalaryPlan {
   shortfall: number | null;
   rules: PlanRules;
   notes: string[];
+  /** Singapore tax relief for the year, when the rules suggest it. */
+  relief: ReliefPlan | null;
 }
 
 export interface FinanceState {
