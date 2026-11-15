@@ -9449,6 +9449,11 @@ button.layover-pill:hover .layover-lounge {
   opacity: 0.55;
 }
 
+/* On Today: the ticker closes the card, so it needs the bottom padding the foot gave it. */
+.fin-desk.is-compact .fin-ticker {
+  padding-bottom: 12px;
+}
+
 @media (max-width: 720px) {
   .fin-hero {
     grid-template-columns: minmax(0, 1fr);
