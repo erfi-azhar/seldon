@@ -347,3 +347,35 @@ export function ScrollBlur({ axis, edges }: { axis: 'x' | 'y'; edges: { start: b
     </>
   );
 }
+
+/**
+ * Folds you opened or closed, kept in this browser like the view choice. What's saved is the
+ * groups you turned away from how they start (closed ones when they start open, and the other
+ * way round). `keep` lets go of keys that no longer mean anything (a day gone by, a project
+ * archived, a trip with nothing left to do), so the list doesn't grow forever.
+ */
+export function useFolds(storageKey: string, keep: (key: string) => boolean, startOpen = true) {
+  const [changed, setChanged] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]');
+      return new Set(Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string' && keep(k)) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const isOpen = (key: string) => changed.has(key) !== startOpen;
+  const toggle = (key: string, open: boolean) =>
+    setChanged((prev) => {
+      if (open === (prev.has(key) !== startOpen)) return prev;
+      const next = new Set(prev);
+      if (open === startOpen) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify([...next]));
+      } catch {
+        /* the folds just aren't remembered */
+      }
+      return next;
+    });
+  return { isOpen, toggle };
+}
