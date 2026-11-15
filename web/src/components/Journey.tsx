@@ -32,13 +32,10 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
       <div className="journey-now">
         <b className="jn-title">Reach the airport by {clock(reachAirportBy(leg), leg.startTz)}</b>
         <span className="jn-sub">
-          {leg.fromName || leg.fromCode} · {city(leg, 'from')}
-        </span>
-        <span className="jn-line">
-          Set off by {clock(leaveBy(leg), leg.startTz)} · {flightName(leg)} leaves {clock(Date.parse(leg.startUtc), leg.startTz)}
+          Set off by {clock(leaveBy(leg), leg.startTz)} · {leg.fromName || leg.fromCode}
         </span>
         <a className="jn-btn" href={mapsTo(`${leg.fromName || leg.fromCode} Airport, ${city(leg, 'from')}`)} target="_blank" rel="noreferrer">
-          <Navigation size={14} aria-hidden /> Directions to airport
+          <Navigation size={14} aria-hidden /> Directions
         </a>
       </div>
     );
@@ -148,14 +145,14 @@ function FlightArc({ progress }: { progress: number }) {
     <svg className="jn-arc" viewBox="0 0 320 56" preserveAspectRatio="none" aria-hidden>
       <defs>
         <radialGradient id="jn-glow">
-          <stop offset="0" stopColor="#fff" stopOpacity="0.9" />
-          <stop offset="1" stopColor="#7fb3ff" stopOpacity="0" />
+          <stop offset="0" stopColor="currentColor" stopOpacity="0.55" />
+          <stop offset="1" stopColor="currentColor" stopOpacity="0" />
         </radialGradient>
       </defs>
       <path d="M8 46 Q160 -18 312 46" fill="none" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1.5" />
       <path d="M8 46 Q160 -18 312 46" fill="none" stroke="currentColor" strokeWidth="2" pathLength={1} strokeDasharray={`${progress} 1`} />
       <circle cx={px} cy={py} r="10" fill="url(#jn-glow)" />
-      <circle cx={px} cy={py} r="2.6" fill="#fff" />
+      <circle cx={px} cy={py} r="3" fill="currentColor" />
     </svg>
   );
 }

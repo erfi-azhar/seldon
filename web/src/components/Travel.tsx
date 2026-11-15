@@ -971,9 +971,30 @@ const dow = (date: string) => parseDay(date).toLocaleDateString(undefined, { wee
 /** "2pm late checkout" → "2pm": the late checkout a perk promises, if it names a time. */
 const lateCheckout = (perks: string[]) => perks.map((p) => p.match(/^(\d{1,2}\s?[ap]m) late checkout/i)?.[1]).find(Boolean);
 
+/** Whether a stay's elite nights and benefits are open: closed until you open them, then remembered on this device. */
+function useStayStatusOpen(): [boolean, (v: boolean) => void] {
+  const KEY = 'terminus.stayStatus';
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(KEY) === 'open';
+    } catch {
+      return false;
+    }
+  });
+  const set = (v: boolean) => {
+    setOpen(v);
+    try {
+      localStorage.setItem(KEY, v ? 'open' : 'closed');
+    } catch {
+      /* private mode: remembered for this visit only */
+    }
+  };
+  return [open, set];
+}
+
 /**
  * A hotel stay on its trip: the name and whether it is booked, the three facts that decide a day (in, out,
- * nights), the Bonvoy elite nights it earns and where they leave you, then what your status gets you there.
+ * nights), then, folded away, the Bonvoy elite nights it earns and what your status gets you there.
  */
 function StayCard({ s, tier, onEdit }: { s: Segment; tier: string; onEdit: () => void }) {
   const n = nightsOf(s);
@@ -983,6 +1004,7 @@ function StayCard({ s, tier, onEdit }: { s: Segment; tier: string; onEdit: () =>
   const late = lateCheckout(s.perks);
   const perks = s.perks.filter((p) => !/late checkout/i.test(p) || !late);
   const map = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([name, s.address].filter(Boolean).join(', '))}`;
+  const [statusOpen, setStatusOpen] = useStayStatusOpen();
   return (
     <article className="stay-card">
       <header className="stay-card-head">
@@ -1027,19 +1049,34 @@ function StayCard({ s, tier, onEdit }: { s: Segment; tier: string; onEdit: () =>
         </div>
       </dl>
 
-      {s.eliteNights && <BonvoyNights e={s.eliteNights} />}
+      {(s.eliteNights || perks.length > 0) && (
+        <details className="stay-fold" open={statusOpen} onToggle={(e) => setStatusOpen((e.currentTarget as HTMLDetailsElement).open)}>
+          <summary>
+            <span className="stay-card-label">{s.eliteNights ? 'Bonvoy status' : tier ? `${tier} benefits` : 'Your benefits'}</span>
+            <span className="stay-fold-gist">
+              {s.eliteNights
+                ? [`+${plural(s.eliteNights.nights, 'night')}`, s.eliteNights.reaches && `reaches ${s.eliteNights.reaches}`].filter(Boolean).join(' · ')
+                : plural(perks.length, 'benefit')}
+            </span>
+            <ChevronDown size={15} className="stay-fold-chev" aria-hidden />
+          </summary>
+          <div className="stay-fold-body">
+            {s.eliteNights && <BonvoyNights e={s.eliteNights} />}
 
-      {perks.length > 0 && (
-        <div className="stay-card-perks">
-          <span className="stay-card-label">{tier ? `${tier} benefits` : 'Your benefits'}</span>
-          <ul>
-            {perks.map((p) => (
-              <li key={p}>
-                <CheckIcon size={13} aria-hidden /> {p}
-              </li>
-            ))}
-          </ul>
-        </div>
+            {perks.length > 0 && (
+              <div className="stay-card-perks">
+                <span className="stay-card-label">{tier ? `${tier} benefits` : 'Your benefits'}</span>
+                <ul>
+                  {perks.map((p) => (
+                    <li key={p}>
+                      <CheckIcon size={13} aria-hidden /> {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </details>
       )}
 
       {s.address && (
@@ -2382,19 +2419,21 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
         <PurposeChip purpose={trip.purpose} />
       </div>
 
-      {journey && phase ? (
-        <NowPanel journey={journey} focus={Math.max(journey.current, 0)} now={now} trips={t.trips} home={t.settings.homeAirport} onLounges={setLounges} />
-      ) : (
-        <div className="journey-now">
-          <b className="jn-title">
-            {f.carrier} {f.number} leaves {dayOf(f.startLocal) === todayStr() ? 'today' : weekday(dayOf(f.startLocal))} at {time(f.startLocal)}
-          </b>
-          <span className="jn-sub">
-            Be at {city(f.fromName, f.fromCode)} by {clock(reachAirportBy(f), f.startTz)} · set off by {clock(leaveBy(f), f.startTz)}
-          </span>
-        </div>
-      )}
-      {journey && <DaySteps journey={journey} />}
+      <div className="td-now">
+        {journey && phase ? (
+          <NowPanel journey={journey} focus={Math.max(journey.current, 0)} now={now} trips={t.trips} home={t.settings.homeAirport} onLounges={setLounges} />
+        ) : (
+          <div className="journey-now">
+            <b className="jn-title">
+              {f.carrier} {f.number} leaves {dayOf(f.startLocal) === todayStr() ? 'today' : weekday(dayOf(f.startLocal))} at {time(f.startLocal)}
+            </b>
+            <span className="jn-sub">
+              Be at {city(f.fromName, f.fromCode)} by {clock(reachAirportBy(f), f.startTz)} · set off by {clock(leaveBy(f), f.startTz)}
+            </span>
+          </div>
+        )}
+        {journey && <DaySteps journey={journey} />}
+      </div>
 
       <div className="td-flight">
         {/* In the air and after landing, the panel above already draws the route. */}

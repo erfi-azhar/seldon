@@ -8525,6 +8525,49 @@ button.layover-pill:hover .layover-lounge {
   margin-top: 2px;
   color: var(--good);
 }
+/* A stay's elite nights and benefits, folded into one line until opened. */
+.stay-fold > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+  list-style: none;
+  cursor: pointer;
+}
+.stay-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.stay-fold > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.stay-fold-gist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.stay-fold-chev {
+  color: var(--ink-4);
+  transition: transform 0.18s ease;
+}
+.stay-fold[open] > summary .stay-fold-chev {
+  transform: rotate(180deg);
+}
+.stay-fold-body {
+  display: grid;
+  gap: 14px;
+  padding-top: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stay-fold-chev {
+    transition: none;
+  }
+}
 .stay-card-address {
   display: flex;
   align-items: flex-start;
@@ -9493,59 +9536,74 @@ button.layover-pill:hover .layover-lounge {
   }
 }
 
-/* What you need right now on a travel day, at the top of Today's travel card. */
+/* What you need right now on a travel day: the top of Today's travel card, on the card itself,
+   with the day's steps beneath it. The action sits beside the headline when there is room. */
 .journey-now {
   display: grid;
-  gap: 6px;
-  align-content: start;
-  padding: 18px 20px;
-  border-radius: 18px;
-  color: #fff;
-  background:
-    radial-gradient(110% 120% at 62% 18%, oklch(0.36 0.08 245 / 0.95), transparent 62%),
-    linear-gradient(160deg, oklch(0.2 0.04 248), oklch(0.13 0.02 250));
-  box-shadow: 0 12px 30px -18px rgb(8 20 40 / 0.7), inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  row-gap: 4px;
+  align-items: center;
+}
+.journey-now > * {
+  grid-column: 1;
 }
 .jn-title {
-  font-size: 18px;
+  font-size: 21px;
+  line-height: 1.2;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 .jn-sub {
-  font-size: 13px;
-  color: rgb(255 255 255 / 0.72);
+  font-size: 13.5px;
+  color: var(--ink-2);
 }
 .jn-line {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
-  color: rgb(255 255 255 / 0.66);
+  color: var(--ink-3);
+}
+.journey-now > .jn-btn {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
 }
 .jn-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   justify-self: start;
-  margin-top: 8px;
-  padding: 8px 15px;
+  padding: 8px 14px;
+  border: 0;
   border-radius: 999px;
+  font: inherit;
   font-size: 13px;
   font-weight: 550;
+  white-space: nowrap;
   color: #fff;
   text-decoration: none;
-  background: oklch(0.42 0.09 240);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  background: oklch(0.5 0.12 245);
   cursor: pointer;
 }
 .jn-btn:hover {
-  background: oklch(0.47 0.1 240);
+  background: oklch(0.45 0.12 245);
+}
+.jn-btn:focus-visible {
+  outline: 2px solid oklch(0.6 0.13 245);
+  outline-offset: 2px;
+}
+.journey-now > .jn-arc,
+.journey-now > .jn-ends {
+  grid-column: 1 / -1;
 }
 .jn-arc {
   width: 100%;
-  height: 56px;
-  margin: 6px 0 2px;
-  color: #a9cbff;
+  height: 52px;
+  margin: 6px 0 0;
+  color: oklch(0.6 0.13 245);
 }
 .jn-ends {
   display: grid;
@@ -9563,7 +9621,7 @@ button.layover-pill:hover .layover-lounge {
 }
 .jn-ends small {
   font-size: 12px;
-  color: rgb(255 255 255 / 0.66);
+  color: var(--ink-3);
 }
 .jn-ends .is-end {
   text-align: right;
@@ -9573,21 +9631,29 @@ button.layover-pill:hover .layover-lounge {
   align-items: center;
   gap: 8px;
   font-size: 12.5px;
-  color: rgb(255 255 255 / 0.72);
+  color: var(--ink-3);
 }
 .jn-dur::before,
 .jn-dur::after {
   content: '';
   flex: 1;
-  border-top: 1px dotted rgb(255 255 255 / 0.4);
+  border-top: 1px dotted var(--line-2);
+}
+@media (max-width: 520px) {
+  .journey-now > .jn-btn {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 8px;
+  }
 }
 
 /* Today's travel card on a travel day: now, the day's steps, the flight, then folds. */
 .travel-day {
   gap: 14px;
 }
-.travel-day .journey-now {
-  padding: 16px 18px;
+.td-now {
+  display: grid;
+  gap: 16px;
 }
 .td-steps {
   display: grid;
