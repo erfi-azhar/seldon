@@ -530,7 +530,8 @@ export interface FaithState {
   /** Missed prayers still to make up: logged misses plus the backlog. */
   owed: Record<PrayerName, number>;
   hijri: string;
-  ramadan: { start: string; daysUntil: number; inRamadan: boolean; day: number | null } | null;
+  /** The next (or current) Ramadan: its first and last day by the Umm al-Qura calendar. */
+  ramadan: { start: string; end: string; daysUntil: number; inRamadan: boolean; day: number | null } | null;
 }
 
 // ── Health: food, training, body composition ────────────────────────────────

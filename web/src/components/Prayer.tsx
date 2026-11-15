@@ -2,12 +2,13 @@
 // up, and a countdown to Ramadan when it is near.
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, Clock, LocateFixed, MapPin, MoonStar, Pencil, Plus, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Check, ChevronRight, Clock, LoaderCircle, LocateFixed, MapPin, MoonStar, Pause, Pencil, Play, Plus, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
 import { addDays, cx, parseDay, plural, todayStr } from '../lib.ts';
 import { Field, Modal } from './ui.tsx';
+import { VERSES, verseIndexFor } from './verses.ts';
 
 const NAME: Record<PrayerName, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
 
@@ -328,6 +329,204 @@ function RamadanCountdown({ ramadan }: { ramadan: NonNullable<FaithState['ramada
   );
 }
 
+/**
+ * The fast a niyyah can be made for right now: from Maghrib on the eve of a Ramadan
+ * day until that day's Fajr, since the Islamic day begins at sunset.
+ */
+export function niyyahFast(faith: FaithState, now: number): { date: string; day: number; fajr: string | null } | null {
+  const r = faith.ramadan;
+  const today = faith.today;
+  if (!faith.configured || !r || !today) return null;
+  const t = today.times;
+  let date: string;
+  let fajr: string | null;
+  if (now < Date.parse(t.fajr)) [date, fajr] = [today.date, t.fajr];
+  // Tomorrow's Fajr isn't known here; a day after today's is near enough, and the
+  // data is refetched each minute, so past midnight the branch above takes over.
+  else if (now >= Date.parse(t.maghrib) && now < Date.parse(t.fajr) + 86_400_000) [date, fajr] = [addDays(today.date, 1), null];
+  else return null;
+  if (date < r.start || date > r.end) return null;
+  return { date, day: Math.round((parseDay(date).getTime() - parseDay(r.start).getTime()) / 86_400_000) + 1, fajr };
+}
+
+const NIYYAH = {
+  arabic: 'نَوَيْتُ صَوْمَ غَدٍ عَنْ أَدَاءِ فَرْضِ شَهْرِ رَمَضَانَ هٰذِهِ السَّنَةِ لِلّٰهِ تَعَالَى',
+  transliteration: 'Nawaitu ṣauma ghadin ʿan adāʾi farḍi shahri Ramaḍāna hādhihis-sanati lillāhi taʿālā.',
+  meaning: 'I intend to fast tomorrow, fulfilling the obligation of the month of Ramadan this year, for the sake of Allah the Most High.',
+};
+
+const niyyahKey = (date: string) => `niyyah-done:${date}`;
+function readDone(date: string): boolean {
+  try {
+    return localStorage.getItem(niyyahKey(date)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** On each night before a Ramadan fast: the intention for tomorrow's fast. */
+function NiyyahCard({ fast, now, tz }: { fast: { date: string; day: number; fajr: string | null }; now: number; tz: string }) {
+  const [done, setDone] = useState(() => readDone(fast.date));
+  useEffect(() => setDone(readDone(fast.date)), [fast.date]);
+  const mark = (v: boolean) => {
+    setDone(v);
+    try {
+      if (v) localStorage.setItem(niyyahKey(fast.date), '1');
+      else localStorage.removeItem(niyyahKey(fast.date));
+    } catch {
+      /* the card still works for this visit */
+    }
+  };
+  const when = fast.fajr ? `Before Fajr at ${hhmm(fast.fajr, tz)} · in ${untilLabel(fast.fajr, now)}` : 'Tonight, before Fajr';
+  if (done)
+    return (
+      <div className="niyyah is-done">
+        <Check size={15} strokeWidth={2.6} />
+        <span>Niyyah made for the fast of {fast.day} Ramadan</span>
+        <button type="button" className="link" onClick={() => mark(false)}>
+          Show again
+        </button>
+      </div>
+    );
+  return (
+    <section className="niyyah" aria-labelledby="niyyah-title">
+      <div className="niyyah-head">
+        <div>
+          <span className="niyyah-eyebrow">{when}</span>
+          <h2 id="niyyah-title">Niyyah for the fast of {fast.day} Ramadan</h2>
+        </div>
+        <MoonStar size={20} className="niyyah-moon" />
+      </div>
+      <p className="niyyah-arabic" lang="ar" dir="rtl">
+        {NIYYAH.arabic}
+      </p>
+      <p className="niyyah-translit">{NIYYAH.transliteration}</p>
+      <p className="niyyah-meaning">“{NIYYAH.meaning}”</p>
+      <div className="niyyah-foot">
+        <span>The intention is made in the heart; saying it is recommended.</span>
+        <button type="button" className="btn btn-sm niyyah-done" onClick={() => mark(true)}>
+          <Check size={14} strokeWidth={2.6} /> Done
+        </button>
+      </div>
+    </section>
+  );
+}
+
+const arabicDigits = (n: number) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]!);
+
+// Verse-by-verse recitation by Mishary Rashid Alafasy. quran.com's audio host comes first;
+// everyayah.com serves the same files and is tried if it fails.
+const RECITER = 'Mishary Alafasy';
+const audioSources = (surah: number, ayah: number): string[] => {
+  const file = `${String(surah).padStart(3, '0')}${String(ayah).padStart(3, '0')}.mp3`;
+  return [`https://verses.quran.com/Alafasy/mp3/${file}`, `https://everyayah.com/data/Alafasy_128kbps/${file}`];
+};
+
+type Playback = { state: 'idle' } | { state: 'loading' | 'playing' | 'paused'; ayah: number } | { state: 'error' };
+
+/** Plays a run of ayat one after another, falling back to the second host if the first fails. */
+function useRecitation(surah: number, first: number, last: number) {
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const [pb, setPb] = useState<Playback>({ state: 'idle' });
+
+  const stop = () => {
+    const a = audio.current;
+    if (a) {
+      a.onended = a.onerror = a.onplaying = a.onwaiting = null;
+      a.pause();
+      a.removeAttribute('src');
+      a.load();
+    }
+    audio.current = null;
+  };
+  // A different verse, or leaving the page, stops what is playing.
+  useEffect(() => {
+    setPb({ state: 'idle' });
+    return stop;
+  }, [surah, first, last]);
+
+  const play = (ayah: number, source = 0) => {
+    stop();
+    const a = new Audio(audioSources(surah, ayah)[source]);
+    audio.current = a;
+    setPb({ state: 'loading', ayah });
+    a.onplaying = () => setPb({ state: 'playing', ayah });
+    a.onwaiting = () => setPb({ state: 'loading', ayah });
+    a.onended = () => (ayah < last ? play(ayah + 1) : (stop(), setPb({ state: 'idle' })));
+    a.onerror = () => (source === 0 ? play(ayah, 1) : (stop(), setPb({ state: 'error' })));
+    a.play().catch((e: unknown) => {
+      // Autoplay refusals are reported here; load failures arrive via onerror.
+      if (e instanceof DOMException && e.name === 'NotAllowedError') (stop(), setPb({ state: 'idle' }));
+    });
+  };
+
+  const toggle = () => {
+    const a = audio.current;
+    if (pb.state === 'playing' && a) {
+      a.pause();
+      setPb({ state: 'paused', ayah: pb.ayah });
+    } else if (pb.state === 'paused' && a) {
+      void a.play().catch(() => setPb({ state: 'error' }));
+    } else if (pb.state !== 'loading') play(first);
+  };
+
+  return { pb, toggle };
+}
+
+/** Outside Ramadan: a verse of encouragement and calm, a new one each day. */
+function VerseCard({ date }: { date: string }) {
+  const [offset, setOffset] = useState(0);
+  const v = VERSES[(verseIndexFor(date) + offset) % VERSES.length]!;
+  const [surah, range] = v.ref.split(':') as [string, string];
+  const first = Number(range.split('-')[0]);
+  const last = first + v.arabic.length - 1;
+  const { pb, toggle } = useRecitation(Number(surah), first, last);
+  const current = pb.state === 'playing' || pb.state === 'paused' || pb.state === 'loading' ? pb.ayah : null;
+  // The translation is kept verbatim; only a trailing dash or comma, left where the
+  // sentence runs on into the next ayah, is dropped for display.
+  const english = v.english.replace(/[\s,;:\-–—]+$/, '');
+  return (
+    <section className="card verse-card" aria-label="Verse of the day">
+      <div className="verse-head">
+        <span className="verse-eyebrow">{offset ? 'Another verse' : 'Verse for today'}</span>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOffset((o) => (o + 1) % VERSES.length)}>
+          Another <ChevronRight size={13} />
+        </button>
+      </div>
+      <p className="verse-arabic" lang="ar" dir="rtl">
+        {v.arabic.map((a, i) => (
+          <span key={i} className={cx(v.arabic.length > 1 && current === first + i && 'is-reciting')}>
+            {a} <span className="verse-end">﴿{arabicDigits(first + i)}﴾</span>{' '}
+          </span>
+        ))}
+      </p>
+      <p className="verse-english">{english.charAt(0).toUpperCase() + english.slice(1)}</p>
+      <div className="verse-foot">
+        <button
+          type="button"
+          className={cx('verse-play', pb.state === 'playing' && 'is-playing')}
+          onClick={toggle}
+          aria-label={pb.state === 'playing' ? 'Pause recitation' : 'Play recitation'}
+        >
+          {pb.state === 'loading' ? (
+            <LoaderCircle size={15} className="spin" />
+          ) : pb.state === 'playing' ? (
+            <Pause size={15} fill="currentColor" strokeWidth={0} />
+          ) : (
+            <Play size={15} fill="currentColor" strokeWidth={0} />
+          )}
+        </button>
+        <div className="verse-meta">
+          <a href={`https://quran.com/${v.ref}`} target="_blank" rel="noreferrer">
+            {v.surah} {v.ref.replace('-', '–')}
+          </a>
+          <span>{pb.state === 'error' ? 'Recitation couldn’t load — try again' : `Recited by ${RECITER} · Abdel Haleem translation`}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function PrayerCard() {
   const { data: faith } = useFaith();
   const now = useNow();
@@ -337,10 +536,13 @@ export function PrayerCard() {
   const travelling = faith.configured && tz !== deviceTz();
   const curDay = currentDay(faith);
   const lastNight = curDay && curDay !== faith.today ? curDay : undefined;
+  const fast = niyyahFast(faith, now);
 
   return (
     <>
+      {fast && <NiyyahCard fast={fast} now={now} tz={tz} />}
       {faith.ramadan && (faith.ramadan.inRamadan || faith.ramadan.daysUntil <= 100) && <RamadanCountdown ramadan={faith.ramadan} />}
+      {!faith.ramadan?.inRamadan && !fast && <VerseCard date={faith.today?.date ?? todayStr()} />}
       <section className="card prayer-card">
         <div className="card-head">
           <div>

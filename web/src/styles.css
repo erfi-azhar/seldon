@@ -4594,6 +4594,197 @@ button.chip-ask:hover {
   font-size: 12px;
   color: var(--ink-2);
 }
+/* Outside Ramadan: a verse of encouragement, one per day. */
+.verse-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px 22px 16px;
+}
+.verse-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.verse-eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-2);
+}
+.verse-arabic {
+  margin: 0;
+  font-family: 'Amiri Quran', 'Amiri', 'KFGQPC Uthmanic Script HAFS', 'Noto Naskh Arabic', 'Geeza Pro', 'Traditional Arabic', serif;
+  font-size: 24px;
+  line-height: 2;
+  text-align: right;
+  color: var(--ink);
+}
+.verse-end {
+  font-size: 0.8em;
+  color: var(--ink-2);
+}
+.verse-english {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.verse-arabic .is-reciting {
+  background: color-mix(in oklch, var(--ink) 8%, transparent);
+  border-radius: 8px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.verse-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.verse-play {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  padding-left: 2px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--surface);
+  background: var(--ink);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.verse-play:hover {
+  transform: scale(1.06);
+}
+.verse-play.is-playing {
+  padding-left: 0;
+}
+.verse-play:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.verse-meta {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.verse-meta a {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 13px;
+}
+.verse-meta a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 520px) {
+  .niyyah-arabic {
+    font-size: 22px;
+  }
+  .verse-arabic {
+    font-size: 22px;
+  }
+}
+/* The niyyah for tomorrow's fast: a quiet night card, shown from Maghrib to Fajr in Ramadan. */
+.niyyah {
+  display: grid;
+  gap: 12px;
+  padding: 20px 24px;
+  border-radius: 26px;
+  color: #fff;
+  background:
+    radial-gradient(90% 140% at 100% 0%, oklch(0.5 0.1 290 / 0.75), transparent 60%),
+    linear-gradient(160deg, oklch(0.26 0.06 275), oklch(0.18 0.04 260));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 18px 40px -18px oklch(0.25 0.08 270 / 0.8);
+}
+.niyyah-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.niyyah-eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  opacity: 0.65;
+}
+.niyyah-head h2 {
+  margin: 3px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.niyyah-moon {
+  margin-left: auto;
+  flex: none;
+  opacity: 0.8;
+}
+.niyyah-arabic {
+  margin: 6px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid rgb(255 255 255 / 0.14);
+  font-family: 'Amiri', 'Noto Naskh Arabic', 'Geeza Pro', 'Traditional Arabic', 'Scheherazade New', serif;
+  font-size: 26px;
+  line-height: 1.9;
+  text-align: right;
+}
+.niyyah-translit {
+  margin: 0;
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+.niyyah-meaning {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+.niyyah-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 0.14);
+  font-size: 12.5px;
+}
+.niyyah-foot span {
+  opacity: 0.6;
+}
+.niyyah-done {
+  margin-left: auto;
+  flex: none;
+  color: #fff;
+  background: rgb(255 255 255 / 0.14);
+  border: 1px solid rgb(255 255 255 / 0.2);
+}
+.niyyah-done:hover {
+  background: rgb(255 255 255 / 0.22);
+}
+.niyyah.is-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 18px;
+  font-size: 13.5px;
+}
+.niyyah.is-done .link {
+  margin-left: auto;
+  color: inherit;
+  opacity: 0.7;
+}
 .ramadan {
   position: relative;
   display: grid;
