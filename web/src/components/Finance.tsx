@@ -9,7 +9,7 @@ import { amountsHidden, maskAmount, maskAmountsIn, useAmountsHidden } from '../p
 import { financeWrite, useFinance, useMarket, useSpheres, useWrite } from '../api.ts';
 import { addDays, cx, dueLabel, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
-import { Field, Modal, ProgressBar, Seg, Spinner } from './ui.tsx';
+import { Field, Modal, ProgressBar, Seg, Spinner, useFolds } from './ui.tsx';
 
 const EXPENSE = ['Housing', 'Food', 'Groceries', 'Transport', 'Utilities', 'Shopping', 'Health', 'Entertainment', 'Travel', 'Subscriptions', 'Education', 'Family', 'Giving', 'Fees & interest', 'Other'];
 const INCOME = ['Salary', 'Bonus', 'Freelance', 'Business', 'Investments', 'Trading', 'Gifts', 'Refunds', 'Other'];
@@ -760,6 +760,8 @@ export function BillsCard() {
   const [editing, setEditing] = useState<Recurring | 'new' | null>(null);
   const [paying, setPaying] = useState<Upcoming | null>(null);
   const skip = useWrite((id: string) => financeWrite.post(`/recurring/${id}/skip`));
+  // "Everything recurring" starts folded; open it once and it stays open.
+  const folds = useFolds('fin-bills-open', (k) => k === 'recurring', false);
   if (!f) return null;
   const c = f.currency;
   const today = todayStr();
@@ -870,7 +872,7 @@ export function BillsCard() {
           </ul>
 
           {hidden && (
-            <details className="todo-fold">
+            <details className="todo-fold" open={folds.isOpen('recurring')} onToggle={(e) => folds.toggle('recurring', e.currentTarget.open)}>
               <summary>
                 <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
                 <span className="grow">Everything recurring</span>

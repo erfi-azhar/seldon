@@ -15,7 +15,7 @@ import { JobAlertsCard } from '../components/Jobs.tsx';
 import { ReadingList } from '../components/Reading.tsx';
 import { CryptoTwitterCard } from '../components/CryptoTwitter.tsx';
 import { BillsCard, CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PlanCard, PortfolioCard } from '../components/Finance.tsx';
-import { InlineEdit, Loading, Seg } from '../components/ui.tsx';
+import { InlineEdit, Loading, Seg, useFolds } from '../components/ui.tsx';
 import { addDays, cx, dueLabel, hueStyle, parseDay, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { normalise, useScreenings } from './Screenings.tsx';
@@ -449,38 +449,6 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
         })}
     </section>
   );
-}
-
-/**
- * Folds you opened or closed, kept in this browser like the view choice. What's saved is the
- * groups you turned away from how they start (closed ones when they start open, and the other
- * way round). `keep` lets go of keys that no longer mean anything (a day gone by, a project
- * archived, a trip with nothing left to do), so the list doesn't grow forever.
- */
-function useFolds(storageKey: string, keep: (key: string) => boolean, startOpen = true) {
-  const [changed, setChanged] = useState<Set<string>>(() => {
-    try {
-      const saved: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]');
-      return new Set(Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string' && keep(k)) : []);
-    } catch {
-      return new Set();
-    }
-  });
-  const isOpen = (key: string) => changed.has(key) !== startOpen;
-  const toggle = (key: string, open: boolean) =>
-    setChanged((prev) => {
-      if (open === (prev.has(key) !== startOpen)) return prev;
-      const next = new Set(prev);
-      if (open === startOpen) next.delete(key);
-      else next.add(key);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify([...next]));
-      } catch {
-        /* the folds just aren't remembered */
-      }
-      return next;
-    });
-  return { isOpen, toggle };
 }
 
 /** To-dos under their projects, the project with the most pressing to-do first. */
