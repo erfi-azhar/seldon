@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, beforeEach, test } from 'node:test';
 import { openDb } from '../src/db.ts';
-import { addReflection, markStudied, moveTo, nextKey, reflections, setQuranFetch, studyState, tafsirBlocks, verse } from '../src/features/quran.ts';
+import { addReflection, markStudied, moveTo, nextKey, reflections, setQuranFetch, studyState, tafsirBlocks, themes, verse } from '../src/features/quran.ts';
+import { fakeModel, oaText } from './helpers.ts';
 import { Store } from '../src/store.ts';
 import '../src/features/index.ts';
 
@@ -18,7 +19,8 @@ setQuranFetch((async (input: string | URL | Request) => {
   const v = /verses\/by_key\/(\d+:\d+)/.exec(url);
   if (v) return json({ verse: { text_uthmani: `ARABIC ${v[1]}`, translations: [{ text: `Translation of ${v[1]}<sup foot_note=1>1</sup> &amp; more` }] } });
   const t = /tafsirs\/(\d+)\/by_ayah\/(\d+:\d+)/.exec(url);
-  if (t) return json({ tafsir: { verses: { [t[2]!]: {}, '2:4': {} }, text: `<h2>Heading ${t[1]}</h2><p>First &quot;paragraph&quot;.</p><p>الحمد لله</p><p></p>` } });
+  // One passage covers 2:3 and 2:4, as Ibn Kathir often groups ayat; others stand alone.
+  if (t) return json({ tafsir: { verses: ['2:3', '2:4'].includes(t[2]!) ? { '2:3': {}, '2:4': {} } : { [t[2]!]: {} }, text: `<h2>Heading ${t[1]}</h2><p>First &quot;paragraph&quot;.</p><p>الحمد لله</p><p></p>` } });
   return new Response('{}', { status: 404 });
 }) as typeof fetch);
 after(() => setQuranFetch(null));
@@ -99,7 +101,33 @@ test('the ayah after the last of the Quran is the first', () => {
 });
 
 test('quran.com being down is reported, not crashed on', async () => {
-  setQuranFetch(null);
-  setQuranFetch((async () => new Response('busy', { status: 503 })) as typeof fetch);
-  await assert.rejects(verse('1:1', 169), /could not be reached/);
+  down = true;
+  await assert.rejects(verse('1:5', 169), /could not be reached/);
+});
+
+test('themes are drawn from the tafsir passage once, and shared by the ayat it covers', async () => {
+  const store = fresh();
+  assert.deepEqual(await themes(store, '2:3', 169), { status: 'none', reason: 'Connect a model for background work in Settings to see themes.' });
+
+  const reply = { themes: [{ kind: 'meaning', title: 'A placeholder theme', summary: 'What the passage says, in a sentence.' }] };
+  const model = await fakeModel([{ sse: oaText(JSON.stringify(reply)) }, { sse: oaText('not json') }, { sse: oaText('still not json') }]);
+  store.updateSettings({ model: { provider: 'openai-compatible', baseUrl: `${model.url}/v1`, model: 'm' } });
+
+  const first = await themes(store, '2:3', 169);
+  assert.equal(first.status, 'ready');
+  assert.deepEqual(first.status === 'ready' && first.themes, reply.themes);
+  assert.equal(model.seen.length, 1);
+  const sent = JSON.stringify(model.seen[0]!.body.messages);
+  assert.match(sent, /Use only what this commentary says/);
+  assert.match(sent, /Heading 169/, 'the passage itself is sent');
+  assert.match(sent, /<untrusted/, 'as data, not instructions');
+
+  // The fake passage covers 2:3 and 2:4: the second ayah reuses what was written.
+  const second = await themes(store, '2:4', 169);
+  assert.deepEqual(second.status === 'ready' && second.themes, reply.themes);
+  assert.equal(model.seen.length, 1, 'no second call for the same passage');
+
+  // A model that can't give usable JSON leaves nothing saved and says so plainly.
+  const other = await themes(store, '2:3', 168);
+  assert.equal(other.status, 'none');
 });

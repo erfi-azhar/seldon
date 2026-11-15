@@ -5149,6 +5149,112 @@ button.chip-ask:hover {
     font-size: 23px;
   }
 }
+/* Themes drawn from the tafsir, under the ayah. */
+.quran-main {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.quran-themes {
+  display: grid;
+  gap: 12px;
+}
+.quran-themes-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px;
+}
+.quran-themes-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-2);
+}
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+.theme-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.theme-card h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+.theme-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.theme-kind {
+  justify-self: start;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--theme-ink, var(--ink-2));
+  background: color-mix(in oklch, var(--theme-ink, var(--ink-2)) 14%, transparent);
+}
+.theme-meaning {
+  --theme-ink: oklch(0.6 0.12 250);
+}
+.theme-context {
+  --theme-ink: oklch(0.62 0.1 200);
+}
+.theme-lesson {
+  --theme-ink: oklch(0.62 0.13 150);
+}
+.theme-virtue {
+  --theme-ink: oklch(0.68 0.13 75);
+}
+.theme-language {
+  --theme-ink: oklch(0.6 0.13 300);
+}
+.theme-ruling {
+  --theme-ink: oklch(0.6 0.14 25);
+}
+.theme-card.is-loading {
+  min-height: 130px;
+}
+.theme-card.is-loading i {
+  display: block;
+  height: 10px;
+  border-radius: 6px;
+  background: var(--sunken);
+  animation: rc-pulse 1.4s ease-in-out infinite;
+}
+.theme-card.is-loading i:first-child {
+  width: 30%;
+}
+.theme-card.is-loading i:nth-child(2) {
+  width: 70%;
+  height: 16px;
+}
+.theme-wait {
+  grid-column: 1 / -1;
+}
+.theme-source {
+  margin: 0;
+  padding: 0 4px;
+}
 /* Recitation check: recite from memory, then see each word marked. */
 .ayah-text {
   position: relative;

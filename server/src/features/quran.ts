@@ -9,7 +9,8 @@ import { z } from 'zod';
 import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { read, today as todayOf } from '../http.ts';
 import { addDays, Invalid, NotFound, nowIso, type Store } from '../store.ts';
-import type { Note, QuranChapter, QuranStudy, QuranVerse, TafsirBlock } from '../../../shared/types.ts';
+import type { Note, QuranChapter, QuranStudy, QuranTheme, QuranThemes, QuranVerse, TafsirBlock } from '../../../shared/types.ts';
+import { NoBrain, think, wrapUntrusted } from '../agent/think.ts';
 import { registerFeature } from './registry.ts';
 
 const API = 'https://api.quran.com/api/v4';
@@ -219,6 +220,66 @@ export async function addReflection(store: Store, key: string, text: string): Pr
   return store.createNote({ kind: 'note', title: `Reflection on ${ch.name} ${k.key}`, body: text.trim(), url: ayahUrl(k.key), sphereId: faithSphere(store) });
 }
 
+// ── Themes ──────────────────────────────────────────────────────────────────
+
+const THEME_KINDS = ['meaning', 'context', 'lesson', 'virtue', 'language', 'ruling'] as const;
+const themeSchema = z.object({
+  themes: z
+    .array(z.object({ kind: z.enum(THEME_KINDS), title: z.string().min(1).max(80), summary: z.string().min(1).max(600) }))
+    .min(1)
+    .max(6),
+});
+/** Themes being written right now, so two asks for one passage share one model call. */
+const writing = new Map<string, Promise<QuranTheme[]>>();
+
+/**
+ * The tafsir passage on this ayah, drawn into a few themes by the background model. The model
+ * sees only the passage (as data), is told to add nothing it doesn't say, and to attribute
+ * views to the commentator. A passage covering several ayat is written once for all of them.
+ */
+export async function themes(store: Store, key: string, tafsirId: number): Promise<QuranThemes> {
+  const v = await verse(key, tafsirId);
+  const t = v.tafsir;
+  if (!t || !t.blocks.length) return { status: 'none', reason: 'This tafsir has no passage on this ayah.' };
+  const passage = t.covers[0] ?? v.key;
+  const cached = store.db.prepare('SELECT themes FROM quran_themes WHERE passage = ? AND tafsir = ?').get(passage, t.id) as { themes: string } | undefined;
+  if (cached) return { status: 'ready', tafsir: t.name, covers: t.covers, themes: JSON.parse(cached.themes) as QuranTheme[] };
+
+  const id = `${passage}|${t.id}`;
+  let job = writing.get(id);
+  if (!job) {
+    const ch = (await chapters())[v.surah - 1]!;
+    const span = t.covers.length > 1 ? `${t.covers[0]}–${t.covers.at(-1)!.split(':')[1]}` : v.key;
+    const text = t.blocks.map((b) => (b.kind === 'h' ? `## ${b.text}` : b.text)).join('\n\n');
+    job = think({
+      store,
+      task:
+        `Below is the commentary "${t.name}" on Quran ${span} (Surah ${ch.name}). Draw out the 3 to 5 main themes it discusses, for someone studying these ayat. ` +
+        `Use only what this commentary says. Do not add Quranic verses, hadith, rulings, scholars or opinions that it does not contain, and do not quote Arabic. ` +
+        `Where it reports a view or a narration, say whose it is as the commentary does (for example "Ibn Kathir notes…" or "a narration from Abu Hurayrah…"). ` +
+        `For each theme give: kind (one of ${THEME_KINDS.join(', ')}: meaning = what the words mean; context = when or why it was revealed, or where it sits; ` +
+        `lesson = guidance for living; virtue = the merit of reciting or knowing it; language = a word or grammar point; ruling = a legal point), ` +
+        `title (2 to 6 words), and summary (one or two plain sentences). Reply as {"themes": [{"kind": "...", "title": "...", "summary": "..."}]}.`,
+      input: wrapUntrusted(`${t.name} on ${span}`, text, 30_000),
+      schema: themeSchema,
+      signal: AbortSignal.timeout(60_000),
+    }).then((out) => {
+      store.db.prepare('INSERT OR REPLACE INTO quran_themes (passage, tafsir, themes, created_at) VALUES (?,?,?,?)').run(passage, t.id, JSON.stringify(out.themes), nowIso());
+      return out.themes;
+    });
+    writing.set(id, job);
+    void job.finally(() => writing.delete(id)).catch(() => undefined);
+  }
+  try {
+    return { status: 'ready', tafsir: t.name, covers: t.covers, themes: await job };
+  } catch (err) {
+    if (err instanceof NoBrain) return { status: 'none', reason: 'Connect a model for background work in Settings to see themes.' };
+    if (err instanceof Unavailable) throw err;
+    console.warn('[quran] could not draw themes:', err instanceof Error ? err.message : err);
+    return { status: 'none', reason: 'Seldon couldn’t read this passage just now. Try again later.' };
+  }
+}
+
 // ── Wiring ──────────────────────────────────────────────────────────────────
 
 registerSnapshotSection<Store>('Quran study', (store, today) => {
@@ -233,7 +294,7 @@ const keyParam = z.string().regex(/^\d{1,3}:\d{1,3}$/, 'An ayah is written surah
 
 registerFeature({
   id: 'quran',
-  tables: ['quran_study_log'],
+  tables: ['quran_study_log', 'quran_themes'],
   routes: (app, { store }) => {
     // quran.com being down is not the user's fault: say so plainly, as a 503.
     const guard = async (c: { json: (b: unknown, s?: number) => Response }, fn: () => Promise<unknown>) => {
@@ -249,6 +310,11 @@ registerFeature({
       const key = keyParam.safeParse(c.req.query('key'));
       if (!key.success) throw new Invalid('An ayah is written surah:ayah, like 2:255');
       return guard(c, () => verse(key.data, Number(c.req.query('tafsir')) || getSaved(store).tafsir));
+    });
+    app.get('/api/quran/themes', (c) => {
+      const key = keyParam.safeParse(c.req.query('key'));
+      if (!key.success) throw new Invalid('An ayah is written surah:ayah, like 2:255');
+      return guard(c, () => themes(store, key.data, Number(c.req.query('tafsir')) || getSaved(store).tafsir));
     });
     app.get('/api/quran/study', (c) => c.json(studyState(store, todayOf(c))));
     app.put('/api/quran/study', async (c) => {

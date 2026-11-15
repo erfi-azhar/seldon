@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
-import type { Note, QuranChapter, QuranStudy, QuranVerse } from '../../../shared/types.ts';
+import type { Note, QuranChapter, QuranStudy, QuranTheme, QuranThemes, QuranVerse } from '../../../shared/types.ts';
 import { api, useSpheres, useWrite, write } from '../api.ts';
 import { cx, hueStyle, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -181,6 +181,7 @@ export function QuranStudyPage() {
         <Loading />
       ) : (
         <div className="quran-page-grid">
+          <div className="quran-main">
           <section className="card quran-ayah">
             <div className="quran-ayah-recite">
               <RecitePanel verse={verse} />
@@ -193,6 +194,8 @@ export function QuranStudyPage() {
               </a>
             </span>
           </section>
+          <ThemeCards verse={verse} study={study} />
+          </div>
 
           <section className="card quran-side">
             <div className="quran-tabs">
@@ -213,6 +216,69 @@ export function QuranStudyPage() {
         </div>
       )}
     </div>
+  );
+}
+
+const THEME_LABEL: Record<QuranTheme['kind'], string> = {
+  meaning: 'Meaning',
+  context: 'Context',
+  lesson: 'Lesson',
+  virtue: 'Virtue',
+  language: 'Language',
+  ruling: 'Ruling',
+};
+
+/** Below the ayah: the tafsir passage drawn into a few themes, to read before the full text. */
+function ThemeCards({ verse, study }: { verse: QuranVerse; study: QuranStudy }) {
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['quran-themes', verse.key, study.tafsir],
+    queryFn: () => api<QuranThemes>('GET', `/quran/themes?key=${verse.key}&tafsir=${study.tafsir}`),
+    staleTime: Infinity,
+    retry: 1,
+  });
+  if (data?.status === 'none') return null;
+  const covers = data?.status === 'ready' && data.covers.length > 1 ? `${data.covers[0]}–${data.covers.at(-1)!.split(':')[1]}` : null;
+  return (
+    <section className="quran-themes" aria-label="Themes in the tafsir">
+      <div className="quran-themes-head">
+        <h2>Themes in the tafsir</h2>
+        {data?.status === 'ready' && <span className="hint">{covers ? `One passage on ${covers}` : null}</span>}
+      </div>
+      {isLoading ? (
+        <div className="theme-grid" aria-busy>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="theme-card is-loading">
+              <i />
+              <i />
+              <i />
+            </div>
+          ))}
+          <span className="hint theme-wait">Seldon is reading the tafsir…</span>
+        </div>
+      ) : isError ? (
+        <p className="muted">
+          The themes couldn’t be loaded.{' '}
+          <button type="button" className="link" onClick={() => void refetch()}>
+            Try again
+          </button>
+        </p>
+      ) : data?.status === 'ready' ? (
+        <>
+          <div className="theme-grid">
+            {data.themes.map((t, i) => (
+              <article key={i} className={cx('theme-card', `theme-${t.kind}`)}>
+                <span className="theme-kind">{THEME_LABEL[t.kind]}</span>
+                <h3>{t.title}</h3>
+                <p>{t.summary}</p>
+              </article>
+            ))}
+          </div>
+          <p className="hint theme-source">
+            Summarised by Seldon from {data.tafsir} (via quran.com), using that commentary alone. A summary, not scholarship: read the full tafsir alongside.
+          </p>
+        </>
+      ) : null}
+    </section>
   );
 }
 
