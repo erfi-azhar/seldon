@@ -73,7 +73,7 @@ export function renderSnapshot(store: Store, today: string): string {
     }
     for (const h of o.habits.filter((x) => x.sphereId === s.id)) {
       const cadence = h.cadence === 'daily' ? 'daily' : `${h.targetPerWeek}×/week`;
-      lines.push(`  Habit: ${h.name} [habit ${h.id}] — ${cadence}, ${h.weekCount}/${h.targetPerWeek} in the last 7 days, ${h.doneToday ? 'done today' : 'not yet today'}, streak ${h.streak}`);
+      lines.push(`  Habit: ${h.name} [habit ${h.id}] — ${cadence}, ${h.weekCount}/${h.targetPerWeek} this week (since Monday), ${h.doneToday ? 'done today' : 'not yet today'}, streak ${h.streak}`);
     }
     for (const m of metrics.filter((x) => x.sphereId === s.id)) {
       const last = m.entries.at(-1);

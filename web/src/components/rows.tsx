@@ -4,7 +4,7 @@ import { ArrowDownRight, ArrowUpRight, Flame, Pencil, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react';
 import type { Goal, Habit, Metric, Task } from '../../../shared/types.ts';
 import { useWrite, write } from '../api.ts';
-import { addDays, cx, dueLabel, formatNumber, hueStyle, parseDay, parseNumber, pct, relativeDay, todayStr } from '../lib.ts';
+import { addDays, cx, dueLabel, formatNumber, hueStyle, parseDay, parseNumber, pct, relativeDay, isoWeek, todayStr, weekMonday, weekRange } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { Check, ProgressBar, SphereSelect } from './ui.tsx';
 
@@ -113,13 +113,39 @@ export function AddTask({
 
 // ── Habits ──────────────────────────────────────────────────────────────────
 
+/** The first row of a habit list: which week it is, and a day letter over each dot. */
+export function HabitWeekHead() {
+  const today = todayStr();
+  const monday = weekMonday(today);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  return (
+    <li className="habit habit-week-head" aria-hidden>
+      <span className="check-spacer" />
+      <span className="habit-name">
+        Week {isoWeek(today)}
+        <span className="week-range"> · {weekRange(today)}</span>
+      </span>
+      <span className="week">
+        {days.map((d) => (
+          <span key={d} className={cx(d === today && 'is-today')}>
+            {parseDay(d).toLocaleDateString(undefined, { weekday: 'narrow' })}
+          </span>
+        ))}
+      </span>
+      <span className="streak" />
+    </li>
+  );
+}
+
 export function HabitRow({ habit, showSphere = false }: { habit: Habit; showSphere?: boolean }) {
   const { sphere, openSheet } = useApp();
   const today = todayStr();
   const s = sphere(habit.sphereId);
   const log = useWrite((date: string) => write.post(`/habits/${habit.id}/log?date=${today}`, { date }));
   const done = new Set(habit.log);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
+  // This calendar week, Monday to Sunday; days still ahead can't be checked yet.
+  const monday = weekMonday(today);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const cadence = habit.cadence === 'daily' ? 'Daily' : `${habit.weekCount} of ${habit.targetPerWeek} this week`;
 
   return (
@@ -132,12 +158,13 @@ export function HabitRow({ habit, showSphere = false }: { habit: Habit; showSphe
           {cadence}
         </small>
       </button>
-      <div className="week" aria-label="Last seven days">
+      <div className="week" aria-label="This week, Monday to Sunday">
         {days.map((d) => (
           <button
             key={d}
             type="button"
             className={cx(d === today && 'is-today')}
+            disabled={d > today}
             aria-pressed={done.has(d)}
             aria-label={`${parseDay(d).toLocaleDateString(undefined, { weekday: 'long' })}: ${done.has(d) ? 'done' : 'not done'}`}
             title={parseDay(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}

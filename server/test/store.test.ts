@@ -195,3 +195,20 @@ test('deleting a sphere removes what lives in it and frees what merely pointed a
   assert.equal(s.listGoals({ status: 'all' }).length, 0);
   assert.equal(s.getTask(task.id).sphereId, null);
 });
+
+test('habit weeks are calendar weeks, Monday to Sunday', () => {
+  const s = fresh();
+  const sphere = s.createSphere({ key: 'health' });
+  // TODAY (2026-11-13) is a Friday; its week runs Monday 9 to Sunday 15 November.
+  const weekly = s.createHabit({ sphereId: sphere.id, name: 'Gym', cadence: 'weekly', targetPerWeek: 2 });
+  s.setHabitLog(weekly.id, '2026-11-08', true, TODAY); // last Sunday: last week
+  s.setHabitLog(weekly.id, '2026-11-07', true, TODAY); // last Saturday: last week
+  s.setHabitLog(weekly.id, '2026-11-09', true, TODAY); // this Monday
+  let h = s.getHabit(weekly.id, TODAY);
+  assert.equal(h.weekCount, 1, 'only Monday onwards counts for this week');
+  assert.equal(h.streak, 1, 'last week was on target; this week is still open');
+  s.setHabitLog(weekly.id, TODAY, true, TODAY);
+  h = s.getHabit(weekly.id, TODAY);
+  assert.equal(h.weekCount, 2);
+  assert.equal(h.streak, 2, 'this week counts once it is on target');
+});

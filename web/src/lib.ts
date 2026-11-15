@@ -26,6 +26,26 @@ export function daysFrom(a: string, b: string): number {
 
 export const weekdayLong = (date: string): string => parseDay(date).toLocaleDateString(undefined, { weekday: 'long' });
 export const monthDay = (date: string): string => parseDay(date).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+/** The Monday that starts the calendar week holding this date. */
+export function weekMonday(date: string): string {
+  return addDays(date, -((parseDay(date).getDay() + 6) % 7));
+}
+
+/** ISO 8601 week number (weeks start on Monday; week 1 holds the year's first Thursday). */
+export function isoWeek(date: string): number {
+  const thursday = parseDay(addDays(weekMonday(date), 3));
+  const jan1 = new Date(thursday.getFullYear(), 0, 1);
+  return Math.floor((thursday.getTime() - jan1.getTime()) / 86_400_000 / 7) + 1;
+}
+
+/** "Nov 9–15", or across months "Nov 30 – Dec 6": the Monday-to-Sunday week holding a date. */
+export function weekRange(date: string): string {
+  const a = parseDay(weekMonday(date));
+  const b = parseDay(addDays(weekMonday(date), 6));
+  const month = (d: Date) => d.toLocaleDateString(undefined, { month: 'short' });
+  return a.getMonth() === b.getMonth() ? `${month(a)} ${a.getDate()}–${b.getDate()}` : `${month(a)} ${a.getDate()} – ${month(b)} ${b.getDate()}`;
+}
+
 export const shortDay = (date: string): string => parseDay(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 /** "today", "tomorrow", "Fri", "Nov 28", "3d late". */

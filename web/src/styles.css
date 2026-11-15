@@ -9500,3 +9500,43 @@ button.layover-pill:hover .layover-lounge {
     opacity: 1;
   }
 }
+
+/* Habit lists open with the week: its number and dates, and a letter over each day. */
+.habit-week-head {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.habit-week-head .check-spacer {
+  width: 20px;
+  flex: none;
+}
+.habit-week-head .habit-name {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.habit-week-head .week > span {
+  width: 14px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 550;
+  line-height: 1;
+  color: var(--ink-4);
+}
+.habit-week-head .week > span.is-today {
+  color: var(--ink);
+}
+.week button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.week button:disabled:hover {
+  transform: none;
+}
+.habit-week-head .habit-name {
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .habit-week-head .week-range {
+    display: none;
+  }
+}

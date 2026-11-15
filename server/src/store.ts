@@ -89,6 +89,12 @@ export function addDays(date: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** The Monday that starts the calendar week holding this date. */
+export function weekMonday(date: string): string {
+  const dow = new Date(`${date}T12:00:00Z`).getUTCDay(); // 0 = Sunday
+  return addDays(date, -((dow + 6) % 7));
+}
+
 /** Whole days from a to b (b − a). Accepts dates or ISO timestamps. */
 export function daysBetween(a: string, b: string): number {
   const ms = Date.parse(`${b.slice(0, 10)}T12:00:00Z`) - Date.parse(`${a.slice(0, 10)}T12:00:00Z`);
@@ -283,8 +289,11 @@ export class Store {
       null;
 
     const goalProgress = goals.length ? goals.reduce((s, g) => s + g.progress, 0) / goals.length : null;
+    // The pulse looks at the trailing seven days, so it isn't low every Monday just
+    // because the calendar week has only begun.
+    const since = addDays(today, -6);
     const habitRate = habits.length
-      ? habits.reduce((s, h) => s + Math.min(h.weekCount, h.targetPerWeek) / h.targetPerWeek, 0) / habits.length
+      ? habits.reduce((s, h) => s + Math.min(h.log.filter((d) => d >= since).length, h.targetPerWeek) / h.targetPerWeek, 0) / habits.length
       : null;
     const quietDays = lastActivityAt ? Math.max(0, daysBetween(dateInZone(lastActivityAt, this.zone()), today)) : null;
     const recency = quietDays === null ? 0 : clamp01(1 - quietDays / 14);
@@ -708,10 +717,11 @@ export class Store {
       today,
     ).map((x) => x.date as string);
     const set = new Set(dates);
-    const weekStart = addDays(today, -6);
-    const windowCount = (end: string): number => {
+    // Weeks are calendar weeks, Monday to Sunday.
+    const weekStart = weekMonday(today);
+    const weekCount = (monday: string): number => {
       let n = 0;
-      for (let i = 0; i < 7; i++) if (set.has(addDays(end, -i))) n++;
+      for (let i = 0; i < 7; i++) if (set.has(addDays(monday, i))) n++;
       return n;
     };
 
@@ -724,10 +734,12 @@ export class Store {
         cursor = addDays(cursor, -1);
       }
     } else {
-      let end = windowCount(today) >= r.target_per_week ? today : addDays(today, -7);
-      while (streak < 60 && windowCount(end) >= r.target_per_week) {
+      // Whole weeks on target, counting this week once it is on target and last week
+      // back otherwise, since this week is still open.
+      let monday = weekCount(weekStart) >= r.target_per_week ? weekStart : addDays(weekStart, -7);
+      while (streak < 60 && weekCount(monday) >= r.target_per_week) {
         streak++;
-        end = addDays(end, -7);
+        monday = addDays(monday, -7);
       }
     }
 
@@ -741,7 +753,7 @@ export class Store {
       createdAt: r.created_at,
       log: dates.filter((d) => d >= addDays(today, -34)),
       doneToday: set.has(today),
-      weekCount: dates.filter((d) => d >= weekStart).length,
+      weekCount: weekCount(weekStart),
       streak,
     };
   }

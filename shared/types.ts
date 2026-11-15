@@ -120,9 +120,9 @@ export interface Habit {
   /** Dates (YYYY-MM-DD) checked in over the last 35 days. */
   log: string[];
   doneToday: boolean;
-  /** Check-ins in the trailing 7 days. */
+  /** Check-ins this calendar week (Monday to Sunday). */
   weekCount: number;
-  /** Consecutive days (daily) or weeks on target (weekly). */
+  /** Consecutive days (daily) or calendar weeks on target (weekly). */
   streak: number;
 }
 

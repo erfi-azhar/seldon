@@ -5,7 +5,7 @@ import { CATALOG_BY_KEY } from '../../../shared/catalog.ts';
 import type { Task } from '../../../shared/types.ts';
 import { useHealth, useSphere, useSpheres, useTravel, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
-import { AddTask, GoalRow, HabitRow, MetricCard, TaskRow } from '../components/rows.tsx';
+import { AddTask, GoalRow, HabitRow, HabitWeekHead, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
 import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
@@ -139,6 +139,7 @@ export function SphereDetail({ id }: { id: string }) {
       </div>
       {habits.length === 0 && <p className="empty">No habits yet.</p>}
       <ul style={{ paddingBottom: habitIdeas.length ? 6 : 12 }}>
+        {habits.length > 0 && <HabitWeekHead />}
         {habits.map((h) => (
           <HabitRow key={h.id} habit={h} />
         ))}
