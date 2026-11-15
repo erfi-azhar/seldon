@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Sparkles } from 'lucide-react';
+import { ChevronRight, Sparkles } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Activity, Overview, Task } from '../../../shared/types.ts';
 import { useOverview, useTravel, useWrite, write } from '../api.ts';
@@ -63,7 +63,52 @@ function TodayTodos({ overview: o }: { overview: Overview }) {
           true,
         )}
       </div>
+      <ComingUp tasks={o.tasks.upcoming} />
     </section>
+  );
+}
+
+const comingUpKey = 'terminus:today:coming-up';
+
+/** Open to-dos due in the next 7 days, folded away until asked for (and remembered). */
+function ComingUp({ tasks }: { tasks: Task[] }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(comingUpKey) === 'open';
+    } catch {
+      return false;
+    }
+  });
+  const sorted = [...tasks].sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
+  return (
+    <details
+      className="coming-up"
+      open={open}
+      onToggle={(e) => {
+        const next = e.currentTarget.open;
+        setOpen(next);
+        try {
+          localStorage.setItem(comingUpKey, next ? 'open' : 'closed');
+        } catch {
+          // Storage is off; it just won't be remembered.
+        }
+      }}
+    >
+      <summary>
+        <ChevronRight size={15} className="coming-up-chevron" aria-hidden />
+        <span className="coming-up-title">Coming up</span>
+        <span className="hint">{tasks.length === 0 ? 'nothing in the next 7 days' : `${plural(tasks.length, 'to-do')} in the next 7 days`}</span>
+      </summary>
+      {sorted.length > 0 ? (
+        <ul>
+          {sorted.map((t) => (
+            <TaskRow key={t.id} task={t} />
+          ))}
+        </ul>
+      ) : (
+        <p className="empty">Nothing due in the next week.</p>
+      )}
+    </details>
   );
 }
 
@@ -264,7 +309,7 @@ export function Today() {
 
   const today = todayStr();
   const due = o.tasks.due.length;
-  const horizon = o.goalsDue.length + o.tasks.upcoming.length > 0;
+  const horizon = o.goalsDue.length > 0;
 
   return (
     <div className="page page-today">
@@ -327,13 +372,6 @@ export function Today() {
                   </button>
                 );
               })}
-              {o.tasks.upcoming.length > 0 && (
-                <ul>
-                  {o.tasks.upcoming.map((t) => (
-                    <TaskRow key={t.id} task={t} />
-                  ))}
-                </ul>
-              )}
             </section>
           )}
 
