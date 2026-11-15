@@ -295,7 +295,6 @@ const IMSAK_MS = 10 * 60_000;
 function FastTimes({ times, now, tz }: { times: PrayerDay['times']; now: number; tz: string }) {
   const rows = [
     { label: 'Fast begins', at: times.fajr, sub: `Imsak ${hhmm(new Date(Date.parse(times.fajr) - IMSAK_MS).toISOString(), tz)}` },
-    { label: 'Syuruk', at: times.sunrise, sub: 'Sunrise' },
     { label: 'Fast ends', at: times.maghrib, sub: 'Maghrib · iftar' },
     { label: 'Isyak', at: times.isha, sub: 'Then tarawih' },
   ];

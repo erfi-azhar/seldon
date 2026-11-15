@@ -4844,7 +4844,7 @@ button.chip-ask:hover {
   opacity: 0.7;
 }
 .ramadan-times {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .ramadan-times .ramadan-time {
   font-size: 17px;
@@ -4858,13 +4858,11 @@ button.chip-ask:hover {
   font-weight: 500;
 }
 @media (max-width: 520px) {
-  .ramadan-times {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: 14px;
+  .ramadan-times > div + div {
+    padding-left: 12px;
   }
-  .ramadan-times > div:nth-child(3) {
-    padding-left: 0;
-    border-left: 0;
+  .ramadan-times .ramadan-time {
+    font-size: 15px;
   }
 }
 .ramadan-note {
