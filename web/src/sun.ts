@@ -18,7 +18,7 @@ export type ThemePref = 'sun' | 'system' | 'light' | 'dark';
 export const PHASES: Phase[] = ['dawn', 'day', 'dusk', 'evening'];
 const SCHEME: Record<Phase, 'light' | 'dark'> = { dawn: 'light', day: 'light', dusk: 'dark', evening: 'dark' };
 /** Each phase's page colour, for the browser's own bar. Matches --bg in styles.css. */
-const PAGE_BG: Record<Phase, string> = { dawn: '#f5ede9', day: '#eef0f4', dusk: '#17111b', evening: '#0b0c10' };
+const PAGE_BG: Record<Phase, string> = { dawn: '#f5ede9', day: '#eef0f4', dusk: '#121820', evening: '#0b0c10' };
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -312,6 +312,23 @@ function locate(onFix: (fix: DeviceFix) => void): void {
       else if (status.state === 'prompt') askOnce();
     })
     .catch(askOnce);
+}
+
+/**
+ * Keeps the phase moving where the app shell (and useSunClock) isn't mounted: sign-in and
+ * first-run setup. It uses the last place known, without asking for the device's location.
+ */
+export function useSunTick(): void {
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const marks = new Date(state.marks.day).toDateString() === now.toDateString() ? state.marks : marksFor(state.place, now);
+      update({ ...phaseAt(now.getTime(), marks), marks });
+    };
+    tick();
+    const timer = setInterval(tick, 30_000);
+    return () => clearInterval(timer);
+  }, []);
 }
 
 /** Keeps the phase current: mounted once, in the app shell. */
