@@ -18,6 +18,7 @@ import { AppContext, type AppState, type Sheet, type Toast } from './state.tsx';
 import { Goals } from './views/Goals.tsx';
 import { Library } from './views/Library.tsx';
 import { Screenings } from './views/Screenings.tsx';
+import { CryptoMonitor } from './components/CryptoTwitter.tsx';
 import { Settings } from './views/Settings.tsx';
 import { SphereDetail, Spheres } from './views/Spheres.tsx';
 import { TripPage } from './components/Travel.tsx';
@@ -184,6 +185,7 @@ function Shell({ settings }: { settings: SettingsData }) {
               <Route path="/" component={Today} />
               <Route path="/spheres" component={Spheres} />
               <Route path="/spheres/:id/screenings">{(params) => <Screenings sphereId={params.id} />}</Route>
+              <Route path="/spheres/:id/crypto">{(params) => <CryptoMonitor sphereId={params.id} />}</Route>
               <Route path="/spheres/:id">{(params) => <SphereDetail key={params.id} id={params.id} />}</Route>
               <Route path="/trips/:id">{(params) => <TripPage key={params.id} id={params.id} />}</Route>
               <Route path="/quran" component={QuranStudyPage} />

@@ -10245,6 +10245,273 @@ button.fin-rec-main:disabled {
   text-align: right;
 }
 
+/* ── Crypto Twitter ─────────────────────────────────────────────────────── */
+
+.xw-head {
+  align-items: flex-end;
+}
+.xw-head-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.xw-spend {
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+}
+.xw-spend b {
+  font: 500 15px/1.2 var(--mono);
+}
+.xw-spend-bar {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.xw-spend-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--sphere-main, var(--ink-3));
+}
+.xw-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.xw-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 16px 20px 6px;
+}
+.xw-feed {
+  padding: 0 12px 8px;
+}
+.xw-feed.is-compact {
+  padding-bottom: 4px;
+}
+.xw-post {
+  display: grid;
+  gap: 5px;
+  padding: 12px 8px;
+  border-top: 1px solid var(--line);
+}
+.xw-post:first-child {
+  border-top: 0;
+}
+.xw-post.is-urgent {
+  box-shadow: inset 3px 0 0 var(--bad);
+  padding-left: 14px;
+}
+.xw-post-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+}
+.xw-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.xw-time {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.xw-kind {
+  height: 20px;
+  font-size: 11px;
+}
+.xw-kind.xw-warning {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+.xw-kind.xw-trade_idea,
+.xw-kind.xw-analysis {
+  background: color-mix(in oklab, oklch(0.62 0.13 255) 16%, transparent);
+  color: oklch(0.52 0.13 255);
+}
+.xw-kind.xw-news,
+.xw-kind.xw-launch {
+  background: color-mix(in oklab, var(--good) 15%, transparent);
+  color: var(--good);
+}
+.xw-summary {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.xw-text {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.xw-post-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+.xw-coin {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  font-size: 11.5px;
+}
+.xw-coin b {
+  font: 600 11.5px var(--mono);
+}
+.xw-coin .num {
+  font-size: 11px;
+}
+.xw-coin.is-mine {
+  border-color: color-mix(in oklab, var(--ink) 40%, transparent);
+  background: var(--surface-2);
+}
+button.xw-coin:hover,
+.xw-coin.is-active {
+  background: var(--sunken);
+}
+.xw-sent {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.xw-metrics {
+  font-size: 11.5px;
+}
+.xw-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink-2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.xw-open:hover {
+  color: var(--ink);
+}
+.xw-buzz-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 20px 6px;
+}
+.xw-buzz {
+  padding: 0 10px 8px;
+}
+.xw-buzz-row-btn {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 28px 52px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+.xw-buzz-row-btn:hover,
+.xw-buzz-row-btn.is-active {
+  background: var(--surface-2);
+}
+.xw-buzz-sym {
+  font: 600 13px var(--mono);
+}
+.xw-buzz-sym.is-mine {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.xw-buzz-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--sunken);
+}
+.xw-buzz-bar i {
+  display: block;
+  height: 100%;
+}
+.xw-buzz-bar i.is-up {
+  background: var(--good);
+}
+.xw-buzz-bar i.is-flat {
+  background: color-mix(in oklab, var(--ink) 25%, transparent);
+}
+.xw-buzz-bar i.is-down {
+  background: var(--bad);
+}
+.xw-buzz-n {
+  font-size: 12.5px;
+  text-align: right;
+}
+.xw-buzz-q {
+  font-size: 12px;
+  text-align: right;
+}
+.xw-search {
+  margin: 0 20px 8px;
+}
+.xw-acct-list {
+  padding: 0 20px 8px;
+}
+.xw-acct-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13.5px;
+}
+.xw-acct-list li .grow {
+  display: grid;
+  min-width: 0;
+  line-height: 1.3;
+}
+.xw-acct-list li .faint {
+  font-size: 12px;
+}
+.xw-acct-list li.is-off {
+  opacity: 0.6;
+}
+.xw-step {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+}
+.xw-step h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.xw-steps {
+  display: grid;
+  gap: 6px;
+  padding-left: 20px;
+  list-style: decimal;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.xw-steps a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 @media (max-width: 720px) {
   .fin-hero {
     grid-template-columns: minmax(0, 1fr);
@@ -10287,6 +10554,21 @@ button.fin-rec-main:disabled {
   }
   .fin-tx-make {
     opacity: 1;
+  }
+  .xw-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .xw-head {
+    flex-wrap: wrap;
+  }
+  .xw-head-side {
+    width: 100%;
+  }
+  .xw-spend {
+    flex: 1;
+  }
+  .xw-metrics {
+    display: none;
   }
 }
 

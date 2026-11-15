@@ -128,6 +128,16 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   Account if you like. November takes whatever room is left, the rest from savings by mid-
   December; a reminder arrives on 1 December with what it's worth. Record what you've put in
   and the plan paces the rest; resident tax bands are built in for the saving.
+- **Crypto Twitter.** Connect X with your own developer app's bearer token, and Terminus
+  reads who you follow (once, on your say-so: about $0.01 an account), lets your background
+  brain pick out the crypto accounts, then reads their original posts every half hour. Each
+  post is sorted (trade idea, news, warning, launch, analysis…) with the coins it's about,
+  its sentiment and how much it matters; an exploit, a listing, or news touching a coin you
+  hold becomes a signal, a handful a day at most. A card on Finances opens the monitor: a
+  filterable feed with live prices beside each coin, what's being talked about in the last
+  day, and the accounts, each one yours to watch or not. X's API is pay-per-use (about
+  $0.005 a post), so every read is counted against a monthly budget you set, paced across the
+  month. Without a brain, crypto words in bios and $tickers in posts do the sorting.
 - **Hide amounts.** The eye on the net worth card (and on Today's crypto card) masks every
   amount of yours: balances, pay, bills, the plan, positions, quantities and P&L. Market
   prices and percentages stay. It's remembered on that device, for checking in public.
@@ -267,7 +277,7 @@ named like `delete_*`) are never offered to Seldon.
 ## Seldon, concretely
 
 - **It works through the same rules you do.** Every tool is a validated wrapper over the
-  data layer the app itself uses. There are 63, from logging a habit to logging a crypto
+  data layer the app itself uses. There are 65, from logging a habit to logging a crypto
   trade or adding a book to your reading list, plus the read tools of any MCP server you connect.
 - **It cannot delete.** It can add, log, update and complete. What it adds or logs — tasks,
   goals, habits, check-ins, numbers, notes, food, workouts, trips — is attributed to it in
@@ -330,7 +340,7 @@ The older `LIFEOS_*` names still work, and an existing `data/lifeos.db` keeps be
 
 Connections need outbound network access: `imap.gmail.com:993` for Gmail; `oauth2.googleapis.com` and `www.googleapis.com` for Google Calendar; your calendar's host (`calendar.google.com`, `*.icloud.com`) for calendar flights; the job boards'
 APIs (`boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com`, `apply.workable.com`,
-`api.smartrecruiters.com`); for crypto prices `data-api.binance.vision` and `data-stream.binance.vision` (Binance) or `api.exchange.coinbase.com` and `ws-feed.exchange.coinbase.com` (Coinbase), `api.frankfurter.dev` or `open.er-api.com` for currency rates, `date.nager.at` for public holidays, `openlibrary.org`, `covers.openlibrary.org`, `www.googleapis.com` and `books.google.com` for the reading list; any MCP servers you add; and whatever links you capture.
+`api.smartrecruiters.com`); for crypto prices `data-api.binance.vision` and `data-stream.binance.vision` (Binance) or `api.exchange.coinbase.com` and `ws-feed.exchange.coinbase.com` (Coinbase), `api.frankfurter.dev` or `open.er-api.com` for currency rates, `date.nager.at` for public holidays, `api.x.com` for Crypto Twitter, `openlibrary.org`, `covers.openlibrary.org`, `www.googleapis.com` and `books.google.com` for the reading list; any MCP servers you add; and whatever links you capture.
 
 ### Hosting it
 
