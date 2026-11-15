@@ -60,6 +60,9 @@ test('current and next prayer, unmarked prayers, and the make-up ledger', () => 
   assert.equal(f.current!.prayer, 'asr');
   assert.equal(f.next!.prayer, 'maghrib');
   assert.equal(f.week.length, 7);
+  // Tomorrow's times come along for planning sahur: about a day after today's.
+  const ahead = Date.parse(f.tomorrow!.fajr) - Date.parse(f.today!.times.fajr);
+  assert.ok(Math.abs(ahead - 86_400_000) < 5 * 60_000, `tomorrow's Fajr is a day on (${ahead})`);
   assert.deepEqual(f.autoMissed, [], 'nothing before tracking began counts, and Asr is still in its time');
   assert.deepEqual(f.owed, { fajr: 2, dhuhr: 1, asr: 0, maghrib: 0, isha: 0 });
 

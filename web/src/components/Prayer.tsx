@@ -291,21 +291,31 @@ function QadaPanel({ owed }: { owed: FaithState['owed'] }) {
 // Singapore and Malaysian timetables. The fast itself begins at Subuh.
 const IMSAK_MS = 10 * 60_000;
 
-/** During Ramadan: today's fasting times, with the next one counting down. */
-function FastTimes({ times, now, tz }: { times: PrayerDay['times']; now: number; tz: string }) {
+/**
+ * During Ramadan: the fasting times that matter now. Until Maghrib that's today's fast;
+ * from Maghrib, when today's fast has ended, it's tomorrow's (for sahur) and tonight's Isyak.
+ */
+function FastTimes({ faith, ramadan, now }: { faith: FaithState; ramadan: NonNullable<FaithState['ramadan']>; now: number }) {
+  const today = faith.today!;
+  const tz = faith.settings.timezone;
+  const tomorrow = faith.tomorrow;
+  const evening = now >= Date.parse(today.times.maghrib) && !!tomorrow && today.date < ramadan.end;
+  const day = evening ? tomorrow : today.times;
+  const imsak = hhmm(new Date(Date.parse(day.fajr) - IMSAK_MS).toISOString(), tz);
   const rows = [
-    { label: 'Fast begins', at: times.fajr, sub: `Imsak ${hhmm(new Date(Date.parse(times.fajr) - IMSAK_MS).toISOString(), tz)}` },
-    { label: 'Fast ends', at: times.maghrib, sub: 'Maghrib · iftar' },
-    { label: 'Isyak', at: times.isha, sub: 'Then tarawih' },
+    { label: 'Fast begins', at: day.fajr, sub: evening ? `Tomorrow · Imsak ${imsak}` : `Imsak ${imsak}` },
+    { label: 'Fast ends', at: day.maghrib, sub: evening ? 'Tomorrow · iftar' : 'Maghrib · iftar' },
+    { label: 'Isyak', at: today.times.isha, sub: evening ? 'Tonight · tarawih' : 'Then tarawih' },
   ];
-  const next = rows.findIndex((r) => Date.parse(r.at) > now);
+  const upcoming = rows.filter((r) => Date.parse(r.at) > now);
+  const next = upcoming.length ? upcoming.reduce((a, r) => (Date.parse(r.at) < Date.parse(a.at) ? r : a)) : null;
   return (
     <dl className="ramadan-dates ramadan-times">
-      {rows.map((r, i) => (
-        <div key={r.label} className={cx(i === next && 'is-next', next !== -1 && i < next && 'is-past', next === -1 && 'is-past')}>
+      {rows.map((r) => (
+        <div key={r.label} className={cx(r === next && 'is-next', Date.parse(r.at) <= now && 'is-past')}>
           <dt>{r.label}</dt>
           <dd className="ramadan-time">{hhmm(r.at, tz)}</dd>
-          <dd className="ramadan-sub">{i === next ? `in ${untilLabel(r.at, now)}` : r.sub}</dd>
+          <dd className="ramadan-sub">{r === next ? `in ${untilLabel(r.at, now)}` : r.sub}</dd>
         </div>
       ))}
     </dl>
@@ -324,7 +334,7 @@ function RamadanCountdown({ ramadan, faith, now }: { ramadan: NonNullable<FaithS
           <b>Ramadan</b>
           <MoonStar size={22} className="ramadan-moon" />
         </div>
-        {faith.configured && faith.today && <FastTimes times={faith.today.times} now={now} tz={faith.settings.timezone} />}
+        {faith.configured && faith.today && <FastTimes faith={faith} ramadan={ramadan} now={now} />}
         <p className="ramadan-note">
           Ramadan Mubarak — began {long(ramadan.start)}.{faith.configured ? ` Times for ${faith.settings.label || faith.settings.timezone.replaceAll('_', ' ')}.` : ''}
         </p>
