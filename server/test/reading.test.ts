@@ -200,3 +200,41 @@ test('the reading list over HTTP', async () => {
   assert.equal((await call('DELETE', `/api/books/${id}`)).status, 200);
   assert.equal((await call('DELETE', `/api/books/${id}`)).status, 404);
 });
+
+test('finishing a book adds one to "Books finished", counting on from what you logged', async () => {
+  const store = fresh();
+  const learning = store.listSpheres().find((s) => s.key === 'learning')!.id;
+  const a = await addBook(store, { title: 'First' });
+  const b = await addBook(store, { title: 'Second' });
+  // With no such number, nothing is tracked and nothing breaks.
+  updateBook(store, a.id, { status: 'read' });
+  updateBook(store, a.id, { status: 'want' });
+
+  const metric = store.createMetric({ sphereId: learning, name: 'Books finished' });
+  store.addMetricEntry(metric.id, { value: 10, date: '2026-01-01' });
+  updateBook(store, a.id, { status: 'reading' });
+  assert.equal(store.getMetric(metric.id).latest, 10, 'starting a book is not finishing it');
+  updateBook(store, a.id, { status: 'read' });
+  updateBook(store, b.id, { status: 'read' });
+  assert.equal(store.getMetric(metric.id).latest, 12);
+  updateBook(store, b.id, { status: 'read' });
+  assert.equal(store.getMetric(metric.id).latest, 12, 'marking it read again counts nothing');
+  updateBook(store, b.id, { status: 'want' });
+  assert.equal(store.getMetric(metric.id).latest, 11, 'taken back off the Read shelf');
+  await addBook(store, { title: 'Third', status: 'read' });
+  assert.equal(store.getMetric(metric.id).latest, 12, 'added as already read');
+  assert.equal(store.listActivity({ limit: 1 })[0]!.summary, 'Logged Books finished: 12');
+});
+
+test('a title typed exactly comes first, even when a general search buries it', async () => {
+  handlers = [
+    (u) => (u.startsWith('https://openlibrary.org/search.json?q=') ? { docs: [{ key: '/works/OL1W', title: 'Of Mice and Men', author_name: ['John Steinbeck'] }] } : undefined),
+    (u) => (u.startsWith('https://openlibrary.org/search.json?title=') ? { docs: [{ key: '/works/OL2W', title: 'John of John', author_name: ['Douglas Stuart'], first_publish_year: 2026 }] } : undefined),
+  ];
+  const found = await searchBooks('john of john');
+  assert.deepEqual(found.map((f) => f.title), ['John of John', 'Of Mice and Men']);
+});
+
+test('Windows line breaks in a synopsis still make paragraphs', () => {
+  assert.equal(cleanSynopsis('Cyrus Shams is lost.\r\n\r\nEver since…'), 'Cyrus Shams is lost.\n\nEver since…');
+});

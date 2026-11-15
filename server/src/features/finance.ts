@@ -8,7 +8,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
 import { Invalid, localDate, newId, NotFound, nowIso, prettyDay, registerUndo, type Store } from '../store.ts';
-import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, PriceAlert, Quote, Recurring, Trade, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
+import type { Debt, DebtKind, FinanceState, Frequency, Holding, PlanBucket, PlanRules, SalaryPlan, HoldingKind, PriceAlert, Quote, Recurring, Trade, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { getIntegration, saveIntegration } from './integrations.ts';
 import { convert, getJson, marketFor, normSymbol, refreshFx, STABLE, storedFx, symbolOk, type FxRates } from './markets.ts';
 import { registerFeature } from './registry.ts';
@@ -31,7 +31,10 @@ interface FinanceSettings {
   currency: string;
   budgets: Record<string, number>;
   watchlist: string[];
+  plan?: Partial<PlanRules>;
 }
+
+export const PLAN_DEFAULTS: PlanRules = { emergencyMonths: 6, cryptoCapPct: 10, funPct: 5 };
 
 const ZONE_CURRENCY: [RegExp, string][] = [
   [/^Asia\/Singapore$/, 'SGD'],
@@ -51,16 +54,17 @@ function getSettings(store: Store): FinanceSettings {
   const saved = r ? (JSON.parse(r.value) as Partial<FinanceSettings>) : {};
   const zone = store.zone() ?? '';
   const guess = ZONE_CURRENCY.find(([re]) => re.test(zone))?.[1] ?? 'USD';
-  return { currency: saved.currency ?? guess, budgets: saved.budgets ?? {}, watchlist: saved.watchlist ?? ['BTC', 'ETH', 'SOL'] };
+  return { currency: saved.currency ?? guess, budgets: saved.budgets ?? {}, watchlist: saved.watchlist ?? ['BTC', 'ETH', 'SOL'], plan: saved.plan };
 }
 
 function saveSettings(store: Store, next: FinanceSettings): void {
   store.db.prepare("INSERT INTO settings (key, value) VALUES ('finance', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
 }
 
-function updateSettings(store: Store, patch: { currency?: string; budgets?: Record<string, number | null> }): void {
+function updateSettings(store: Store, patch: { currency?: string; budgets?: Record<string, number | null>; plan?: Partial<PlanRules> }): void {
   const s = getSettings(store);
   if (patch.currency) s.currency = patch.currency.toUpperCase();
+  if (patch.plan) s.plan = { ...s.plan, ...Object.fromEntries(Object.entries(patch.plan).filter(([, v]) => v !== undefined)) };
   for (const [cat, amt] of Object.entries(patch.budgets ?? {})) {
     const name = cleanCategory(cat);
     if (amt === null || amt <= 0) delete s.budgets[name];
@@ -904,6 +908,206 @@ function zoneToday(store: Store): string {
   return localDate();
 }
 
+// ── Salary plan ─────────────────────────────────────────────────────────────
+// Where a month's pay should go, as a waterfall: what has to be paid, then a cushion, then the
+// costliest debt, then the emergency fund, then investing. Every number says why.
+
+/**
+ * A weekly-to-monthly item whose first occurrence is more than five weeks off hasn't started yet
+ * (CPF at a new age band, a raise from next year). It doesn't count towards a typical month.
+ */
+export function notStarted(r: Recurring, today: string): boolean {
+  return r.active && ['weekly', 'biweekly', 'monthly'].includes(r.cadence) && r.anchor > plusDays(today, 35);
+}
+
+/** Debt at or above this rate is cleared before investing: few investments reliably earn more. */
+const HIGH_APR = 8;
+const BILL_CADENCES = new Set(['weekly', 'biweekly', 'monthly']);
+
+const whole = (n: number) => Math.round(n);
+/** Plan amounts are rounded to whole units, and read that way. */
+const m0 = (n: number, currency: string) => money(Math.round(n), currency).replace(/\.00$/, '');
+
+/** "Rent, Phone plan and 3 more". */
+function listOf(names: string[]): string {
+  if (names.length <= 2) return names.join(' and ');
+  return `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+}
+
+interface PlanInput {
+  today: string;
+  currency: string;
+  recurring: Recurring[];
+  holdings: Holding[];
+  debts: Debt[];
+  toBase: (amount: number, currency: string) => number | null;
+}
+
+/** The last n complete months before today's, as YYYY-MM. */
+const completeMonths = (today: string, n: number) => lastMonths(today, n + 1).slice(0, n);
+
+export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
+  const rules: PlanRules = { ...PLAN_DEFAULTS, ...getSettings(store).plan };
+  const c = p.currency;
+  const base = (amount: number, currency: string) => p.toBase(amount, currency) ?? 0;
+  const active = p.recurring.filter((r) => r.active && !notStarted(r, p.today));
+  const notes: string[] = [];
+  const months = completeMonths(p.today, 3);
+  const since = `${months[0]}-01`;
+  const until = `${months.at(-1)}-31`;
+
+  // What comes in: recurring pay, else what came in on average lately.
+  // Money paid straight into a holding (CPF contributions, interest) never reaches the bank, so it isn't pay to split.
+  let pay = active.filter((r) => r.kind === 'income' && !r.debtId && !r.holdingId).reduce((n, r) => n + base(r.monthly, r.currency), 0);
+  let payFrom: SalaryPlan['payFrom'] = 'recurring';
+  if (pay <= 0) {
+    const rows = store.db.prepare("SELECT substr(date, 1, 7) AS m, amount, currency FROM fin_transactions WHERE kind = 'income' AND date >= ? AND date <= ?").all(since, until) as Row[];
+    const byMonth = new Map<string, number>();
+    for (const r of rows) byMonth.set(r.m, (byMonth.get(r.m) ?? 0) + base(r.amount, r.currency));
+    if (byMonth.size) pay = [...byMonth.values()].reduce((a, b) => a + b, 0) / byMonth.size;
+    payFrom = 'history';
+    if (pay > 0) notes.push(`Pay is the average of the last ${byMonth.size === 1 ? 'month' : `${byMonth.size} months`}. Add your salary under Bills & pay for an exact plan.`);
+  }
+  if (pay <= 0) return null;
+
+  // What has to go out: bills, minimums on debts no recurring item pays, yearly bills spread out.
+  const bills = active.filter((r) => r.kind === 'expense' && BILL_CADENCES.has(r.cadence));
+  const yearly = active.filter((r) => r.kind === 'expense' && !BILL_CADENCES.has(r.cadence));
+  const paidByRecurring = new Set(active.map((r) => r.debtId).filter(Boolean));
+  const open = p.debts.filter((d) => !d.closedAt && d.balance > 0);
+  const minimums = open.filter((d) => d.minPayment && !paidByRecurring.has(d.id));
+  const billsAmount = bills.reduce((n, r) => n + base(r.monthly, r.currency), 0) + minimums.reduce((n, d) => n + base(Math.min(d.minPayment!, d.balance), d.currency), 0);
+  const yearlyAmount = yearly.reduce((n, r) => n + base(r.monthly, r.currency), 0);
+
+  // Everyday spending: recent months' spending that no recurring item accounts for.
+  const recurringNames = new Set(active.map((r) => r.name.toLowerCase()));
+  const spent = store.db.prepare("SELECT substr(date, 1, 7) AS m, amount, currency, description FROM fin_transactions WHERE kind = 'expense' AND recurring_id IS NULL AND date >= ? AND date <= ?").all(since, until) as Row[];
+  const everydayByMonth = new Map<string, number>();
+  for (const r of spent) {
+    if (recurringNames.has(String(r.description).toLowerCase())) continue;
+    everydayByMonth.set(r.m, (everydayByMonth.get(r.m) ?? 0) + base(r.amount, r.currency));
+  }
+  let everyday = 0;
+  let everydayWhy = '';
+  if (everydayByMonth.size) {
+    everyday = [...everydayByMonth.values()].reduce((a, b) => a + b, 0) / everydayByMonth.size;
+    everydayWhy = `What everything else came to, on average, over the last ${everydayByMonth.size === 1 ? 'month' : `${everydayByMonth.size} months`}`;
+  } else {
+    const budgets = getSettings(store).budgets;
+    everyday = Object.values(budgets).reduce((a, b) => a + b, 0);
+    everydayWhy = everyday > 0 ? 'Your monthly budgets added up' : '';
+    if (!everyday) notes.push("There's no spending history or budget yet, so everyday spending is left out: the split assumes bills are all you spend. Log a month of spending, or set budgets, for a truer plan.");
+  }
+
+  const essentials = billsAmount + yearlyAmount + everyday;
+  // With nothing known about spending, every split would be wrong in the same direction: an
+  // emergency fund of zero and nearly all pay to invest. Say what's missing instead.
+  if (essentials <= 0) {
+    return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: 0, emergency: { target: 0, have: 0 }, buckets: [], shortfall: null, rules, notes: [...notes.filter((n) => !n.startsWith("There's no spending history")), "There's nothing on file about what you spend yet, so there's no split to suggest. Add your bills under Bills & pay, set monthly budgets, or log a month of spending, and the plan fills in."] };
+  }
+  const cash = p.holdings.filter((h) => h.kind === 'cash').reduce((n, h) => n + (h.valueBase ?? 0), 0);
+  const investments = p.holdings.filter((h) => h.kind === 'stock' || h.kind === 'fund' || h.kind === 'crypto').reduce((n, h) => n + (h.valueBase ?? 0), 0);
+  const cryptoValue = p.holdings.filter((h) => h.kind === 'crypto').reduce((n, h) => n + (h.valueBase ?? 0), 0);
+  const target = whole(rules.emergencyMonths * essentials);
+
+  const buckets: PlanBucket[] = [];
+  const add = (b: PlanBucket) => {
+    if (b.amount >= 1) buckets.push({ ...b, amount: whole(b.amount) });
+  };
+
+  add({ key: 'bills', label: 'Bills and minimums', amount: billsAmount, reason: listOf([...bills.map((r) => r.name), ...minimums.map((d) => `the minimum on ${d.name}`)]) || 'Nothing recurring yet', action: null });
+  add({ key: 'yearly', label: 'Set aside for yearly bills', amount: yearlyAmount, reason: `${listOf(yearly.map((r) => r.name))} ${yearly.length === 1 ? 'comes' : 'come'} round less than monthly; this much a month has ${yearly.length === 1 ? 'it' : 'them'} ready`, action: yearlyAmount >= 1 ? `Move ${m0((yearlyAmount), c)} to savings for yearly bills` : null });
+  add({ key: 'everyday', label: 'Everyday spending', amount: everyday, reason: everydayWhy, action: null });
+
+  const surplus = pay - essentials;
+  let shortfall: number | null = null;
+  if (surplus <= 0) {
+    shortfall = whole(-surplus);
+    notes.push(`Your pay falls ${m0(shortfall, c)} short of bills and everyday spending. Trim the everyday, or look at the biggest bills, before anything else.`);
+    return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: whole(essentials), emergency: { target, have: whole(cash) }, buckets, shortfall, rules, notes };
+  }
+
+  let left = surplus;
+  // A little guilt-free money keeps a plan livable, but never more than a quarter of what's spare.
+  const fun = Math.min((rules.funPct / 100) * pay, surplus * 0.25);
+  left -= fun;
+
+  // A first month of essentials in cash comes before anything else.
+  const buffer = Math.min(Math.max(0, essentials - cash), left);
+  left -= buffer;
+
+  // Then the costliest debt, highest rate first: paying 26% off is a 26% return, guaranteed.
+  const high = open.filter((d) => (d.apr ?? 0) >= HIGH_APR).sort((a, b) => (b.apr ?? 0) - (a.apr ?? 0));
+  let debt = 0;
+  const debtParts: string[] = [];
+  for (const d of high) {
+    if (left < 1) break;
+    // This month's scheduled payment is already in bills; the extra is on top of it.
+    const instalment = active.filter((r) => r.debtId === d.id).reduce((n, r) => n + base(r.monthly, r.currency), 0);
+    const scheduled = instalment || base(Math.min(d.minPayment ?? 0, d.balance), d.currency);
+    const put = Math.min(Math.max(0, base(d.balance, d.currency) - scheduled), left);
+    if (put < 1) continue;
+    debt += put;
+    left -= put;
+    debtParts.push(`${m0((put), c)} on ${d.name} (${d.apr}%)`);
+  }
+
+  // The rest of the emergency fund, half of what's left at a time, so investing isn't put off for years.
+  const gap = Math.max(0, target - cash - buffer);
+  const emergency = Math.min(gap, left * 0.5);
+  left -= emergency;
+
+  // What's left is invested. Crypto gets at most its cap's share of this month's money, and none once
+  // it already makes up more than the cap of everything invested.
+  const capRoom = Math.max(0, (rules.cryptoCapPct / 100) * (investments + left) - cryptoValue);
+  const crypto = Math.min(left * (rules.cryptoCapPct / 100), capRoom);
+  const invest = left - crypto;
+
+  const biggestCash = p.holdings.filter((h) => h.kind === 'cash').sort((a, b) => (b.valueBase ?? 0) - (a.valueBase ?? 0))[0];
+  const biggestFund = p.holdings.filter((h) => h.kind === 'fund' || h.kind === 'stock').sort((a, b) => (b.valueBase ?? 0) - (a.valueBase ?? 0))[0];
+  const savingsWhere = biggestCash ? ` (${biggestCash.name})` : '';
+
+  add({ key: 'fun', label: 'Yours to spend', amount: fun, reason: `${rules.funPct}% of pay, no questions asked`, action: null });
+  add({ key: 'buffer', label: 'First month of cash', amount: buffer, reason: `You have ${m0((cash), c)} in cash, less than a month of essentials (${m0((essentials), c)}). That cushion comes first.`, action: `Move ${m0((buffer), c)} into savings${savingsWhere}` });
+  add({ key: 'debt', label: 'Pay down costly debt', amount: debt, reason: `${high.map((d) => `${d.name} charges ${d.apr}%`).join('; ')}. No investment reliably earns that, so it goes first.`, action: `Pay ${debtParts.join(', then ')} on top of the minimum` });
+  const monthsToFull = emergency > 0 ? Math.ceil((gap - emergency) / emergency) + 1 : null;
+  add({ key: 'emergency', label: 'Emergency fund', amount: emergency, reason: `${rules.emergencyMonths} months of essentials is ${m0(target, c)}; you have ${m0((cash), c)}. Half of what's spare goes here until it's full${monthsToFull ? `, about ${monthsToFull} month${monthsToFull === 1 ? '' : 's'} at this rate` : ''}.`, action: `Move ${m0((emergency), c)} into savings${savingsWhere}` });
+  add({ key: 'crypto', label: 'Crypto', amount: crypto, reason: `At most ${rules.cryptoCapPct}% of what you invest, so crypto stays a small part of the whole`, action: `Up to ${m0((crypto), c)} for crypto this month` });
+  add({ key: 'invest', label: 'Invest for the long run', amount: invest, reason: gap > emergency ? 'The other half of what’s spare: long-term money grows while the safety net fills' : 'Your safety net is in place, so what’s spare can work for you', action: `Invest ${m0((invest), c)}${biggestFund ? ` (into ${biggestFund.name}, say)` : ''}` });
+
+  // Only worth saying when there's money to invest this month.
+  if (left >= 1 && investments > 0 && cryptoValue / investments > rules.cryptoCapPct / 100 && crypto < 1) {
+    notes.push(`Crypto is ${Math.round((cryptoValue / investments) * 100)}% of your investments, above your ${rules.cryptoCapPct}% cap, so no new money goes to it this month.`);
+  }
+  if (high.length && left < 1 && debt > 0) notes.push('Everything spare goes to costly debt this month; investing and the rest of the emergency fund pick up once it’s cleared.');
+
+  return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: whole(essentials), emergency: { target, have: whole(cash) }, buckets, shortfall, rules, notes };
+}
+
+/** Once a month, when pay has come in, the plan arrives under Needs you with the moves to make. */
+export function planSignal(store: Store, today: string): boolean {
+  const month = today.slice(0, 7);
+  const paid = store.db.prepare("SELECT 1 AS x FROM fin_transactions WHERE kind = 'income' AND category = 'Salary' AND substr(date, 1, 7) = ? AND date <= ?").get(month, today);
+  if (!paid) return false;
+  const plan = financeState(store, today).plan;
+  if (!plan || plan.shortfall !== null || plan.buckets.length === 0) return false;
+  const c = getSettings(store).currency;
+  const sphereId = financeSphere(store)?.id ?? null;
+  const moves = plan.buckets.filter((b) => b.action && b.key !== 'yearly');
+  const sig = addSignal(store, {
+    source: 'finance',
+    kind: 'plan',
+    externalId: `plan:${month}`,
+    title: `Your pay is in — where ${m0(plan.pay, c)} goes this month`,
+    body: plan.buckets.map((b) => `${b.label}: ${m0(b.amount, c)}`).join('\n') + (plan.notes.length ? `\n\n${plan.notes.join(' ')}` : ''),
+    sphereId,
+    priority: 2,
+    actions: moves.slice(0, 3).map((b) => ({ type: 'task' as const, label: 'Add as a task', title: b.action!, dueDate: plusDays(today, 2), sphereId })),
+    data: { month },
+  });
+  return !!sig;
+}
+
 // ── The whole picture ───────────────────────────────────────────────────────
 
 const monthKey = (date: string) => date.slice(0, 7);
@@ -959,7 +1163,7 @@ export function financeState(store: Store, today: string): FinanceState {
   const hol = holidays(store);
   const recurring = (store.db.prepare('SELECT * FROM fin_recurring ORDER BY active DESC, kind DESC, amount DESC').all() as Row[]).map((r) => recurringFromRow(r, hol));
   const recurringMonthly = { income: 0, expense: 0 };
-  for (const r of recurring) if (r.active && !r.debtId && !r.holdingId) recurringMonthly[r.kind] += toBase(r.monthly, r.currency) ?? 0;
+  for (const r of recurring) if (r.active && !notStarted(r, today) && !r.debtId && !r.holdingId) recurringMonthly[r.kind] += toBase(r.monthly, r.currency) ?? 0;
 
   // Portfolio.
   const holdings = (store.db.prepare('SELECT * FROM fin_holdings ORDER BY kind, name').all() as Row[]).map((r) => valueHolding(r, isLive(r.kind, r.symbol, r.price) ? feed.quote(r.symbol) : null, fx, base));
@@ -1017,6 +1221,7 @@ export function financeState(store: Store, today: string): FinanceState {
     watchlist: settings.watchlist,
     netWorth: { assets: r2(assets), debts: r2(owed), net: r2(assets - owed), unpriced: holdings.filter((h) => h.valueBase === null && h.quantity > EPS).map((h) => h.name) },
     market: feed.state(),
+    plan: salaryPlan(store, { today, currency: base, recurring, holdings, debts, toBase }),
   };
 }
 
@@ -1050,6 +1255,7 @@ registerSnapshotSection<Store>('Money', (store, today) => {
     const soon = f.upcoming.filter((u) => u.date <= plusDays(today, 7));
     if (soon.length) lines.push(`Next 7 days: ${soon.map((u) => `${u.name} ${money(u.amount, u.currency)} on ${u.date}${u.auto ? '' : u.overdue ? ' (overdue, not marked paid)' : ' (to mark paid)'}`).join('; ')}.`);
   }
+  if (f.plan) lines.push(`Suggested split of ${money(f.plan.pay, c)} pay this month: ${f.plan.buckets.map((b) => `${b.label.toLowerCase()} ${money(b.amount, c)}`).join(', ')}${f.plan.shortfall !== null ? ` — ${money(f.plan.shortfall, c)} short of essentials` : ''}. Emergency fund ${money(f.plan.emergency.have, c)} of ${money(f.plan.emergency.target, c)}.`);
   const open = f.debts.filter((d) => !d.closedAt);
   if (open.length) lines.push(`Debts: ${open.map((d) => `${d.name} ${money(d.balance, d.currency)}${d.apr ? ` at ${d.apr}%` : ''}`).join('; ')}.`);
   return lines.join('\n');
@@ -1102,6 +1308,12 @@ const debtInput = z.object({
   notes: z.string().max(500).optional(),
 });
 const debtPatch = debtInput.partial().omit({ currency: true });
+const planRules = z.object({
+  emergencyMonths: z.number().int().min(1).max(24).optional(),
+  cryptoCapPct: z.number().min(0).max(100).optional(),
+  funPct: z.number().min(0).max(30).optional(),
+});
+
 const frequency = z.enum(['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']);
 const weekend = z.enum(['none', 'before', 'after']);
 const recurringInput = z.object({
@@ -1188,6 +1400,7 @@ registerFeature({
         await refreshHolidays(store, today);
         postDue(store, today);
         remindBills(store, today);
+        planSignal(store, today);
       },
     },
   ],
@@ -1329,6 +1542,24 @@ registerFeature({
         return { data: { ok: true, next: saved.next }, summary: `Marked ${saved.name} paid${amount ? ` — ${money(amount, saved.currency)}` : ''}` };
       },
     ),
+    tool(
+      'get_salary_plan',
+      "This month's recommended split of the user's pay, worked out from their recurring pay and bills, recent spending, cash, debts and investments: bills and minimums, yearly set-asides, everyday spending, guilt-free money, a first month of cash, extra on high-interest debt (8% APR and up, highest rate first), half of what's spare to the emergency fund until it holds the set number of months, and the rest invested with crypto kept under its cap. Each bucket says why. Use it when they ask where their money should go; explain it in your own words and adjust for anything you know that it doesn't (a big purchase coming, a bonus). It's a rule of thumb, not regulated financial advice.",
+      z.object({}),
+      async (_input, { store, today }) => {
+        const plan = financeState(store, today).plan;
+        return { data: plan ?? { none: 'No income to plan yet: add their salary as recurring income, or log a month of income.' }, summary: plan ? `Read this month's plan for ${money(plan.pay, getSettings(store).currency)}` : 'No salary plan yet' };
+      },
+    ),
+    tool(
+      'set_salary_plan_rules',
+      "Change the rules the salary plan follows: months of essentials to keep as an emergency fund (default 6), the most crypto may make up of their investments in percent (default 10), and the percent of pay kept as guilt-free spending (default 5). Only when the user agrees.",
+      planRules,
+      (rules, { store, today }) => {
+        updateSettings(store, { plan: rules });
+        return { data: financeState(store, today).plan, summary: 'Updated the salary plan rules' };
+      },
+    ),
   ],
   routes: (app, { store }) => {
     // The price job only runs while its integration is on; it is on from the start.
@@ -1350,7 +1581,7 @@ registerFeature({
 
     app.get('/api/finance', (c) => {
       // Pay and bills that came due since the job last ran are logged before the page sees them.
-      postDue(store, todayOf(c));
+      if (postDue(store, todayOf(c))) planSignal(store, todayOf(c));
       // Stale prices refresh in the background; the stream brings them in.
       if (feed.ageMs() > 60_000) void feed.refresh().catch(() => undefined);
       return c.json(state(c));
@@ -1361,7 +1592,7 @@ registerFeature({
       return c.json(state(c));
     });
     app.put('/api/finance/settings', async (c) => {
-      const s = await read(c, z.object({ currency: currency.optional(), budgets: z.record(z.string().min(1).max(40), z.number().min(0).max(1e9).nullable()).optional() }));
+      const s = await read(c, z.object({ currency: currency.optional(), budgets: z.record(z.string().min(1).max(40), z.number().min(0).max(1e9).nullable()).optional(), plan: planRules.optional() }));
       updateSettings(store, s);
       if (s.currency) await refreshFx(store).catch(() => undefined);
       return c.json(state(c));

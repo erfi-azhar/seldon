@@ -378,7 +378,7 @@ const TOOLS: ToolDef[] = [
 
   tool(
     'create_note',
-    'Save something to the library: an idea, a reference, a link worth keeping. Attach a sphere when it clearly belongs to one.',
+    'Save something to the library: an idea, a reference, a link worth keeping, or the answer to a question the user will want again. Attach the sphere it belongs to, so it shows as a card on that sphere\'s page.',
     z.object({
       title: z.string().max(200).optional(),
       body: z.string().max(8000).optional(),

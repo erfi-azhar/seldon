@@ -782,6 +782,43 @@ export interface MarketState {
   unknown: string[];
 }
 
+export interface PlanRules {
+  /** Months of essential spending to keep as an emergency fund. */
+  emergencyMonths: number;
+  /** The most of your investments crypto may make up, in percent. */
+  cryptoCapPct: number;
+  /** Pay kept as guilt-free spending each month, in percent. */
+  funPct: number;
+}
+
+export type PlanBucketKey = 'bills' | 'yearly' | 'everyday' | 'fun' | 'buffer' | 'debt' | 'emergency' | 'crypto' | 'invest';
+
+export interface PlanBucket {
+  key: PlanBucketKey;
+  label: string;
+  amount: number;
+  /** Why this much, in a sentence. */
+  reason: string;
+  /** The move to make this month, when there is one (a transfer, an extra payment). */
+  action: string | null;
+}
+
+/** Where this month's pay should go, worked out from what's on file. A rule of thumb, not advice. */
+export interface SalaryPlan {
+  month: string;
+  pay: number;
+  /** Where the pay figure came from: recurring income, or the average of recent months. */
+  payFrom: 'recurring' | 'history';
+  /** Bills, yearly set-asides and everyday spending, in a month. */
+  essentials: number;
+  emergency: { target: number; have: number };
+  buckets: PlanBucket[];
+  /** How far pay falls short of essentials; null when it covers them. */
+  shortfall: number | null;
+  rules: PlanRules;
+  notes: string[];
+}
+
 export interface FinanceState {
   date: string;
   currency: string;
@@ -815,6 +852,8 @@ export interface FinanceState {
   watchlist: string[];
   netWorth: { assets: number; debts: number; net: number; unpriced: string[] };
   market: MarketState;
+  /** This month's recommended split of pay; null until there's income to plan. */
+  plan: SalaryPlan | null;
 }
 
 // ── MCP connections ─────────────────────────────────────────────────────────
