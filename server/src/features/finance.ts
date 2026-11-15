@@ -996,10 +996,15 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
     const budgets = getSettings(store).budgets;
     everyday = Object.values(budgets).reduce((a, b) => a + b, 0);
     everydayWhy = everyday > 0 ? 'Your monthly budgets added up' : '';
-    if (!everyday) notes.push("There's no spending history or budget yet, so everyday spending is left out. Log a month of spending, or set budgets, and the plan fills in.");
+    if (!everyday) notes.push("There's no spending history or budget yet, so everyday spending is left out: the split assumes bills are all you spend. Log a month of spending, or set budgets, for a truer plan.");
   }
 
   const essentials = billsAmount + yearlyAmount + everyday;
+  // With nothing known about spending, every split would be wrong in the same direction: an
+  // emergency fund of zero and nearly all pay to invest. Say what's missing instead.
+  if (essentials <= 0) {
+    return { month: p.today.slice(0, 7), pay: whole(pay), payFrom, essentials: 0, emergency: { target: 0, have: 0 }, buckets: [], shortfall: null, rules, notes: [...notes.filter((n) => !n.startsWith("There's no spending history")), "There's nothing on file about what you spend yet, so there's no split to suggest. Add your bills under Bills & pay, set monthly budgets, or log a month of spending, and the plan fills in."] };
+  }
   const cash = p.holdings.filter((h) => h.kind === 'cash').reduce((n, h) => n + (h.valueBase ?? 0), 0);
   const investments = p.holdings.filter((h) => h.kind === 'stock' || h.kind === 'fund' || h.kind === 'crypto').reduce((n, h) => n + (h.valueBase ?? 0), 0);
   const cryptoValue = p.holdings.filter((h) => h.kind === 'crypto').reduce((n, h) => n + (h.valueBase ?? 0), 0);
@@ -1085,7 +1090,7 @@ export function planSignal(store: Store, today: string): boolean {
   const paid = store.db.prepare("SELECT 1 AS x FROM fin_transactions WHERE kind = 'income' AND category = 'Salary' AND substr(date, 1, 7) = ? AND date <= ?").get(month, today);
   if (!paid) return false;
   const plan = financeState(store, today).plan;
-  if (!plan || plan.shortfall !== null) return false;
+  if (!plan || plan.shortfall !== null || plan.buckets.length === 0) return false;
   const c = getSettings(store).currency;
   const sphereId = financeSphere(store)?.id ?? null;
   const moves = plan.buckets.filter((b) => b.action && b.key !== 'yearly');

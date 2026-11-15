@@ -467,11 +467,13 @@ export function PlanCard() {
               {monthName}'s pay{p.payFrom === 'history' ? ', from recent months' : ''}
             </span>
           </div>
+          {p.buckets.length > 0 && (
           <div className="fin-plan-bar" aria-hidden>
             {p.buckets.map((b) => (
               <i key={b.key} style={{ flexGrow: b.amount, background: planColor(b.key) }} title={`${b.label}: ${whole(b.amount, c)}`} />
             ))}
           </div>
+          )}
           {p.shortfall !== null && <p className="fin-tip is-bad">{whole(p.shortfall, c)} short of bills and everyday spending this month.</p>}
           <ol className="fin-plan-list">
             {p.buckets.map((b) => (

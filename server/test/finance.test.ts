@@ -605,3 +605,14 @@ test("items that haven't started yet stay out of a typical month and the plan", 
   assert.equal(f.recurringMonthly.income, 6000);
   assert.equal(f.plan!.pay, 6000);
 });
+
+test('with nothing known about spending, the plan says what it needs rather than splitting pay', () => {
+  const store = fresh();
+  addRecurring(store, { kind: 'income', name: 'Salary', amount: 10_940, category: 'Salary', cadence: 'monthly', next: '2026-11-30', day: 31, weekend: 'before' }, PLAN_DAY);
+  const p = planOf(store);
+  assert.equal(p.pay, 10_940);
+  assert.deepEqual(p.buckets, []);
+  assert.ok(p.notes.some((n) => /nothing on file about what you spend/.test(n)));
+  postDue(store, '2026-11-30');
+  assert.equal(planSignal(store, '2026-11-30'), false, 'no plan to send');
+});
