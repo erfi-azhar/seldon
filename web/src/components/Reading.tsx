@@ -3,7 +3,7 @@
 // in your hand, tilting as you move, with its synopsis, ratings and where to buy it.
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bookmark, ExternalLink, Plus, RefreshCw, Search, ShoppingBag, Trash2, X } from 'lucide-react';
+import { ExternalLink, Plus, RefreshCw, Search, ShoppingBag, Trash2, X } from 'lucide-react';
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book, BookCandidate, BookStatus } from '../../../shared/types.ts';
 import { booksWrite, useBooks, useWrite } from '../api.ts';
@@ -379,6 +379,9 @@ function useArmed(): [boolean, () => void, () => void] {
   return [armed, () => setArmed(true), () => setArmed(false)];
 }
 
+/** Synopses can carry Markdown emphasis and Windows line breaks; show them as plain prose. */
+const plainText = (s: string) => s.replace(/\r\n?/g, '\n').replace(/(\*\*|__)(.+?)\1/g, '$2').replace(/(^|\s)[*_](\S[^*_]*?)[*_](?=\s|[.,;:!?]|$)/g, '$1$2');
+
 function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const colour = useBinding(book);
@@ -406,9 +409,13 @@ function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
     };
   }, [onClose]);
 
-  const long = book.synopsis.length > 640;
-  const source = book.synopsisSource === 'you' ? 'Written by you' : book.synopsisSource ? `From ${book.synopsisSource}` : '';
-  const facts = [book.year, book.pages ? `${book.pages} pages` : null].filter(Boolean).join(' · ');
+  const sourceName = book.infoUrl.includes('openlibrary') ? 'Open Library' : 'Google Books';
+  const paragraphs = plainText(book.synopsis).split(/\n\s*\n/);
+  const long = book.synopsis.length > 420;
+  const source = book.synopsisSource === 'you' ? 'Written by you' : book.synopsisSource === agentName ? `Written by ${agentName}` : book.synopsisSource ? `From ${book.synopsisSource}` : '';
+  const ratingTitle = book.rating !== null ? `${book.rating.toFixed(1)} out of 5${book.ratingsCount ? ` from ${book.ratingsCount.toLocaleString()} ${book.ratingsCount === 1 ? 'rating' : 'ratings'}` : ''}${book.ratingSource ? ` on ${book.ratingSource}` : ''}` : '';
+  const since =
+    book.status === 'read' && book.finishedAt ? `Finished ${shortDay(todayStr(new Date(book.finishedAt)))}` : book.status === 'reading' && book.startedAt ? `Since ${shortDay(todayStr(new Date(book.startedAt)))}` : '';
 
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -424,64 +431,68 @@ function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
           </p>
         </div>
 
-        <div className="book-modal-info">
-          <div className="book-status-line">
-            <Seg label="Where you are with it" value={book.status} onChange={(status) => patch.mutate({ status })} options={(['want', 'reading', 'read'] as const).map((v) => ({ value: v, label: STATUS_LABEL[v] }))} />
-          </div>
-          <h2 className="book-title">{book.title}</h2>
-          {book.author && <p className="book-author">{book.author}</p>}
-          {facts && <p className="book-facts">{facts}</p>}
+        <div className="book-modal-side">
+          <div className="book-modal-info">
+            <header className="book-head">
+              <h2 className="book-title">{book.title}</h2>
+              {book.author && <p className="book-author">{book.author}</p>}
+              {(book.rating !== null || book.year || book.pages) && (
+                <p className="book-meta">
+                  {book.rating !== null && (
+                    <span className="book-meta-rating" title={ratingTitle}>
+                      <Stars value={book.rating} />
+                      <b>{book.rating.toFixed(1)}</b>
+                      {book.ratingsCount ? <span className="faint">({book.ratingsCount.toLocaleString()})</span> : null}
+                    </span>
+                  )}
+                  {book.year && <span>{book.year}</span>}
+                  {book.pages && <span>{book.pages} pages</span>}
+                </p>
+              )}
+            </header>
 
-          <div className="book-rating">
-            {book.rating !== null ? (
-              <>
-                <Stars value={book.rating} />
-                <b>{book.rating.toFixed(1)}</b>
-                <span className="muted">
-                  {book.ratingsCount ? `${book.ratingsCount.toLocaleString()} ${book.ratingsCount === 1 ? 'rating' : 'ratings'}` : ''}
-                  {book.ratingSource ? ` on ${book.ratingSource}` : ''}
-                </span>
-              </>
-            ) : (
-              <span className="muted">No ratings found yet.</span>
-            )}
-          </div>
+            <div className="book-status">
+              <Seg label="Where you are with it" value={book.status} onChange={(status) => patch.mutate({ status })} options={(['want', 'reading', 'read'] as const).map((v) => ({ value: v, label: STATUS_LABEL[v] }))} />
+              {since && <span className="hint">{since}</span>}
+            </div>
 
-          <div className="book-synopsis">
-            <h3>Synopsis</h3>
-            {book.synopsis ? (
-              <>
-                <div className={cx('book-synopsis-text', long && !more && 'is-clamped')}>
-                  {book.synopsis.split(/\r?\n\s*\r?\n/).map((p, i) => (
-                    <p key={i}>{p}</p>
-                  ))}
-                </div>
-                <div className="book-synopsis-foot">
+            <section className="book-section">
+              <div className="book-section-head">
+                <h3>Synopsis</h3>
+                {book.synopsis && source && <span className="faint">{source}</span>}
+              </div>
+              {book.synopsis ? (
+                <>
+                  <div className={cx('book-synopsis-text', long && !more && 'is-clamped')}>
+                    {paragraphs.map((p, i) => (
+                      <p key={i}>{p}</p>
+                    ))}
+                  </div>
                   {long && (
                     <button type="button" className="link-btn" onClick={() => setMore((v) => !v)}>
-                      {more ? 'Less' : 'Read more'}
+                      {more ? 'Show less' : 'Read more'}
                     </button>
                   )}
-                  {source && <span className="faint">{source === `From ${agentName}` ? `Written by ${agentName}` : source}</span>}
-                </div>
-              </>
-            ) : (
-              <InlineEdit label="Synopsis" multiline value="" placeholder="No synopsis was found. Write one, or try Refresh." onSave={(synopsis) => patch.mutate({ synopsis })} />
-            )}
+                </>
+              ) : (
+                <InlineEdit label="Synopsis" multiline value="" placeholder="No synopsis was found. Write one, or look it up again." onSave={(synopsis) => patch.mutate({ synopsis })} />
+              )}
+            </section>
+
+            <section className="book-note">
+              <h3>Why it's on the list</h3>
+              <InlineEdit label="Why it's on the list" multiline value={book.note} placeholder="Who recommended it, what you hope to get from it…" onSave={(note) => patch.mutate({ note })} />
+            </section>
+            {(patch.error || refresh.error || remove.error) && <p className="error-text">{(patch.error ?? refresh.error ?? remove.error)!.message}</p>}
           </div>
 
-          <div className="book-note">
-            <h3>Why it's on the list</h3>
-            <InlineEdit label="Why it's on the list" multiline value={book.note} placeholder="Who recommended it, what you hope to get from it…" onSave={(note) => patch.mutate({ note })} />
-          </div>
-
-          <div className="book-actions">
+          <footer className="book-foot">
             <a className="btn btn-primary" href={book.buyUrl} target="_blank" rel="noreferrer noopener">
               <ShoppingBag size={15} /> Buy on {shopName(book.buyUrl)}
             </a>
             {book.infoUrl && (
-              <a className="btn btn-ghost btn-sm" href={book.infoUrl} target="_blank" rel="noreferrer noopener">
-                {book.infoUrl.includes('openlibrary') ? 'Open Library' : 'Google Books'} <ExternalLink size={12} />
+              <a className="btn btn-ghost btn-sm" href={book.infoUrl} target="_blank" rel="noreferrer noopener" title={`See it on ${sourceName}`} aria-label={`See it on ${sourceName}`}>
+                <span className="book-foot-label">{sourceName}</span> <ExternalLink size={12} />
               </a>
             )}
             <span className="grow" />
@@ -497,14 +508,7 @@ function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
                 <Trash2 size={15} />
               </button>
             )}
-          </div>
-          {book.status === 'read' && book.finishedAt && <p className="hint">Finished {shortDay(todayStr(new Date(book.finishedAt)))}.</p>}
-          {book.status === 'reading' && book.startedAt && (
-            <p className="hint">
-              <Bookmark size={12} /> Started {shortDay(todayStr(new Date(book.startedAt)))}.
-            </p>
-          )}
-          {(patch.error || refresh.error || remove.error) && <p className="error-text">{(patch.error ?? refresh.error ?? remove.error)!.message}</p>}
+          </footer>
         </div>
       </div>
     </div>

@@ -69,6 +69,7 @@ export function cleanSynopsis(raw: string): string {
     .replace(/&gt;/g, '>');
   // Open Library: a rule, then sources and "Also contained in" lists.
   s = s.split(/\n\s*[-*_]{4,}\s*\n/)[0]!;
+  s = s.replace(/(\*\*|__)(.+?)\1/g, '$2');
   s = s.replace(/\[([^\]]+)\]\[\d+\]/g, '$1').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/^\s*\[\d+\]:.*$/gm, '');
   s = s.replace(/\(\s*(?:source|from)\s*:?[^)]*\)\s*$/i, '');
   s = s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
