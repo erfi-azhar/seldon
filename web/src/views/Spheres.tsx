@@ -11,6 +11,7 @@ import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
 import { QuranStudyCard } from '../components/QuranStudy.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
+import { TravelGuides } from '../components/TravelGuides.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { ReadingList } from '../components/Reading.tsx';
 import { CryptoTwitterCard } from '../components/CryptoTwitter.tsx';
@@ -207,6 +208,7 @@ export function SphereDetail({ id }: { id: string }) {
       {/* Today: what you act on most days. */}
       <div className="band-label">Today</div>
       {s.key === 'travels' && <TravelTrips />}
+      {s.key === 'travels' && <TravelGuides />}
       {s.key === 'finances' && <MoneyHero />}
       {/* Work's to-dos are the heart of the sphere, so they get the full width. */}
       {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} projects={projects} />}
