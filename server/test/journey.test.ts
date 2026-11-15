@@ -115,3 +115,32 @@ test('over HTTP: OwnTracks posts with its own key and nothing else; the key open
   await app.request('http://localhost/api/journey/tracking/off', { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: '{}' });
   assert.equal((await post({ authorization: basic(key) })).status, 401);
 });
+
+test('a long layover is about time outside: Frankfurt’s 11 hours is worth going out for, Istanbul’s 3 is not, home is home', async () => {
+  const { layoverPlan } = await import('../../web/src/layover.ts');
+  const store = journeyStore();
+  const trip = createTrip(store, { title: 'Home', destination: 'Singapore', startDate: '2026-12-11', endDate: '2026-12-13', purpose: 'work' });
+  addSegment(store, trip.id, { kind: 'flight', carrier: 'LH', number: '507', fromCode: 'GRU', toCode: 'FRA', startLocal: '2026-12-11T18:10', endLocal: '2026-12-12T10:45' });
+  addSegment(store, trip.id, { kind: 'flight', carrier: 'SQ', number: '325', fromCode: 'FRA', toCode: 'SIN', startLocal: '2026-12-12T21:40', endLocal: '2026-12-13T17:00' });
+  const [lh, sq] = getTrip(store, trip.id).segments;
+  const fra = layoverPlan(lh!, sq!, 'SIN');
+  assert.equal(fra.wait, 655);
+  // Out 45 min after landing, 15 min each way on the S-Bahn, back two hours before: 7h40 in town.
+  assert.equal(fra.free, 460);
+  assert.equal(fra.verdict, 'out');
+  assert.ok(fra.ideas.some((i) => /Christmas/.test(i.title)), 'the Christmas market is on in mid-December');
+
+  const ist = createTrip(store, { title: 'Via Istanbul', destination: 'Singapore', startDate: '2026-12-12', endDate: '2026-12-13', purpose: 'work' });
+  addSegment(store, ist.id, { kind: 'flight', carrier: 'TK', number: '16', fromCode: 'GRU', toCode: 'IST', startLocal: '2026-12-12T04:10', endLocal: '2026-12-12T22:40' });
+  addSegment(store, ist.id, { kind: 'flight', carrier: 'TK', number: '54', fromCode: 'IST', toCode: 'SIN', startLocal: '2026-12-13T01:55', endLocal: '2026-12-13T17:55' });
+  const [tk16, tk54] = getTrip(store, ist.id).segments;
+  assert.equal(layoverPlan(tk16!, tk54!, 'SIN').verdict, 'stay');
+
+  const sz = createTrip(store, { title: 'Through home', destination: 'Frankfurt', startDate: '2026-11-28', endDate: '2026-11-28', purpose: 'work' });
+  addSegment(store, sz.id, { kind: 'flight', carrier: 'SQ', number: '857', fromCode: 'SZX', toCode: 'SIN', startLocal: '2026-11-28T00:05', endLocal: '2026-11-28T04:20' });
+  addSegment(store, sz.id, { kind: 'flight', carrier: 'SQ', number: '326', fromCode: 'SIN', toCode: 'FRA', startLocal: '2026-11-28T12:50', endLocal: '2026-11-28T19:25' });
+  const [a, b] = getTrip(store, sz.id).segments;
+  const sin = layoverPlan(a!, b!, 'SIN');
+  assert.equal(sin.atHome, true);
+  assert.equal(sin.verdict, 'out', '8½ hours at home airport: time to go home');
+});

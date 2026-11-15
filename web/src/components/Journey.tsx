@@ -13,6 +13,7 @@ import { api, useTravel, useWrite, write } from '../api.ts';
 import { cx, plural } from '../lib.ts';
 import { useNow } from './Prayer.tsx';
 import { LayoverSheet } from './Travel.tsx';
+import { layoverPlan } from '../layover.ts';
 
 const MIN = 60_000;
 const flightName = (f: Segment) => `${f.carrier} ${f.number}`.trim();
@@ -41,13 +42,13 @@ export function JourneyCard() {
           </li>
         ))}
       </ol>
-      <NowPanel journey={journey} focus={focus} now={now} trips={t.trips} onLounges={setLounges} />
+      <NowPanel journey={journey} focus={focus} now={now} trips={t.trips} home={t.settings.homeAirport} onLounges={setLounges} />
       {lounges && loungeTrip && <LayoverSheet trip={loungeTrip} from={lounges.from} to={lounges.to} loyalty={t.loyalty} onClose={() => setLounges(null)} />}
     </section>
   );
 }
 
-function NowPanel({ journey, focus, now, trips, onLounges }: { journey: JourneyT; focus: number; now: number; trips: Trip[]; onLounges: (c: { from: Segment; to: Segment }) => void }) {
+function NowPanel({ journey, focus, now, trips, home, onLounges }: { journey: JourneyT; focus: number; now: number; trips: Trip[]; home: string; onLounges: (c: { from: Segment; to: Segment }) => void }) {
   const phase = journey.phases[focus]!;
   const leg = journey.legs[phase.leg]!;
   const next = journey.legs[phase.leg + 1];
@@ -124,8 +125,16 @@ function NowPanel({ journey, focus, now, trips, onLounges }: { journey: JourneyT
         <span className="jn-line">
           <Clock size={13} aria-hidden /> It’s {clock(now, next.startTz)} here
         </span>
+        {(() => {
+          const out = layoverPlan(leg, next, home);
+          return out.verdict === 'out' ? (
+            <span className="jn-line">
+              <MapPin size={13} aria-hidden /> {out.atHome ? 'Time to go home' : `Time to see ${out.guide?.city ?? city(leg, 'to')}`}: back at the airport by {clock(out.backBy, next.startTz)}
+            </span>
+          ) : null;
+        })()}
         <button type="button" className="jn-btn" onClick={() => onLounges({ from: leg, to: next })}>
-          <Sofa size={14} aria-hidden /> Lounges
+          <Sofa size={14} aria-hidden /> {layoverPlan(leg, next, home).verdict === 'out' ? 'Lounges and what to do' : 'Lounges'}
         </button>
       </div>
     );
