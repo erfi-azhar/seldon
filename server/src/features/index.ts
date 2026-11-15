@@ -17,6 +17,7 @@ import './calendar.ts';
 import './google-calendar.ts';
 import './job-alerts.ts';
 import './followups.ts';
+import './weather.ts';
 
 /** Mount every feature's routes and register its jobs. */
 export function installFeatures(app: Hono, ctx: FeatureContext): void {
