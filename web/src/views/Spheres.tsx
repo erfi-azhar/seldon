@@ -576,11 +576,37 @@ function NewProject({ sphereId, onDone }: { sphereId: string; onDone: (created?:
   );
 }
 
+/** Days folded away in the By day view, kept in this browser like the view itself. */
+const FOLDED_KEY = 'work-todos-folded-days';
+function readFolded(today: string): Set<string> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(FOLDED_KEY) ?? '[]');
+    // A day that has passed joins Late, so its fold is let go rather than kept forever.
+    return new Set(Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string' && (k === 'late' || k === 'none' || k >= today)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
 /**
  * Every open to-do by its due day: late ones together, then each day in turn, then undated.
- * Each day folds like a project does, open to start with.
+ * Each day folds like a project does; the ones you fold stay folded next time.
  */
 function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; label: (t: Task) => string | undefined }) {
+  const [folded, setFolded] = useState(() => readFolded(today));
+  const toggle = (key: string, open: boolean) =>
+    setFolded((prev) => {
+      if (open !== prev.has(key)) return prev;
+      const next = new Set(prev);
+      if (open) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(FOLDED_KEY, JSON.stringify([...next]));
+      } catch {
+        /* the folds just aren't remembered */
+      }
+      return next;
+    });
   const groups = new Map<string, Task[]>();
   for (const t of [...tasks].sort(byDue)) {
     const key = !t.dueDate ? 'none' : t.dueDate < today ? 'late' : t.dueDate;
@@ -597,7 +623,7 @@ function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; labe
   return (
     <div className="todo-groups">
       {[...groups].map(([key, list]) => (
-        <details key={key} className={cx('todo-group', key === 'late' && 'is-late')} open>
+        <details key={key} className={cx('todo-group', key === 'late' && 'is-late')} open={!folded.has(key)} onToggle={(e) => toggle(key, e.currentTarget.open)}>
           <summary>
             <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
             <span className="todo-group-name clamp-1">{heading(key)}</span>
