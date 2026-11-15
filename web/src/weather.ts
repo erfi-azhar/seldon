@@ -4,8 +4,8 @@
 //
 // Cloud cover sets how much cloud there is. Overcast, wet, foggy and snowy skies turn
 // greyer and dimmer, their clouds run together into one layer, the stars hide and the sun
-// and moon are veiled. Rain falls in slanted streaks, snow drifts down, fog is a haze that
-// thickens toward the horizon, and storms add an occasional soft lightning glow (a slow
+// and moon are veiled. Rain falls in slanted streaks, snow drifts down, fog drifts in banks
+// (with a moon halo and a warm town glow after dark), and storms add an occasional soft lightning glow (a slow
 // fade, seconds apart, never a strobe). Wind speeds the clouds up.
 
 import type { Weather } from '../../shared/types.ts';
@@ -28,6 +28,28 @@ function hash(x: number, y: number): number {
   h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
+
+function noise(x: number, y: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const xf = x - xi;
+  const yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi);
+  const b = hash(xi + 1, yi);
+  const c = hash(xi, yi + 1);
+  const d = hash(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+const fbm = (x: number, y: number) => 0.5 * noise(x, y) + 0.25 * noise(x * 2.03, y * 2.03) + 0.125 * noise(x * 4.1, y * 4.1) + 0.0625 * noise(x * 8.3, y * 8.3);
+
+// Fog drifts in banks that open and close, so it greys the sky less than its cloud cover
+// would and lets some stars through the gaps (see fogPainter).
+const FOG_STARS = 0.3;
+const FOG_GREY = 0.4;
+/** How much fog's cloud cover adds to the grey, as a share of what it would. */
+const FOG_CLOUD_GREY = 0.6;
 
 export interface Look {
   /** Share of the sky under cloud, 0–1; below 0 when the weather isn't known. */
@@ -69,7 +91,7 @@ export function lookOf(w: Weather | null | undefined): Look {
   const nightDrizzle = w.kind === 'drizzle' && !w.isDay;
   return {
     cover,
-    grey: Math.max(smooth(0.6, 1, cover) * (nightDrizzle ? DRIZZLE_CLOUD_GREY : 1), nightDrizzle ? DRIZZLE_GREY : wet ? 0.65 : 0, w.kind === 'fog' || w.kind === 'snow' ? 0.5 : 0),
+    grey: Math.max(smooth(0.6, 1, cover) * (nightDrizzle ? DRIZZLE_CLOUD_GREY : w.kind === 'fog' ? FOG_CLOUD_GREY : 1), nightDrizzle ? DRIZZLE_GREY : wet ? 0.65 : 0, w.kind === 'fog' ? FOG_GREY : 0, w.kind === 'snow' ? 0.5 : 0),
     fog: w.kind === 'fog' ? 1 : 0,
     rain: w.kind === 'drizzle' ? 0.3 : w.kind === 'rain' || w.kind === 'showers' ? 0.45 + 0.55 * heavy : w.kind === 'storm' ? 1 : 0,
     snow: w.kind === 'snow' ? 0.4 + 0.6 * heavy : 0,
@@ -111,7 +133,7 @@ export function weatherSky<P extends SkyColors>(p: P, w: Look): P {
     // As it closes in, the clouds lose their shading and run together into one grey layer.
     cloudShade: mix(mul(greyed(p.cloudShade, g * 0.7), 1 - 0.1 * g), cloud, 0.5 * g),
     clouds: w.cover < 0.5 ? 0.12 + 0.48 * (w.cover / 0.5) : 0.6 + 0.4 * ((w.cover - 0.5) / 0.5),
-    stars: p.stars * (1 - smooth(0.3, 0.95, w.cover)) * (1 - w.fog),
+    stars: p.stars * (1 - smooth(0.3, 0.95, w.cover) * (w.fog > 0 ? 0.4 : 1)) * (1 - w.fog * (1 - FOG_STARS)),
     glowStrength: p.glowStrength * (1 - 0.75 * g),
     moon: p.moon * (1 - 0.7 * g),
   };
@@ -125,6 +147,48 @@ export const discShows = (w: Look) => 1 - 0.65 * w.grey;
 
 /** Fog: a pale haze by day and a dim grey one at night, lighter than the dark sky behind it. */
 export const hazeOf = (p: SkyColors): RGB => add(greyed(mix(p.low, p.cloud, 0.5), 0.85), [14, 15, 18], 1);
+
+const CITY_GLOW: RGB = [255, 196, 150];
+
+/** The moon, where a scene has put it, for fog to catch its light. */
+export interface FogMoon {
+  x: number;
+  y: number;
+  shows: boolean;
+  fraction: number;
+}
+
+/**
+ * How fog colours a dot at (x, v), in a scene's own units (x across, v down with the
+ * horizon near k = 1). Null when there is no fog.
+ *
+ * Two layers of fog banks drift sideways at different speeds, thicker toward the horizon,
+ * opening and closing on the sky behind. After dark the moon wears a wide, soft halo, the
+ * way fog scatters its light, and the horizon carries a faint warm glow, like distant
+ * streetlights in the mist; both fade out as the sky brightens.
+ */
+export function fogPainter(w: Look, p: SkyColors, seconds: number, moon: FogMoon): ((c: RGB, x: number, v: number, k: number) => RGB) | null {
+  if (w.fog <= 0) return null;
+  const haze = hazeOf(p);
+  const bright = add(haze, [20, 21, 24], 1);
+  const s = seconds;
+  // 1 under a night sky, 0 by day: from how dark the top of the sky is.
+  const dark = 1 - smooth(0.12, 0.4, lum(p.top));
+  const moonLight = moon.shows ? dark * Math.max(0.35, moon.fraction) : 0;
+  return (c, x, v, k) => {
+    const kk = Math.min(1, k);
+    const n1 = fbm(x * 1.1 + s * 0.05, v * 3.2 + 7);
+    const n2 = fbm(x * 2.3 - s * 0.03 + 40, v * 5 + 13);
+    const bank = smooth(0.42, 0.72, n1) * 0.6 + smooth(0.5, 0.78, n2) * 0.4;
+    let out = mix(c, mix(haze, bright, bank), clamp(0.18 + 0.22 * kk + bank * (0.55 + 0.35 * kk)));
+    if (moonLight > 0) {
+      const d2 = (x - moon.x) ** 2 + (v - moon.y) ** 2;
+      out = add(out, [170, 182, 214], (Math.exp(-d2 / 0.09) * 0.32 + Math.exp(-d2 / 0.012) * 0.25) * moonLight);
+    }
+    if (dark > 0) out = add(out, CITY_GLOW, smooth(0.55, 1.1, k) * 0.16 * dark * (0.85 + 0.15 * Math.sin(s * 0.3 + x * 1.7)));
+    return out;
+  };
+}
 
 export const SNOW: RGB = [244, 247, 252];
 export const FLASH: RGB = [236, 240, 255];
