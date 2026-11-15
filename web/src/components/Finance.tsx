@@ -476,6 +476,10 @@ export function BillsCard() {
   const seen = new Set<string>();
   const next = f.upcoming.filter((u) => !seen.has(u.recurringId) && (seen.add(u.recurringId), true));
   const paused = f.recurring.filter((r) => !r.active);
+  // The fold earns its place only when it holds something the list above doesn't:
+  // a paused item, or one not due in the next five weeks (a yearly renewal, say).
+  const hidden = f.recurring.some((r) => !r.active || !seen.has(r.id));
+  const { income, expense } = f.recurringMonthly;
 
   return (
     <section className="card fin-bills">
@@ -490,9 +494,13 @@ export function BillsCard() {
       ) : (
         <>
           <div className="fin-total">
-            <b className="num is-up">+{money(f.recurringMonthly.income, c, true)}</b>
-            <b className="num">−{money(f.recurringMonthly.expense, c, true)}</b>
-            <span className="muted">in a typical month</span>
+            {income > 0 && <b className="num is-up">+{money(income, c, true)}</b>}
+            {expense > 0 && <b className="num">−{money(expense, c, true)}</b>}
+            <span className="muted">
+              {income > 0 && expense > 0
+                ? `a typical month · ${income >= expense ? 'leaves' : 'short by'} ${money(Math.abs(income - expense), c, true)}`
+                : `in a typical month`}
+            </span>
           </div>
           {next.length === 0 && <p className="empty">Nothing due in the next five weeks.</p>}
           <ul className="fin-upcoming">
@@ -505,13 +513,15 @@ export function BillsCard() {
                   <span className={cx('fin-due', due.late && 'late')}>{due.text}</span>
                   <button type="button" className="fin-up-name" onClick={() => r && setEditing(r)}>
                     <span className="clamp-1">{u.name}</span>
-                    <span className="faint">{u.debtId ? 'pays down a debt' : u.auto ? 'logs itself' : 'mark it paid'}</span>
+                    <span className="faint clamp-1">
+                      {[r && scheduleText(r), u.debtId ? 'pays down a debt' : u.auto ? 'logs itself' : !waiting && 'mark it paid'].filter(Boolean).join(' · ')}
+                    </span>
                   </button>
                   <span className={cx('num', u.kind === 'income' && 'is-up')}>
                     {u.kind === 'income' ? '+' : '−'}
                     {money(u.amount, u.currency)}
                   </span>
-                  {waiting ? (
+                  {waiting && (
                     <span className="fin-up-acts">
                       <button type="button" className="btn btn-tint btn-sm" aria-label={`Mark ${u.name} ${u.kind === 'income' ? 'received' : 'paid'}`} onClick={() => setPaying(u)}>
                         {u.kind === 'income' ? 'Received' : 'Paid'}
@@ -520,13 +530,12 @@ export function BillsCard() {
                         <X size={13} />
                       </button>
                     </span>
-                  ) : (
-                    <span className="fin-up-acts" />
                   )}
                 </li>
               );
             })}
           </ul>
+          {hidden && (
           <details className="todo-fold">
             <summary>
               <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
@@ -553,6 +562,7 @@ export function BillsCard() {
               ))}
             </ul>
           </details>
+          )}
         </>
       )}
       {editing && <RecurringSheet f={f} item={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
