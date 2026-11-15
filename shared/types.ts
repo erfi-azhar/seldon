@@ -520,6 +520,8 @@ export interface FaithState {
   configured: boolean;
   settings: PrayerSettings;
   today: PrayerDay | null;
+  /** Tomorrow's prayer times, for planning sahur the evening before. */
+  tomorrow: PrayerDay['times'] | null;
   /** The prayer whose time it is now, and the next one to come. */
   current: { prayer: PrayerName; endsAt: string } | null;
   next: { prayer: PrayerName; at: string } | null;

@@ -222,7 +222,7 @@ export function faithState(store: Store, today: string, now: Date = new Date()):
     .map((r) => ({ date: r.date, prayer: r.prayer }))
     .sort((a, b) => b.date.localeCompare(a.date) || PRAYERS.indexOf(b.prayer) - PRAYERS.indexOf(a.prayer));
 
-  return { configured, settings: s, today: day, current, next, week, autoMissed, owed: owed(store, s), hijri: hijriLabel(today), ramadan: ramadanFrom(today) };
+  return { configured, settings: s, today: day, tomorrow: timesFor(s, addDays(today, 1)), current, next, week, autoMissed, owed: owed(store, s), hijri: hijriLabel(today), ramadan: ramadanFrom(today) };
 }
 
 export function logPrayer(store: Store, date: string, prayer: PrayerName, status: PrayerStatus | null): void {
