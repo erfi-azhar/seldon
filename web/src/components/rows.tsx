@@ -113,7 +113,18 @@ export function AddTask({
 
 // ── Habits ──────────────────────────────────────────────────────────────────
 
-/** The first row of a habit list: which week it is, and a day letter over each dot. */
+/** Which week a habit list shows, for beside the card's title: "Week 46 · Nov 9–15". */
+export function HabitWeekLabel() {
+  const today = todayStr();
+  return (
+    <span className="hint habit-week-label">
+      Week {isoWeek(today)}
+      <span className="week-range"> · {weekRange(today)}</span>
+    </span>
+  );
+}
+
+/** The first row of a habit list: a day letter over each dot. */
 export function HabitWeekHead() {
   const today = todayStr();
   const monday = weekMonday(today);
@@ -121,10 +132,7 @@ export function HabitWeekHead() {
   return (
     <li className="habit habit-week-head" aria-hidden>
       <span className="check-spacer" />
-      <span className="habit-name">
-        Week {isoWeek(today)}
-        <span className="week-range"> · {weekRange(today)}</span>
-      </span>
+      <span className="habit-name" />
       <span className="week">
         {days.map((d) => (
           <span key={d} className={cx(d === today && 'is-today')}>

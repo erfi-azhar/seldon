@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Activity, Overview, Task } from '../../../shared/types.ts';
 import { useOverview, useTravel, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
-import { AddTask, HabitRow, HabitWeekHead, TaskRow } from '../components/rows.tsx';
+import { AddTask, HabitRow, HabitWeekHead, HabitWeekLabel, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
 import { HillBand } from '../components/Hill.tsx';
 import { Sky, type SkyTrip } from '../components/Sky.tsx';
@@ -344,7 +344,10 @@ export function Today() {
           <TodayCrypto />
           <section className="card" style={{ paddingBottom: 10 }}>
             <div className="card-head">
-              <h2 className="card-title">Habits</h2>
+              <div className="card-head-title">
+                <h2 className="card-title">Habits</h2>
+                <HabitWeekLabel />
+              </div>
             </div>
             {o.habits.length === 0 ? (
               <p className="empty">No habits yet. Open a sphere to start one.</p>

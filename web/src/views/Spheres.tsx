@@ -5,7 +5,7 @@ import { CATALOG_BY_KEY } from '../../../shared/catalog.ts';
 import type { Task } from '../../../shared/types.ts';
 import { useHealth, useSphere, useSpheres, useTravel, useWrite, write } from '../api.ts';
 import { Orb } from '../components/Orb.tsx';
-import { AddTask, GoalRow, HabitRow, HabitWeekHead, MetricCard, TaskRow } from '../components/rows.tsx';
+import { AddTask, GoalRow, HabitRow, HabitWeekHead, HabitWeekLabel, MetricCard, TaskRow } from '../components/rows.tsx';
 import { SignalsCard } from '../components/Signals.tsx';
 import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
@@ -132,7 +132,10 @@ export function SphereDetail({ id }: { id: string }) {
   const habitsCard = (
     <section className="card">
       <div className="card-head">
-        <h2 className="card-title">Habits</h2>
+        <div className="card-head-title">
+          <h2 className="card-title">Habits</h2>
+          {habits.length > 0 && <HabitWeekLabel />}
+        </div>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSheet({ kind: 'habit', sphereId: id })}>
           <Plus size={14} /> New habit
         </button>

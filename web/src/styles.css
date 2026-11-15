@@ -9515,10 +9515,6 @@ button.layover-pill:hover .layover-lounge {
   width: 20px;
   flex: none;
 }
-.habit-week-head .habit-name {
-  font-size: 12px;
-  color: var(--ink-3);
-}
 .habit-week-head .week > span {
   width: 14px;
   text-align: center;
@@ -9537,11 +9533,17 @@ button.layover-pill:hover .layover-lounge {
 .week button:disabled:hover {
   transform: none;
 }
-.habit-week-head .habit-name {
+.card-head-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.habit-week-label {
   white-space: nowrap;
 }
 @media (max-width: 520px) {
-  .habit-week-head .week-range {
+  .habit-week-label .week-range {
     display: none;
   }
 }
