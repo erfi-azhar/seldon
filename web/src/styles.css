@@ -5149,6 +5149,139 @@ button.chip-ask:hover {
     font-size: 23px;
   }
 }
+/* Recitation check: recite from memory, then see each word marked. */
+.ayah-text {
+  position: relative;
+}
+.ayah-text.is-hidden > p {
+  filter: blur(14px);
+  user-select: none;
+  pointer-events: none;
+}
+.ayah-cover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.rw {
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+.rw-missed {
+  color: var(--bad);
+  text-decoration: underline dotted;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 10px;
+  opacity: 0.75;
+}
+.rw-different {
+  background: color-mix(in oklch, var(--warn, #d08a1e) 22%, transparent);
+  box-shadow: inset 0 -3px 0 var(--warn, #d08a1e);
+  cursor: help;
+}
+.rw-added {
+  font-size: 0.7em;
+  color: var(--good);
+}
+.rc {
+  margin: 12px 0 4px;
+}
+.rc-start {
+  gap: 6px;
+}
+.rc-note {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.rc-note p {
+  margin: 0;
+}
+.rc-note.is-error p {
+  color: var(--bad);
+}
+.rc-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  font-size: 13.5px;
+}
+.rc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: rc-pulse 1.2s ease-in-out infinite;
+}
+@keyframes rc-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.rc-summary {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.rc-score {
+  display: grid;
+  gap: 2px;
+}
+.rc-score b {
+  font-size: 15px;
+}
+.rc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.rc-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.rc-legend .rw-missed {
+  border-bottom: 2px dotted var(--bad);
+  border-radius: 0;
+}
+.rc-legend .rw-added {
+  background: var(--good);
+}
+.rc-caveat {
+  margin: 0;
+}
+.rc-heard {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.rc-heard [lang='ar'] {
+  font-family: 'Amiri', 'Noto Naskh Arabic', 'Geeza Pro', serif;
+  font-size: 18px;
+}
 /* The niyyah for tomorrow's fast: a quiet night card, shown from Maghrib to Fajr in Ramadan. */
 .niyyah {
   display: grid;

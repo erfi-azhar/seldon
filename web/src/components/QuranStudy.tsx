@@ -11,8 +11,9 @@ import type { Note, QuranChapter, QuranStudy, QuranVerse } from '../../../shared
 import { api, useSpheres, useWrite, write } from '../api.ts';
 import { cx, hueStyle, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
-import { arabicDigits, PlayIcon, RECITER, useRecitation, type Track } from './recitation.tsx';
+import { PlayIcon, RECITER, useRecitation, type Track } from './recitation.tsx';
 import { AutoTextarea, Loading, Seg } from './ui.tsx';
+import { CheckableAyah } from './RecitationCheck.tsx';
 
 const useStudy = () => useQuery({ queryKey: ['quran-study', todayStr()], queryFn: () => api<QuranStudy>('GET', '/quran/study') });
 const useChapters = () => useQuery({ queryKey: ['quran-chapters'], queryFn: () => api<QuranChapter[]>('GET', '/quran/chapters'), staleTime: Infinity, retry: 1 });
@@ -184,10 +185,7 @@ export function QuranStudyPage() {
             <div className="quran-ayah-recite">
               <RecitePanel verse={verse} />
             </div>
-            <p className="quran-arabic" lang="ar" dir="rtl">
-              {verse.arabic} <span className="verse-end">﴿{arabicDigits(verse.ayah)}﴾</span>
-            </p>
-            <p className="quran-translation">{verse.translation}</p>
+            <CheckableAyah verse={verse} />
             <span className="hint quran-source">
               {verse.translator} translation ·{' '}
               <a href={`https://quran.com/${verse.key}`} target="_blank" rel="noreferrer">
