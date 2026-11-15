@@ -191,3 +191,32 @@ test('stops added without their route and details get them filled in, once each;
   assert.equal(await completeItinerary(store, trip.id), 0, 'nothing left to ask about');
   assert.equal(model.seen.length, 1);
 });
+
+test('every trip gets a know-before-you-go guide: safety first, written once by the job, empty sections dropped', async () => {
+  const { saveGuide, prepareTravel } = await import('../src/features/travel.ts');
+  const store = journeyStore();
+  const trip = brazil(store);
+  const saved = saveGuide(store, trip.id, [
+    {
+      name: 'São Paulo',
+      emergency: ['Police 190', 'Ambulance 192'],
+      sections: [
+        { kind: 'money', title: 'Money', tips: ['PIX and cards everywhere'] },
+        { kind: 'weather', title: 'Weather', tips: [] },
+        { kind: 'safety', title: 'Safety', tips: ['Keep your phone out of sight on the street'] },
+      ],
+    },
+  ]);
+  assert.deepEqual(saved.guide!.cities[0]!.sections.map((x) => x.kind), ['safety', 'money'], 'safety first; empty sections dropped');
+
+  const fresh = createTrip(store, { title: 'Tokyo', destination: 'Tokyo', startDate: '2026-11-20', endDate: '2026-11-22', purpose: 'leisure' });
+  const reply = (obj: unknown) => ({ sse: anthropicMessage([{ type: 'text', text: JSON.stringify(obj) }], 'end_turn') });
+  const guide = { cities: [{ name: 'Tokyo', emergency: ['Police 110'], sections: [{ kind: 'safety', title: 'Safety', tips: ['Very safe; mind your bag on crowded trains'] }] }] };
+  const model = await fakeModel([reply(guide), reply(guide), reply(guide), reply(guide)]);
+  store.addConnection({ provider: 'anthropic', baseUrl: model.url, apiKey: 'k' });
+  await prepareTravel(store, new Date('2026-11-14T12:00:00Z'));
+  assert.equal(getTrip(store, fresh.id).guide!.cities[0]!.emergency[0], 'Police 110');
+  const asked = model.seen.length;
+  await prepareTravel(store, new Date('2026-11-14T12:30:00Z'));
+  assert.equal(model.seen.length, asked, 'a trip with a guide is not asked about again');
+});

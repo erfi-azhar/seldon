@@ -4,7 +4,7 @@ import { renderSnapshot } from '../src/agent/prompt.ts';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
 import { listSignals } from '../src/features/signals.ts';
-import { addItems, addSegment, applyExtraction, createTrip, draftItinerary, getTrip, prepareTravel, updateSegment, updateTrip, upsertLoyalty } from '../src/features/travel.ts';
+import { addItems, addSegment, applyExtraction, createTrip, draftItinerary, getTrip, prepareTravel, saveGuide, updateSegment, updateTrip, upsertLoyalty } from '../src/features/travel.ts';
 import { Store } from '../src/store.ts';
 import type { TravelState } from '../../shared/types.ts';
 import { anthropicMessage, fakeModel } from './helpers.ts';
@@ -21,6 +21,7 @@ const titles = (store: Store, id: string) => getTrip(store, id).itinerary.map((i
 test('undoing a draft takes back only its own unticked items, and the job does not draft again', async () => {
   const store = travelStore();
   const trip = createTrip(store, { destination: 'Tokyo', startDate: '2026-11-18', endDate: '2026-11-20' });
+  saveGuide(store, trip.id, [{ name: 'Tokyo', emergency: [], sections: [] }]); // these tests are about drafting
   addItems(store, trip.id, [{ date: '2026-11-18', title: 'My own museum visit' }], true);
   const model = await fakeModel([reply({ items: [item('2026-11-19', 'Drafted'), item('2026-11-20', 'Drafted3')] }), reply({ items: [item('2026-11-19', 'Again')] })]);
   store.addConnection({ provider: 'anthropic', baseUrl: model.url, apiKey: 'k' });
@@ -41,6 +42,7 @@ test('undoing a draft takes back only its own unticked items, and the job does n
 test('a draft from an empty trip, undone, is not redrafted by the next run', async () => {
   const store = travelStore();
   const trip = createTrip(store, { destination: 'Tokyo', startDate: '2026-11-18', endDate: '2026-11-19' });
+  saveGuide(store, trip.id, [{ name: 'Tokyo', emergency: [], sections: [] }]); // these tests are about drafting
   const plan = { items: [item('2026-11-18', 'Drafted thing')] };
   const model = await fakeModel([reply(plan), reply(plan)]);
   store.addConnection({ provider: 'anthropic', baseUrl: model.url, apiKey: 'k' });

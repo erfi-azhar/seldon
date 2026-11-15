@@ -11064,3 +11064,78 @@ button.fin-rec-main:disabled {
     grid-auto-columns: 86%;
   }
 }
+
+/* Know before you go: emergency numbers, safety first, then the rest as panels. */
+.trip-guide {
+  display: grid;
+  gap: 12px;
+}
+.trip-guide-empty {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.trip-guide-sos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.trip-guide-sos-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: oklch(0.52 0.17 25);
+  background: oklch(0.6 0.17 25 / 0.1);
+  box-shadow: inset 0 0 0 1px oklch(0.6 0.17 25 / 0.3);
+  text-decoration: none;
+}
+:root[data-theme='dark'] .trip-guide-sos-chip {
+  color: oklch(0.8 0.12 25);
+}
+.trip-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.trip-guide-sec {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.trip-guide-sec.is-safety {
+  background: linear-gradient(180deg, oklch(0.75 0.13 70 / 0.12), oklch(0.75 0.13 70 / 0.04));
+  box-shadow: inset 0 0 0 1px oklch(0.7 0.13 70 / 0.35);
+}
+.trip-guide-sec h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.trip-guide-sec h3 svg {
+  color: var(--ink-3);
+}
+.trip-guide-sec.is-safety h3 svg {
+  color: oklch(0.62 0.14 60);
+}
+.trip-guide-sec ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.trip-guide-foot {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--ink-4);
+}

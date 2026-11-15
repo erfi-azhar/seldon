@@ -3,7 +3,7 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, BedDouble, ShieldCheck, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { Cabin, EliteNights, FlightOption, ItineraryItem, LoungePick, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
@@ -15,6 +15,7 @@ import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
 import { RouteCard } from './Journey.tsx';
 import { ItemModules } from './ItemModules.tsx';
+import { TripGuideBody } from './TripGuide.tsx';
 import { boardsAt, clock, journeys } from '../../../shared/journey.ts';
 import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
@@ -1296,6 +1297,15 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
       {trip.options.length > 0 && (
           <FlightOptions trip={trip} />
       )}
+
+      <FoldCard
+        id={`${trip.id}.guide`}
+        icon={<ShieldCheck size={15} />}
+        title="Know before you go"
+        peek={trip.guide ? trip.guide.cities.map((c) => c.name).join(' · ') : 'Not written yet'}
+      >
+        <TripGuideBody trip={trip} />
+      </FoldCard>
 
       <div className="trip-section-pair">
         <FoldCard
