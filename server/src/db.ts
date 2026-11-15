@@ -702,6 +702,10 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (passage, tafsir)
   );
   `,
+  // Whether a holding can be turned into cash within days; null means decide by its kind.
+  `
+  ALTER TABLE fin_holdings ADD COLUMN liquid INTEGER;
+  `,
   // When you checked in for a flight, so every device knows to send you to the gate.
   `
   ALTER TABLE trip_segments ADD COLUMN checked_in_at TEXT;

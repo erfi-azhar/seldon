@@ -3,6 +3,7 @@ import { after, beforeEach, test } from 'node:test';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
 import { Store } from '../src/store.ts';
+import { updateHolding } from '../src/features/finance.ts';
 import { addAlert, addDebt, addHolding, addRecurring, planSignal, recordRelief, reliefReminder, sgTax, sgTopRate, addTransaction, checkAlerts, countryOf, financeState, holidays, logTrade, markPaid, nthDate, payDebt, payoff, postDue, refreshHolidays, remindBills, skipNext, syncSymbols, toWorkingDay, updateRecurring } from '../src/features/finance.ts';
 import { marketFor, parseTick, setMarketTransport, type MarketTransport } from '../src/features/markets.ts';
 import '../src/features/index.ts';
@@ -731,4 +732,25 @@ test('the API records relief contributions', async () => {
   const store = new Store(db);
   assert.equal((store.db.prepare("SELECT json_extract(value, '$.relief') AS r FROM settings WHERE key = 'finance'").get() as { r: string }).r, '{"year":2026,"srs":15300,"cpf":8000}');
   marketFor(store).stop();
+});
+
+test('net worth splits into liquid and illiquid: by kind, unless you say otherwise', async () => {
+  const store = fresh();
+  store.db.prepare("INSERT INTO settings (key, value) VALUES ('fx_rates', ?)").run(JSON.stringify({ rates: { USD: 1, SGD: 1.3 }, at: new Date().toISOString() }));
+  addHolding(store, { kind: 'cash', name: 'DBS', quantity: 20_000 });
+  addHolding(store, { kind: 'retirement', name: 'CPF OA', quantity: 1, price: 160_000 });
+  const rsu = addHolding(store, { kind: 'stock', name: 'Employer RSUs', symbol: 'RSU', quantity: 10, price: 100, currency: 'SGD' });
+  let f = financeState(store, TODAY);
+  assert.deepEqual([f.netWorth.liquid, f.netWorth.illiquid], [21_000, 160_000], 'shares count as liquid by default');
+  assert.equal(f.holdings.find((h) => h.name === 'Employer RSUs')!.liquidSet, null);
+
+  // Only sellable in company buybacks: the owner marks them illiquid, and that sticks.
+  updateHolding(store, rsu.id as string, { liquid: false });
+  f = financeState(store, TODAY);
+  assert.deepEqual([f.netWorth.liquid, f.netWorth.illiquid], [20_000, 161_000]);
+  assert.equal(f.netWorth.assets, f.netWorth.liquid + f.netWorth.illiquid);
+  updateHolding(store, rsu.id as string, { quantity: 12 });
+  assert.equal(financeState(store, TODAY).holdings.find((h) => h.name === 'Employer RSUs')!.liquid, false, 'an unrelated edit keeps the choice');
+  updateHolding(store, rsu.id as string, { liquid: null });
+  assert.equal(financeState(store, TODAY).holdings.find((h) => h.name === 'Employer RSUs')!.liquid, true, 'null goes back to the kind');
 });

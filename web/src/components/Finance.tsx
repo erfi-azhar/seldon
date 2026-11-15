@@ -13,6 +13,8 @@ import { Field, Modal, ProgressBar, Seg, Spinner, useFolds } from './ui.tsx';
 
 const EXPENSE = ['Housing', 'Food', 'Groceries', 'Transport', 'Utilities', 'Shopping', 'Health', 'Entertainment', 'Travel', 'Subscriptions', 'Education', 'Family', 'Giving', 'Fees & interest', 'Other'];
 const INCOME = ['Salary', 'Bonus', 'Freelance', 'Business', 'Investments', 'Trading', 'Gifts', 'Refunds', 'Other'];
+/** Matches the server: cash, coins, shares and funds sell within days; CPF, property and the rest don't. */
+const liquidByKind = (kind: HoldingKind) => kind === 'cash' || kind === 'crypto' || kind === 'stock' || kind === 'fund';
 const KIND_LABEL: Record<HoldingKind, string> = { cash: 'Cash & bank', crypto: 'Crypto', stock: 'Stocks', fund: 'Funds', retirement: 'Retirement', property: 'Property', other: 'Other' };
 const KIND_HUE: Record<HoldingKind, number> = { cash: 200, crypto: 62, stock: 265, fund: 300, retirement: 160, property: 25, other: 230 };
 const DEBT_LABEL: Record<DebtKind, string> = { credit_card: 'Credit card', loan: 'Loan', mortgage: 'Mortgage', car: 'Car loan', student: 'Student loan', personal: 'Personal loan', bnpl: 'Buy now, pay later', other: 'Other' };
@@ -62,12 +64,16 @@ function reprice(f: FinanceState, market: MarketState): FinanceState {
   const quotes = new Map(market.quotes.map((q) => [q.symbol, q]));
   const rate = f.currency === 'USD' ? 1 : f.fx?.rates[f.currency] ?? null;
   let delta = 0;
+  let deltaLiquid = 0;
   const holdings = f.holdings.map((h): Holding => {
     const q = h.live ? quotes.get(h.symbol) : undefined;
     if (!q) return h;
     const value = h.quantity * q.price;
     const valueBase = rate === null ? null : value * rate;
-    if (valueBase !== null) delta += valueBase - (h.valueBase ?? 0);
+    if (valueBase !== null) {
+      delta += valueBase - (h.valueBase ?? 0);
+      if (h.liquid) deltaLiquid += valueBase - (h.valueBase ?? 0);
+    }
     const gain = h.costBasis > 0 ? value - h.costBasis : null;
     return { ...h, unitPrice: q.price, value, valueBase, gain, gainPct: gain !== null ? gain / h.costBasis : null, change24hPct: q.changePct };
   });
@@ -81,7 +87,7 @@ function reprice(f: FinanceState, market: MarketState): FinanceState {
       return n + (q ? h.quantity * (q.price - q.open) : 0);
     }, 0),
   };
-  return { ...f, holdings, crypto, market, netWorth: { ...f.netWorth, assets: f.netWorth.assets + delta, net: f.netWorth.net + delta } };
+  return { ...f, holdings, crypto, market, netWorth: { ...f.netWorth, assets: f.netWorth.assets + delta, net: f.netWorth.net + delta, liquid: f.netWorth.liquid + deltaLiquid, illiquid: f.netWorth.illiquid + (delta - deltaLiquid) } };
 }
 
 /** The eye: hides every amount of yours across Finances, and remembers it on this device. */
@@ -163,7 +169,10 @@ export function MoneyHero() {
         <span className="fin-label">Net worth</span>
         <b className="fin-big num">{nothing ? '—' : money(f.netWorth.net, c)}</b>
         <span className="muted fin-sub">
-          {money(f.netWorth.assets, c, true)} owned · {money(f.netWorth.debts, c, true)} owed
+          <span title="Liquid: cash, coins and listed shares you could sell within days. Illiquid: CPF, property, locked-up shares.">
+            {money(f.netWorth.liquid, c, true)} liquid · {money(f.netWorth.illiquid, c, true)} illiquid
+          </span>{' '}
+          · {money(f.netWorth.debts, c, true)} owed
           {f.netWorth.unpriced.length > 0 && <span title={`No price for ${f.netWorth.unpriced.join(', ')}`}> · {plural(f.netWorth.unpriced.length, 'holding')} unpriced</span>}
         </span>
       </div>
@@ -538,22 +547,24 @@ export function PlanCard() {
                   <Plus size={13} /> Record
                 </button>
               </div>
-              <div className="fin-relief-row">
-                <span>SRS</span>
-                <ProgressBar value={r.srs.cap ? r.srs.done / r.srs.cap : 0} />
-                <span className="num">
-                  {whole(r.srs.done, c)} <span className="faint">/ {whole(r.srs.cap, c)}</span>
-                </span>
-              </div>
-              {r.cpf && (
+              <div className="fin-relief-rows">
                 <div className="fin-relief-row">
-                  <span>CPF top-up</span>
-                  <ProgressBar value={r.cpf.cap ? r.cpf.done / r.cpf.cap : 0} />
-                  <span className="num">
-                    {whole(r.cpf.done, c)} <span className="faint">/ {whole(r.cpf.cap, c)}</span>
+                  <span>SRS</span>
+                  <ProgressBar value={r.srs.cap ? r.srs.done / r.srs.cap : 0} />
+                  <span className="num fin-relief-amt">
+                    <span>{whole(r.srs.done, c)}</span> <span className="faint">/ {whole(r.srs.cap, c)}</span>
                   </span>
                 </div>
-              )}
+                {r.cpf && (
+                  <div className="fin-relief-row">
+                    <span>CPF top-up</span>
+                    <ProgressBar value={r.cpf.cap ? r.cpf.done / r.cpf.cap : 0} />
+                    <span className="num fin-relief-amt">
+                      <span>{whole(r.cpf.done, c)}</span> <span className="faint">/ {whole(r.cpf.cap, c)}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
               <p className="hint">
                 {r.srs.left + (r.cpf?.left ?? 0) >= 1
                   ? `Using the rest saves about ${whole(r.saving, c)} on next year's tax, at a top rate of about ${Math.round(r.rate * 1000) / 10}% (estimated from your pay; a bonus or RSUs make it more).`
@@ -1556,29 +1567,39 @@ export function PortfolioCard() {
               </div>
             </>
           )}
-          <ul className="fin-holdings">
-            {f.holdings
-              .filter((h) => h.quantity > 0 || !h.live)
-              .map((h) => (
-                <li key={h.id}>
-                  <button type="button" className="fin-holding" onClick={() => setEditing(h)}>
-                    <i className="fin-kind" style={{ background: `oklch(0.7 0.13 ${KIND_HUE[h.kind]})` }} aria-hidden />
-                    <span className="grow">
-                      <span className="clamp-1">{h.name}</span>
-                      <span className="faint fin-holding-sub">
-                        {h.kind === 'cash' ? KIND_LABEL.cash : h.symbol ? `${qty(h.quantity)} ${h.symbol}` : KIND_LABEL[h.kind]}
-                        {h.live && ' · live'}
-                        {!h.live && h.kind !== 'cash' && ` · updated ${relativeDay(h.updatedAt.slice(0, 10), todayStr())}`}
-                      </span>
-                    </span>
-                    <span className="fin-holding-val">
-                      <span className="num">{h.valueBase !== null ? money(h.valueBase, c) : h.value !== null ? money(h.value, h.currency) : 'no price'}</span>
-                      {h.gain !== null && h.gainPct !== null && <Delta n={h.gain}>{pctText(h.gainPct * 100)}</Delta>}
-                    </span>
-                  </button>
-                </li>
-              ))}
-          </ul>
+          {(['liquid', 'illiquid'] as const).map((side) => {
+            const list = f.holdings.filter((h) => (h.quantity > 0 || !h.live) && (side === 'liquid' ? h.liquid : !h.liquid));
+            if (!list.length) return null;
+            return (
+              <div key={side} className="fin-holding-group">
+                <div className="list-label fin-holding-group-head">
+                  <span>{side === 'liquid' ? 'Liquid' : 'Illiquid'}</span>
+                  <span className="num">{money(side === 'liquid' ? f.netWorth.liquid : f.netWorth.illiquid, c)}</span>
+                </div>
+                <ul className="fin-holdings">
+                  {list.map((h) => (
+                    <li key={h.id}>
+                      <button type="button" className="fin-holding" onClick={() => setEditing(h)}>
+                        <i className="fin-kind" style={{ background: `oklch(0.7 0.13 ${KIND_HUE[h.kind]})` }} aria-hidden />
+                        <span className="grow">
+                          <span className="clamp-1">{h.name}</span>
+                          <span className="faint fin-holding-sub">
+                            {h.kind === 'cash' ? KIND_LABEL.cash : h.symbol ? `${qty(h.quantity)} ${h.symbol}` : KIND_LABEL[h.kind]}
+                            {h.live && ' · live'}
+                            {!h.live && h.kind !== 'cash' && ` · updated ${relativeDay(h.updatedAt.slice(0, 10), todayStr())}`}
+                          </span>
+                        </span>
+                        <span className="fin-holding-val">
+                          <span className="num">{h.valueBase !== null ? money(h.valueBase, c) : h.value !== null ? money(h.value, h.currency) : 'no price'}</span>
+                          {h.gain !== null && h.gainPct !== null && <Delta n={h.gain}>{pctText(h.gainPct * 100)}</Delta>}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </>
       )}
       {editing && <HoldingSheet holding={editing === 'new' ? null : editing} currency={c} onClose={() => setEditing(null)} />}
@@ -1596,12 +1617,14 @@ function HoldingSheet({ holding, currency, onClose }: { holding: Holding | null;
     cost: holding?.costBasis ? String(holding.costBasis) : '',
     currency: holding?.currency ?? currency,
   });
+  const [liquidity, setLiquidity] = useState<'kind' | 'liquid' | 'illiquid'>(holding?.liquidSet == null ? 'kind' : holding.liquidSet ? 'liquid' : 'illiquid');
+  const liquid = liquidity === 'kind' ? null : liquidity === 'liquid';
   // Cash is its balance; property and the like are one thing at a value; the rest are units at a price.
   const shape = kind === 'cash' ? 'balance' : kind === 'property' || kind === 'retirement' || kind === 'other' ? 'value' : 'units';
   const body = () => {
-    if (shape === 'balance') return { kind, name: h.name, quantity: parseNumber(h.quantity), currency: h.currency };
-    if (shape === 'value') return { kind, name: h.name, quantity: 1, price: parseNumber(h.price), cost_basis: numOrNull(h.cost) ?? 0, currency: h.currency };
-    return { kind, name: h.name || h.symbol, symbol: h.symbol, quantity: parseNumber(h.quantity), price: kind === 'crypto' ? null : numOrNull(h.price), cost_basis: numOrNull(h.cost) ?? 0, currency: kind === 'crypto' ? 'USD' : h.currency };
+    if (shape === 'balance') return { kind, name: h.name, quantity: parseNumber(h.quantity), currency: h.currency, liquid };
+    if (shape === 'value') return { kind, name: h.name, quantity: 1, price: parseNumber(h.price), cost_basis: numOrNull(h.cost) ?? 0, currency: h.currency, liquid };
+    return { kind, name: h.name || h.symbol, symbol: h.symbol, quantity: parseNumber(h.quantity), price: kind === 'crypto' ? null : numOrNull(h.price), cost_basis: numOrNull(h.cost) ?? 0, currency: kind === 'crypto' ? 'USD' : h.currency, liquid };
   };
   const save = useWrite(() => {
     const b = body() as Record<string, unknown>;
@@ -1684,6 +1707,18 @@ function HoldingSheet({ holding, currency, onClose }: { holding: Holding | null;
           </Field>
         )}
       </div>
+      <Field label="Liquidity" hint="Liquid: you could sell it and have the cash within days. RSUs only sold in company buybacks, CPF or a locked deposit are illiquid.">
+        <Seg
+          label="Liquidity"
+          value={liquidity}
+          onChange={setLiquidity}
+          options={[
+            { value: 'kind', label: `As usual (${liquidByKind(kind) ? 'liquid' : 'illiquid'})` },
+            { value: 'liquid', label: 'Liquid' },
+            { value: 'illiquid', label: 'Illiquid' },
+          ]}
+        />
+      </Field>
       {kind === 'crypto' && <p className="hint">Priced live. If you trade it, log trades on the Crypto card instead so average cost and P&amp;L stay right.</p>}
       {bad(h.quantity, h.price, h.cost) && <p className="error-text">{NOT_A_NUMBER}</p>}
       {(save.error ?? remove.error) && <p className="error-text">{(save.error ?? remove.error)!.message}</p>}

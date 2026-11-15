@@ -176,7 +176,12 @@ export interface HoldingInput {
   price?: number | null;
   currency?: string;
   notes?: string;
+  /** Your call on liquidity; omitted or null to follow the kind. */
+  liquid?: boolean | null;
 }
+
+/** Cash, coins and listed shares or funds can be sold within days; CPF, property and the rest can't. */
+export const liquidByKind = (kind: HoldingKind): boolean => kind === 'cash' || kind === 'crypto' || kind === 'stock' || kind === 'fund';
 
 /** A coin you hold without a price of your own is priced live, in dollars. */
 const isLive = (kind: string, symbol: string, price: number | null) => kind === 'crypto' && !!symbol && price === null;
@@ -189,8 +194,8 @@ export function addHolding(store: Store, h: HoldingInput): Row {
   const id = newId();
   const now = nowIso();
   store.db
-    .prepare('INSERT INTO fin_holdings (id, kind, name, symbol, quantity, cost_basis, price, currency, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id, h.kind, (h.name.trim() || symbol || 'Holding').slice(0, 80), symbol, h.quantity, r2(h.costBasis ?? 0), price, currency, (h.notes ?? '').slice(0, 500), now, now);
+    .prepare('INSERT INTO fin_holdings (id, kind, name, symbol, quantity, cost_basis, price, currency, notes, liquid, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, h.kind, (h.name.trim() || symbol || 'Holding').slice(0, 80), symbol, h.quantity, r2(h.costBasis ?? 0), price, currency, (h.notes ?? '').slice(0, 500), h.liquid === undefined || h.liquid === null ? null : Number(h.liquid), now, now);
   store.record('created', 'fin_holding', id, financeSphere(store)?.id ?? null, `Added ${h.name || symbol} to the portfolio`);
   syncSymbols(store);
   return store.db.prepare('SELECT * FROM fin_holdings WHERE id = ?').get(id) as Row;
@@ -198,7 +203,7 @@ export function addHolding(store: Store, h: HoldingInput): Row {
 
 registerUndo('created:fin_holding', (db, id) => void db.prepare('DELETE FROM fin_holdings WHERE id = ?').run(id));
 
-export function updateHolding(store: Store, id: string, patch: { name?: string; quantity?: number; costBasis?: number; price?: number | null; notes?: string }): void {
+export function updateHolding(store: Store, id: string, patch: { name?: string; quantity?: number; costBasis?: number; price?: number | null; notes?: string; liquid?: boolean | null }): void {
   const row = store.db.prepare('SELECT * FROM fin_holdings WHERE id = ?').get(id) as Row | undefined;
   if (!row) throw new NotFound('Holding');
   const next = {
@@ -208,7 +213,8 @@ export function updateHolding(store: Store, id: string, patch: { name?: string; 
     price: row.kind === 'cash' ? 1 : patch.price !== undefined ? patch.price : row.price,
     notes: patch.notes !== undefined ? patch.notes.slice(0, 500) : row.notes,
   };
-  store.db.prepare('UPDATE fin_holdings SET name = ?, quantity = ?, cost_basis = ?, price = ?, notes = ?, updated_at = ? WHERE id = ?').run(next.name, next.quantity, next.cost_basis, next.price, next.notes, nowIso(), id);
+  const liquid = patch.liquid === undefined ? row.liquid : patch.liquid === null ? null : Number(patch.liquid);
+  store.db.prepare('UPDATE fin_holdings SET name = ?, quantity = ?, cost_basis = ?, price = ?, notes = ?, liquid = ?, updated_at = ? WHERE id = ?').run(next.name, next.quantity, next.cost_basis, next.price, next.notes, liquid, nowIso(), id);
   syncSymbols(store);
 }
 
@@ -262,6 +268,8 @@ function valueHolding(r: Row, quote: Quote | null, fx: FxRates | null, base: str
     gainPct: gain !== null ? gain / r.cost_basis : null,
     valueBase: valueBase === null ? null : r2(valueBase),
     change24hPct: live && quote ? quote.changePct : null,
+    liquid: r.liquid === null || r.liquid === undefined ? liquidByKind(r.kind) : !!r.liquid,
+    liquidSet: r.liquid === null || r.liquid === undefined ? null : !!r.liquid,
   };
 }
 
@@ -1355,7 +1363,13 @@ export function financeState(store: Store, today: string): FinanceState {
     debts,
     alerts: (store.db.prepare('SELECT * FROM fin_alerts ORDER BY triggered_at IS NOT NULL, created_at DESC LIMIT 30').all() as Row[]).map(alertFromRow),
     watchlist: settings.watchlist,
-    netWorth: { assets: r2(assets), debts: r2(owed), net: r2(assets - owed), unpriced: holdings.filter((h) => h.valueBase === null && h.quantity > EPS).map((h) => h.name) },
+    netWorth: {
+      assets: r2(assets),
+      debts: r2(owed),
+      net: r2(assets - owed),
+      liquid: r2(holdings.reduce((n, h) => n + (h.liquid ? (h.valueBase ?? 0) : 0), 0)),
+      illiquid: r2(holdings.reduce((n, h) => n + (h.liquid ? 0 : (h.valueBase ?? 0)), 0)),
+      unpriced: holdings.filter((h) => h.valueBase === null && h.quantity > EPS).map((h) => h.name) },
     market: feed.state(),
     plan: salaryPlan(store, { today, currency: base, recurring, holdings, debts, toBase }),
   };
@@ -1384,7 +1398,7 @@ registerSnapshotSection<Store>('Money', (store, today) => {
   const lines = [`Base currency ${c}. This month: income ${money(f.month.income, c)}, spending ${money(f.month.expense, c)}${f.month.savingsRate !== null ? `, saving ${Math.round(f.month.savingsRate * 100)}%` : ''}.`];
   const over = f.month.byCategory.filter((x) => x.budget && x.amount > x.budget);
   if (over.length) lines.push(`Over budget: ${over.map((x) => `${x.category} ${money(x.amount, c)} of ${money(x.budget!, c)}`).join('; ')}.`);
-  if (f.holdings.length || f.debts.length) lines.push(`Net worth ${money(f.netWorth.net, c)} (assets ${money(f.netWorth.assets, c)}, debts ${money(f.netWorth.debts, c)})${f.netWorth.unpriced.length ? `; unpriced: ${f.netWorth.unpriced.join(', ')}` : ''}.`);
+  if (f.holdings.length || f.debts.length) lines.push(`Net worth ${money(f.netWorth.net, c)} (assets ${money(f.netWorth.assets, c)}: ${money(f.netWorth.liquid, c)} liquid, ${money(f.netWorth.illiquid, c)} illiquid such as CPF or property; debts ${money(f.netWorth.debts, c)})${f.netWorth.unpriced.length ? `; unpriced: ${f.netWorth.unpriced.join(', ')}` : ''}.`);
   if (f.crypto) lines.push(`Crypto: ${usd(f.crypto.value)}, unrealized ${f.crypto.gain >= 0 ? '+' : '−'}${usd(Math.abs(f.crypto.gain))}, realized ${f.crypto.realized >= 0 ? '+' : '−'}${usd(Math.abs(f.crypto.realized))}. Positions: ${f.holdings.filter((h) => h.live && h.quantity > EPS).map((h) => `${h.quantity} ${h.symbol}${h.unitPrice ? ` @ ${usd(h.unitPrice)}` : ''}`).join(', ') || 'none'}.`);
   if (f.recurring.some((r) => r.active)) {
     lines.push(`Recurring, a month: in ${money(f.recurringMonthly.income, c)}, out ${money(f.recurringMonthly.expense, c)}. Still to come this month: in ${money(f.month.expected.income, c)}, out ${money(f.month.expected.expense, c)}, leaving about ${money(f.month.expected.net, c)}.`);
@@ -1422,8 +1436,9 @@ const holdingInput = z.object({
   price: z.number().min(0).max(1e12).nullable().optional(),
   currency: currency.optional(),
   notes: z.string().max(500).optional(),
+  liquid: z.boolean().nullable().optional(),
 });
-const holdingPatch = z.object({ name: z.string().max(80).optional(), quantity: z.number().min(0).max(1e12).optional(), cost_basis: z.number().min(0).max(1e12).optional(), price: z.number().min(0).max(1e12).nullable().optional(), notes: z.string().max(500).optional() });
+const holdingPatch = z.object({ name: z.string().max(80).optional(), quantity: z.number().min(0).max(1e12).optional(), cost_basis: z.number().min(0).max(1e12).optional(), price: z.number().min(0).max(1e12).nullable().optional(), notes: z.string().max(500).optional(), liquid: z.boolean().nullable().optional() });
 const tradeInput = z.object({
   symbol,
   side: z.enum(['buy', 'sell']),
@@ -1486,7 +1501,7 @@ function findRecurring(store: Store, nameOrId: string): Row {
 
 const alertInput = z.object({ symbol, price: z.number().positive().max(1e9), direction: z.enum(['above', 'below']).optional(), note: z.string().max(200).optional() });
 
-const toHolding = (h: z.infer<typeof holdingInput>): HoldingInput => ({ kind: h.kind, name: h.name, symbol: h.symbol, quantity: h.quantity, costBasis: h.cost_basis, price: h.price, currency: h.currency, notes: h.notes });
+const toHolding = (h: z.infer<typeof holdingInput>): HoldingInput => ({ kind: h.kind, name: h.name, symbol: h.symbol, quantity: h.quantity, costBasis: h.cost_basis, price: h.price, currency: h.currency, notes: h.notes, liquid: h.liquid });
 const toDebt = (d: z.infer<typeof debtPatch>) => ({ name: d.name, kind: d.kind, lender: d.lender, balance: d.balance, original: d.original, apr: d.apr, minPayment: d.min_payment, dueDay: d.due_day, notes: d.notes });
 
 function findDebt(store: Store, nameOrId: string): Row {
@@ -1587,7 +1602,7 @@ registerFeature({
     ),
     tool(
       'add_holding',
-      "Add something the user owns to the portfolio: a bank or cash balance (kind cash, quantity = the balance), a coin (kind crypto, symbol like BTC, priced live in USD; cost_basis is the total paid in USD), a stock or fund (symbol, quantity, price per unit), retirement (e.g. CPF), property or other (quantity 1, price = its value). For a coin they're actively trading, prefer log_crypto_trade so cost and P&L stay right.",
+      "Add something the user owns to the portfolio: a bank or cash balance (kind cash, quantity = the balance), a coin (kind crypto, symbol like BTC, priced live in USD; cost_basis is the total paid in USD), a stock or fund (symbol, quantity, price per unit), retirement (e.g. CPF), property or other (quantity 1, price = its value). For a coin they're actively trading, prefer log_crypto_trade so cost and P&L stay right. Set liquid false for anything that can't be sold within days whatever its kind (RSUs only sellable in company buybacks, a fixed deposit locked in); null follows the kind (cash, crypto, stocks and funds liquid; CPF, property and other not).",
       holdingInput,
       (h, { store }) => {
         const row = addHolding(store, toHolding(h));
@@ -1596,10 +1611,10 @@ registerFeature({
     ),
     tool(
       'update_holding',
-      'Update a holding: a new balance for an account (quantity), a new value or unit price, quantity or cost basis. Find ids with get_finances.',
+      'Update a holding: a new balance for an account (quantity), a new value or unit price, quantity or cost basis, or whether it is liquid (true, false, or null to follow its kind). Find ids with get_finances.',
       holdingPatch.extend({ id: z.string() }),
       ({ id, ...p }, { store }) => {
-        updateHolding(store, id, { name: p.name, quantity: p.quantity, costBasis: p.cost_basis, price: p.price, notes: p.notes });
+        updateHolding(store, id, { name: p.name, quantity: p.quantity, costBasis: p.cost_basis, price: p.price, notes: p.notes, liquid: p.liquid });
         return { data: { ok: true }, summary: 'Updated a holding' };
       },
     ),
@@ -1767,7 +1782,7 @@ registerFeature({
     });
     app.patch('/api/finance/holdings/:id', async (c) => {
       const p = await read(c, holdingPatch);
-      updateHolding(store, c.req.param('id'), { name: p.name, quantity: p.quantity, costBasis: p.cost_basis, price: p.price, notes: p.notes });
+      updateHolding(store, c.req.param('id'), { name: p.name, quantity: p.quantity, costBasis: p.cost_basis, price: p.price, notes: p.notes, liquid: p.liquid });
       return c.json(state(c));
     });
     app.delete('/api/finance/holdings/:id', (c) => {
