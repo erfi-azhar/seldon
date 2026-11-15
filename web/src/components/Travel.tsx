@@ -6,7 +6,7 @@
 import { ArrowLeft, BedDouble, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
-import type { Cabin, EliteNights, FlightOption, ItineraryItem, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { Cabin, EliteNights, FlightOption, ItineraryItem, LoungePick, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
 import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -659,113 +659,193 @@ function StayRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
 }
 
 /**
- * A connection, opened from its layover pill: the lounges you can use while you wait, from the
- * fare and status on the flight you leave on and from lounge cards (Priority Pass, Revolut Ultra),
- * then the specific lounges at the airport, which the agent looks up.
+ * A connection, opened from its layover pill. The two flights and the wait at the top; then whether
+ * your ticket and status or a lounge card get you in; then the lounge to head for, which Seldon
+ * looks up as the sheet opens (lounges you can reach airside first, ones you can't flagged).
  */
 function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip; from: Segment; to: Segment; loyalty: LoyaltyAccount[]; onClose: () => void }) {
   const { agentName } = useApp();
   const find = useWrite(() => travelWrite.post(`/segments/${to.id}/companion`));
-  const wait = minutesBetween(from.endUtc, to.startUtc);
-  const place = to.fromCity || to.fromName || to.fromCode;
   const notes = trip.companion[to.id];
-  const flight = (s: Segment) => `${s.carrier} ${s.number}`.trim();
+  // Look the lounges up as soon as the sheet opens, once, unless they already are.
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current || notes) return;
+    asked.current = true;
+    find.mutate(undefined);
+  }, [notes, find]);
+
+  const wait = minutesBetween(from.endUtc, to.startUtc);
+  const city = to.fromCity || to.fromName || to.fromCode;
+  const flight = (x: Segment) => `${x.carrier} ${x.number}`.trim();
   const kf = loyalty.find((a) => a.program === 'KrisFlyer');
   const cards = loyalty.filter((a) => a.kind === 'lounge');
-  const fare = to.cabin || 'Economy';
   const star = KRISFLYER_ELITE.has(to.carrier.toUpperCase()) && to.carrier.toUpperCase() !== 'TR';
-  const status = to.lounges.filter((l) => !cards.some((c) => c.program === l.basis));
-  const viaCard = to.lounges.filter((l) => cards.some((c) => c.program === l.basis));
-  // "Name — details · access" from the agent: the name stands out.
-  const split = (line: string) => {
-    const at = line.indexOf(' — ');
-    return at > 0 ? [line.slice(0, at), line.slice(at + 3)] : [line, ''];
-  };
+  const byTicket = to.lounges.filter((l) => !cards.some((c) => c.program === l.basis));
+  const byCard = to.lounges.filter((l) => cards.some((c) => c.program === l.basis));
+  // Lounges as the agent found them; older notes were plain lines, "Name — details · access".
+  const picks: LoungePick[] =
+    notes?.picks ??
+    (notes?.lounges ?? []).map((line) => {
+      const [name, rest = ''] = line.split(' — ');
+      const at = rest.lastIndexOf(' · ');
+      return { name: name!, where: at > 0 ? rest.slice(0, at) : rest, access: at > 0 ? rest.slice(at + 3) : '', reachable: !/not (on|reachable)/i.test(line), note: '' };
+    });
+  const usable = picks.filter((p) => p.reachable);
+  const other = picks.filter((p) => !p.reachable);
+  const best = usable[0];
+
   return (
-    <Modal title={`Lounges in ${place}`} onClose={onClose}>
-      <p className="lounge-lede">
-        <b>{hm(wait)}</b> between {flight(from)}, landing {time(from.endLocal)}, and {flight(to)} to {to.toCity || to.toCode}, leaving {time(to.startLocal)}.
-        {wait < 60 && ' Tight: head straight for the gate.'}
-      </p>
-
-      <h3 className="lounge-h">Your fare and status on {flight(to)}</h3>
-      {status.length ? (
-        <ul className="lounge-rules">
-          {status.map((l) => (
-            <li key={l.access}>
-              <CheckIcon size={13} aria-hidden />
-              <span>
-                <b>{l.access}</b>
-                <small>{l.basis}</small>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="lounge-none">
-          Not with {fare} on {flight(to)}
-          {kf ? ` and KrisFlyer ${kf.tier}` : ''}. {star ? `Business on this flight, or KrisFlyer Elite Gold (Star Alliance Gold), would get you in.` : 'A Business fare would get you in.'}
-        </p>
-      )}
-
-      <h3 className="lounge-h">Lounge cards</h3>
-      {viaCard.length ? (
-        <ul className="lounge-rules">
-          {viaCard.map((l) => (
-            <li key={l.access}>
-              <CheckIcon size={13} aria-hidden />
-              <span>
-                <b>{l.access}</b>
-                <small>{l.basis}</small>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="lounge-none">No lounge card saved. Add Priority Pass or Revolut Ultra under Loyalty to see what it opens here.</p>
-      )}
-
-      <div className="lounge-here">
-        <div className="lounge-here-head">
-          <h3 className="lounge-h">At {to.fromCode || place}</h3>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={find.isPending} onClick={() => find.mutate(undefined)}>
-            {find.isPending ? <Spinner /> : <Sparkles size={13} />} {notes ? 'Look again' : `Find them with ${agentName}`}
-          </button>
+    <Modal title={`Lounges in ${city}`} onClose={onClose}>
+      <div className="lx-route" aria-label={`${hm(wait)} in ${city} between ${flight(from)} and ${flight(to)}`}>
+        <div className="lx-leg">
+          <AirlineTail code={from.carrier} size={28} />
+          <span>
+            <b>{flight(from)}</b>
+            <small>lands {time(from.endLocal)}</small>
+          </span>
         </div>
-        {find.error && <p className="error-text">{find.error.message}</p>}
-        {notes ? (
-          <>
-            <ul className="lounge-list">
-              {notes.lounges.map((line) => {
-                const [name, rest] = split(line);
-                return (
-                  <li key={line}>
-                    <Sofa size={14} aria-hidden />
-                    <span>
-                      <b>{name}</b>
-                      {rest && <small>{rest}</small>}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-            {notes.plan.length > 0 && (
-              <>
-                <h3 className="lounge-h">With the time</h3>
-                <ul className="lounge-plan">
-                  {notes.plan.map((p) => (
-                    <li key={p}>{p}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        ) : (
-          <p className="lounge-none">{find.isPending ? `${agentName} is looking up the lounges you can reach airside…` : `${agentName} can name the lounges at ${place} that these get you into, with terminals and what is worth knowing.`}</p>
-        )}
+        <div className={cx('lx-wait', wait < 60 && 'is-tight')}>
+          <i aria-hidden />
+          <span>
+            <Clock size={12} aria-hidden /> {hm(wait)}
+          </span>
+          <i aria-hidden />
+        </div>
+        <div className="lx-leg is-out">
+          <span>
+            <b>{flight(to)}</b>
+            <small>leaves {time(to.startLocal)}</small>
+          </span>
+          <AirlineTail code={to.carrier} size={28} />
+        </div>
       </div>
-      <p className="lounge-foot">The rules are the published ones in broad strokes; the lounge desk has the final word. Revolut Ultra passes are in the app under Lifestyle, then Lounges.</p>
+
+      <section className="lx-block">
+        <h3 className="lx-h">Lounge for you</h3>
+        {find.isPending && !notes ? (
+          <div className="lx-finding">
+            <Spinner />
+            <span>
+              {agentName} is finding the lounges you can reach in {city} on this connection…
+            </span>
+          </div>
+        ) : best ? (
+          <div className="lx-best">
+            <span className="lx-best-tag">
+              <Sofa size={12} aria-hidden /> Head here
+            </span>
+            <b className="lx-best-name">{best.name}</b>
+            {best.where && (
+              <span className="lx-where">
+                <MapPin size={12} aria-hidden /> {best.where}
+              </span>
+            )}
+            {best.access && <span className="lx-access">{best.access}</span>}
+            {best.note && <p className="lx-note">{best.note}</p>}
+          </div>
+        ) : notes ? (
+          <div className="lx-best is-none">
+            <b className="lx-best-name">No lounge you can reach on this connection</b>
+            <p className="lx-note">Your ticket, status and cards don’t open a lounge you can get to here.{other.length ? ' What’s nearby is below.' : ''}</p>
+          </div>
+        ) : (
+          <div className="lx-finding">
+            <span>{find.error ? find.error.message : `${agentName} can find the lounge for you.`}</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => find.mutate(undefined)}>
+              <Sparkles size={13} /> {find.error ? 'Try again' : 'Find it'}
+            </button>
+          </div>
+        )}
+        {usable.length > 1 && (
+          <ul className="lx-list">
+            {usable.slice(1).map((p) => (
+              <LoungePickRow key={p.name} p={p} />
+            ))}
+          </ul>
+        )}
+        {other.length > 0 && (
+          <>
+            <p className="lx-sub">Not on this connection</p>
+            <ul className="lx-list is-off">
+              {other.map((p) => (
+                <LoungePickRow key={p.name} p={p} />
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+
+      <section className="lx-block">
+        <h3 className="lx-h">Your way in</h3>
+        <ul className="lx-access-list">
+          <li className={cx(byTicket.length ? 'is-yes' : 'is-no')}>
+            <span className="lx-mark" aria-hidden>
+              {byTicket.length ? <CheckIcon size={12} /> : <span>×</span>}
+            </span>
+            <span>
+              <b>
+                {to.cabin || 'Economy'} on {flight(to)}
+                {kf ? ` · KrisFlyer ${kf.tier}` : ''}
+              </b>
+              <small>{byTicket.length ? byTicket.map((l) => l.access).join('; ') : star ? 'No lounge. Business on this flight or KrisFlyer Elite Gold would.' : 'No lounge. A Business fare would.'}</small>
+            </span>
+          </li>
+          {byCard.map((l) => (
+            <li key={l.basis} className="is-yes">
+              <span className="lx-mark" aria-hidden>
+                <CheckIcon size={12} />
+              </span>
+              <span>
+                <b>{l.basis}</b>
+                <small>{l.access}</small>
+              </span>
+            </li>
+          ))}
+          {cards.length === 0 && (
+            <li className="is-no">
+              <span className="lx-mark" aria-hidden>
+                <span>×</span>
+              </span>
+              <span>
+                <b>No lounge card</b>
+                <small>Add Priority Pass or Revolut Ultra under Loyalty.</small>
+              </span>
+            </li>
+          )}
+        </ul>
+      </section>
+
+      {notes && notes.plan.length > 0 && (
+        <section className="lx-block">
+          <h3 className="lx-h">With {hm(wait)}</h3>
+          <ul className="lx-plan">
+            {notes.plan.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <footer className="lx-foot">
+        <span>The lounge desk has the final word.{cards.some((c) => /revolut/i.test(c.program)) && ' Revolut passes: Lifestyle → Lounges in the app.'}</span>
+        {notes && (
+          <button type="button" className="btn btn-ghost btn-sm" disabled={find.isPending} onClick={() => find.mutate(undefined)}>
+            {find.isPending ? <Spinner /> : <Sparkles size={13} />} Look again
+          </button>
+        )}
+      </footer>
     </Modal>
+  );
+}
+
+function LoungePickRow({ p }: { p: LoungePick }) {
+  return (
+    <li>
+      <b>{p.name}</b>
+      <span className="lx-row-meta">{[p.where, p.access].filter(Boolean).join(' · ')}</span>
+      {p.note && <span className="lx-row-note">{p.note}</span>}
+    </li>
   );
 }
 

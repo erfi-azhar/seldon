@@ -697,7 +697,7 @@ export interface Trip {
   /** Hotels to weigh before booking, nearest first. */
   stayOptions: StayOption[];
   /** Seldon's airport and layover notes, keyed by flight segment id. */
-  companion: Record<string, { lounges: string[]; plan: string[]; generatedAt: string }>;
+  companion: Record<string, { lounges: string[]; plan: string[]; generatedAt: string; picks?: LoungePick[] }>;
 }
 
 /** One flight within a flight option, with local times at each end and the instants they make. */
@@ -775,6 +775,19 @@ export interface LoyaltyAccount {
   memberSuffix: string;
   updatedAt: string;
   source: string;
+}
+
+/** A lounge the agent found at an airport for one flight, and whether it works for this trip. */
+export interface LoungePick {
+  name: string;
+  /** Terminal, concourse or gates, and airside or landside. */
+  where: string;
+  /** How they get in: "Revolut Ultra", "Business fare", "Pay at the door, about €40". */
+  access: string;
+  /** Usable on this trip: airside where they land and leave, and open at the time. */
+  reachable: boolean;
+  /** One line worth knowing: showers, the best of several, why it doesn't work. */
+  note: string;
 }
 
 export interface LoungeAccess {
