@@ -10,7 +10,7 @@ import { NoBrain, think } from '../agent/think.ts';
 import { tool } from '../agent/tools.ts';
 import { read } from '../http.ts';
 import { dateInZone, Invalid, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { Book, BookCandidate, BookStatus } from '../../../shared/types.ts';
+import type { Book, BookCandidate, BookKind, BookStatus } from '../../../shared/types.ts';
 import { safeFetch } from './fetcher.ts';
 import { registerFeature } from './registry.ts';
 
@@ -49,6 +49,8 @@ export interface Found {
   coverUrl: string;
   thumb: string;
   infoUrl: string;
+  /** Subject headings (Open Library) or categories (Google Books), to tell fiction from not. */
+  subjects: string[];
 }
 
 const OL = 'https://openlibrary.org';
@@ -92,8 +94,9 @@ interface OlDoc {
   cover_i?: number;
   ratings_average?: number;
   ratings_count?: number;
+  subject?: string[];
 }
-const OL_FIELDS = 'key,title,author_name,first_publish_year,number_of_pages_median,isbn,cover_i,ratings_average,ratings_count';
+const OL_FIELDS = 'key,title,author_name,first_publish_year,number_of_pages_median,isbn,cover_i,ratings_average,ratings_count,subject';
 
 function fromOl(d: OlDoc): Found | null {
   if (!d.key || !d.title) return null;
@@ -111,6 +114,7 @@ function fromOl(d: OlDoc): Found | null {
     coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg?default=false` : '',
     thumb: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-S.jpg` : '',
     infoUrl: `${OL}${d.key}`,
+    subjects: (d.subject ?? []).slice(0, 60),
   };
 }
 
@@ -129,6 +133,7 @@ interface GbVolume {
     imageLinks?: Record<string, string>;
     infoLink?: string;
     canonicalVolumeLink?: string;
+    categories?: string[];
   };
 }
 
@@ -152,7 +157,21 @@ function fromGb(v: GbVolume): Found | null {
     coverUrl: https(big),
     thumb: https(img.smallThumbnail ?? img.thumbnail),
     infoUrl: https(i.canonicalVolumeLink ?? i.infoLink),
+    subjects: i.categories ?? [],
   };
+}
+
+/**
+ * Fiction or non-fiction, from a book's subject headings: '' when they don't say. Non-fiction
+ * wins when named outright ("Nonfiction", "Biography & Autobiography"); otherwise any kind of
+ * fiction (novels, fantasy, thrillers, poetry…) makes it fiction.
+ */
+export function kindFrom(subjects: string[]): BookKind | '' {
+  const s = subjects.map((x) => x.toLowerCase());
+  if (s.some((x) => /\bnon-?fiction\b/.test(x))) return 'nonfiction';
+  if (s.some((x) => /\b(fiction|novels?|fantasy|thrillers?|romance|poetry|short stories|graphic novels?|comics|litrpg)\b/.test(x))) return 'fiction';
+  if (s.some((x) => /\b(biography|autobiography|memoirs?|history|business|economics|finance|investments?|science|psychology|philosophy|self-help|politics|political|social science|sociology|essays|religion|travel|cooking|health|true crime|race relations|management|technology)\b/.test(x))) return 'nonfiction';
+  return '';
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -218,7 +237,7 @@ async function olWork(ref: string, hint: { title: string; author: string }): Pro
   const id = ref.slice(3);
   if (!/^OL\d+W$/.test(id)) return null;
   const [work, ratings] = await Promise.all([
-    getJson<{ title?: string; description?: string | { value?: string } }>(`${OL}/works/${id}.json`),
+    getJson<{ title?: string; description?: string | { value?: string }; subjects?: string[] }>(`${OL}/works/${id}.json`),
     getJson<{ summary?: { average?: number; count?: number } }>(`${OL}/works/${id}/ratings.json`),
   ]);
   let base = recent.get(ref) ?? null;
@@ -227,7 +246,8 @@ async function olWork(ref: string, hint: { title: string; author: string }): Pro
     base = (await searchOl(hint.author ? { title, author: hint.author } : { title }, 10)).find((f) => f.ref === ref) ?? null;
   }
   if (!base && !work?.title) return null;
-  const f: Found = base ? { ...base } : { ref, title: work!.title!, author: hint.author, year: null, pages: null, isbn: '', synopsis: '', rating: null, ratingsCount: null, coverUrl: '', thumb: '', infoUrl: `${OL}/works/${id}` };
+  const f: Found = base ? { ...base } : { ref, title: work!.title!, author: hint.author, year: null, pages: null, isbn: '', synopsis: '', rating: null, ratingsCount: null, coverUrl: '', thumb: '', infoUrl: `${OL}/works/${id}`, subjects: [] };
+  if (work?.subjects?.length) f.subjects = work.subjects.slice(0, 60);
   const desc = typeof work?.description === 'string' ? work.description : work?.description?.value;
   if (desc) f.synopsis = cleanSynopsis(desc);
   if (ratings?.summary?.count && ratings.summary.count > (f.ratingsCount ?? 0)) {
@@ -257,6 +277,7 @@ export interface LookedUp {
   ratingSource: string;
   coverUrl: string;
   infoUrl: string;
+  kind: BookKind | '';
 }
 
 const SOURCE = { ol: 'Open Library', gb: 'Google Books' } as const;
@@ -313,6 +334,8 @@ export async function lookUpBook(want: { ref?: string; title: string; author?: s
     // Open Library's large covers are sharper than Google's.
     coverUrl: ol?.coverUrl || gb?.coverUrl || '',
     infoUrl: primary.infoUrl,
+    // Google's categories are one or two plain labels; Open Library's subjects are many and loose.
+    kind: kindFrom(gb?.subjects ?? []) || kindFrom(ol?.subjects ?? []),
   };
 }
 
@@ -329,6 +352,22 @@ async function writeSynopsis(store: Store, title: string, author: string): Promi
     return out.synopsis.trim();
   } catch (err) {
     if (!(err instanceof NoBrain)) console.warn('[reading] could not write a synopsis:', err instanceof Error ? err.message : err);
+    return '';
+  }
+}
+
+/** When the subjects don't say: whether it is fiction, from the background brain's own knowledge. */
+async function guessKind(store: Store, title: string, author: string): Promise<BookKind | ''> {
+  try {
+    const out = await think({
+      store,
+      task: `Is the book below fiction (novels, stories, poetry) or nonfiction? If you do not know this book, answer "unknown". Reply as {"kind": "fiction" | "nonfiction" | "unknown"}.`,
+      input: `Title: ${title}\nAuthor: ${author || 'unknown'}`,
+      schema: z.object({ kind: z.enum(['fiction', 'nonfiction', 'unknown']) }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    return out.kind === 'unknown' ? '' : out.kind;
+  } catch {
     return '';
   }
 }
@@ -413,6 +452,7 @@ function toBook(r: Row): Book {
     infoUrl: r.info_url,
     color: r.color,
     status: r.status as BookStatus,
+    kind: (r.kind ?? '') as BookKind | '',
     note: r.note,
     startedAt: r.started_at ?? null,
     finishedAt: r.finished_at ?? null,
@@ -433,11 +473,11 @@ export function getBook(store: Store, id: string): Book {
 const learningSphere = (store: Store) => store.listSpheres().find((s) => s.key === 'learning')?.id ?? null;
 
 /** Add a book, looked up by its search match (ref) or by title and author. */
-export async function addBook(store: Store, input: { ref?: string; title: string; author?: string; status?: BookStatus; synopsis?: string }): Promise<Book> {
+export async function addBook(store: Store, input: { ref?: string; title: string; author?: string; status?: BookStatus; synopsis?: string; kind?: BookKind }): Promise<Book> {
   const title = input.title.trim();
   if (!title && !input.ref) throw new Invalid('Name the book to add.');
   const found = await lookUpBook({ ref: input.ref, title, author: input.author });
-  const b = found ?? { title, author: (input.author ?? '').trim(), year: null, pages: null, isbn: '', synopsis: '', synopsisSource: '', rating: null, ratingsCount: null, ratingSource: '', coverUrl: '', infoUrl: '' };
+  const b: LookedUp = found ?? { title, author: (input.author ?? '').trim(), year: null, pages: null, isbn: '', synopsis: '', synopsisSource: '', rating: null, ratingsCount: null, ratingSource: '', coverUrl: '', infoUrl: '', kind: '' };
   if (!b.title) throw new Invalid('That book could not be found. Try its title and author.');
   const dupe = listBooks(store).find((x) => sameBook(x, b));
   if (dupe) throw new Invalid(`“${dupe.title}” is already on your reading list.`);
@@ -450,16 +490,17 @@ export async function addBook(store: Store, input: { ref?: string; title: string
     synopsis = await writeSynopsis(store, b.title, b.author);
     if (synopsis) synopsisSource = store.getProfile().agentName;
   }
+  const kind = input.kind || b.kind || (await guessKind(store, b.title, b.author));
   const id = newId();
   const now = nowIso();
   const status = input.status ?? 'want';
   const first = (store.db.prepare('SELECT MIN(position) AS p FROM reading_books').get() as Row).p as number | null;
   store.db
     .prepare(
-      `INSERT INTO reading_books (id, title, author, year, pages, isbn, synopsis, synopsis_source, rating, ratings_count, rating_source, cover_url, buy_url, info_url, status, position, started_at, finished_at, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO reading_books (id, title, author, year, pages, isbn, synopsis, synopsis_source, rating, ratings_count, rating_source, cover_url, buy_url, info_url, status, kind, position, started_at, finished_at, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
-    .run(id, b.title, b.author, b.year, b.pages, b.isbn, synopsis, synopsisSource, b.rating, b.ratingsCount, b.ratingSource, b.coverUrl, buyLink(store.zone(), b), b.infoUrl, status, (first ?? 1) - 1, status === 'reading' ? now : null, status === 'read' ? now : null, now, now);
+    .run(id, b.title, b.author, b.year, b.pages, b.isbn, synopsis, synopsisSource, b.rating, b.ratingsCount, b.ratingSource, b.coverUrl, buyLink(store.zone(), b), b.infoUrl, status, kind, (first ?? 1) - 1, status === 'reading' ? now : null, status === 'read' ? now : null, now, now);
   store.record('created', 'book', id, learningSphere(store), `Added “${b.title}” to the reading list`);
   if (status === 'read') countFinished(store, 1);
   return getBook(store, id);
@@ -470,6 +511,7 @@ const patchSchema = z.object({
   author: z.string().trim().max(300),
   synopsis: z.string().trim().max(5000),
   status: z.enum(['want', 'reading', 'read']),
+  kind: z.enum(['fiction', 'nonfiction']),
   note: z.string().max(5000),
   buyUrl: z.union([z.literal(''), z.url({ protocol: /^https?$/ })]),
   coverUrl: z.union([z.literal(''), z.url({ protocol: /^https?$/ })]),
@@ -488,6 +530,7 @@ export function updateBook(store: Store, id: string, patch: z.infer<typeof patch
     set('synopsis_source', patch.synopsis ? 'you' : '');
   }
   if (patch.note !== undefined) set('note', patch.note);
+  if (patch.kind !== undefined) set('kind', patch.kind);
   if (patch.buyUrl !== undefined) set('buy_url', patch.buyUrl || buyLink(store.zone(), cur));
   if (patch.coverUrl !== undefined) {
     set('cover_url', patch.coverUrl);
@@ -520,6 +563,11 @@ export async function refreshBook(store: Store, id: string): Promise<Book> {
     .run(found.year, found.pages, found.isbn, synopsis, source, found.rating, found.ratingsCount, found.ratingSource, found.coverUrl || '', found.infoUrl, found.coverUrl || '', nowIso(), id);
   // A cover that failed before gets another go.
   store.db.prepare('DELETE FROM reading_covers WHERE book_id = ? AND bytes IS NULL').run(id);
+  // Which shelf it is on is left alone once known: it may be your choice.
+  if (!cur.kind) {
+    const kind = found.kind || (await guessKind(store, cur.title, cur.author));
+    if (kind) store.db.prepare('UPDATE reading_books SET kind = ? WHERE id = ?').run(kind, id);
+  }
   return getBook(store, id);
 }
 
@@ -575,6 +623,7 @@ registerSnapshotSection<Store>('Reading list', (store) => {
 });
 
 const statusSchema = z.enum(['want', 'reading', 'read']).describe("'want' (want to read), 'reading' or 'read'");
+const kindSchema = z.enum(['fiction', 'nonfiction']).describe("Which shelf: 'fiction' or 'nonfiction'. Leave out to have it worked out.");
 
 registerFeature({
   id: 'reading',
@@ -585,25 +634,25 @@ registerFeature({
       "Read the user's reading list: each book's id, title, author, status (want, reading, read), rating and note.",
       z.object({}),
       (_, { store }) => ({
-        data: listBooks(store).map((b) => ({ id: b.id, title: b.title, author: b.author, status: b.status, year: b.year ?? undefined, rating: b.rating ?? undefined, note: b.note || undefined })),
+        data: listBooks(store).map((b) => ({ id: b.id, title: b.title, author: b.author, status: b.status, shelf: b.kind || undefined, year: b.year ?? undefined, rating: b.rating ?? undefined, note: b.note || undefined })),
         summary: 'Read the reading list',
       }),
     ),
     tool(
       'add_book_to_reading_list',
       'Add a book the user named to their reading list. Terminus looks up its cover, synopsis, ratings and where to buy it. Give the title and the author when known. Only pass a synopsis if you know the book well.',
-      z.object({ title: z.string().min(1).max(300), author: z.string().max(300).default(''), status: statusSchema.default('want'), synopsis: z.string().max(1500).default('') }),
-      async ({ title, author, status, synopsis }, { store }) => {
-        const b = await addBook(store, { title, author, status, synopsis });
+      z.object({ title: z.string().min(1).max(300), author: z.string().max(300).default(''), status: statusSchema.default('want'), shelf: kindSchema.optional(), synopsis: z.string().max(1500).default('') }),
+      async ({ title, author, status, shelf, synopsis }, { store }) => {
+        const b = await addBook(store, { title, author, status, synopsis, kind: shelf });
         return { data: { ok: true, id: b.id, title: b.title, author: b.author, year: b.year, rating: b.rating, found_cover: !!b.cover }, summary: `Added “${b.title}” to the reading list` };
       },
     ),
     tool(
       'update_book',
-      'Move a book on the reading list to want, reading or read, or set its note.',
-      z.object({ id: z.string().min(1).describe('The book id, from list_reading_list'), status: statusSchema.optional(), note: z.string().max(2000).optional() }),
-      ({ id, status, note }, { store }) => {
-        const b = updateBook(store, id, { status, note });
+      'Move a book on the reading list to want, reading or read, move it to the fiction or non-fiction shelf, or set its note.',
+      z.object({ id: z.string().min(1).describe('The book id, from list_reading_list'), status: statusSchema.optional(), shelf: kindSchema.optional(), note: z.string().max(2000).optional() }),
+      ({ id, status, shelf, note }, { store }) => {
+        const b = updateBook(store, id, { status, note, kind: shelf });
         return { data: { ok: true, title: b.title, status: b.status }, summary: status === 'read' ? `Finished “${b.title}”` : `Updated “${b.title}”` };
       },
     ),
@@ -615,7 +664,7 @@ registerFeature({
       return c.json(await searchBooks(q));
     });
     app.post('/api/books', async (c) => {
-      const body = await read(c, z.object({ ref: z.string().max(80).optional(), title: z.string().max(300).default(''), author: z.string().max(300).default(''), status: statusSchema.optional() }));
+      const body = await read(c, z.object({ ref: z.string().max(80).optional(), title: z.string().max(300).default(''), author: z.string().max(300).default(''), status: statusSchema.optional(), kind: z.enum(['fiction', 'nonfiction']).optional() }));
       return c.json(await addBook(store, body), 201);
     });
     app.patch('/api/books/:id', async (c) => c.json(updateBook(store, c.req.param('id'), await read(c, patchSchema))));

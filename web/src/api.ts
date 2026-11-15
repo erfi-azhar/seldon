@@ -343,7 +343,7 @@ export const useBooks = () => useQuery({ queryKey: ['books'], queryFn: () => api
 export const booksWrite = {
   search: (q: string) => api<BookCandidate[]>('POST', '/books/search', { q }),
   add: (body: { ref?: string; title: string; author?: string }) => api<Book>('POST', '/books', body),
-  patch: (id: string, body: Partial<Pick<Book, 'title' | 'author' | 'synopsis' | 'status' | 'note' | 'buyUrl' | 'color'>> & { coverUrl?: string }) => api<Book>('PATCH', `/books/${id}`, body),
+  patch: (id: string, body: Partial<Pick<Book, 'title' | 'author' | 'synopsis' | 'status' | 'note' | 'buyUrl' | 'color'>> & { kind?: 'fiction' | 'nonfiction' } & { coverUrl?: string }) => api<Book>('PATCH', `/books/${id}`, body),
   refresh: (id: string) => api<Book>('POST', `/books/${id}/refresh`),
   del: (id: string) => api<{ ok: true }>('DELETE', `/books/${id}`),
 };

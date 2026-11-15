@@ -5,7 +5,7 @@ import { after, beforeEach, test } from 'node:test';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
 import { allowPrivateAddressesForTests } from '../src/features/fetcher.ts';
-import { addBook, buyLink, cleanSynopsis, coverOf, listBooks, refreshBook, sameBook, searchBooks, setBooksFetch, updateBook } from '../src/features/reading.ts';
+import { addBook, buyLink, cleanSynopsis, coverOf, kindFrom, listBooks, refreshBook, sameBook, searchBooks, setBooksFetch, updateBook } from '../src/features/reading.ts';
 import { Store } from '../src/store.ts';
 import '../src/features/index.ts';
 
@@ -237,4 +237,40 @@ test('a title typed exactly comes first, even when a general search buries it', 
 
 test('Windows line breaks in a synopsis still make paragraphs', () => {
   assert.equal(cleanSynopsis('Cyrus Shams is lost.\r\n\r\nEver since…'), 'Cyrus Shams is lost.\n\nEver since…');
+});
+
+test('fiction or non-fiction, told from subject headings', () => {
+  assert.equal(kindFrom(['Fiction']), 'fiction');
+  assert.equal(kindFrom(['Juvenile Fiction']), 'fiction');
+  assert.equal(kindFrom(['Fiction, fantasy, general', 'Dungeons', 'LitRPG']), 'fiction');
+  assert.equal(kindFrom(['Business & Economics']), 'nonfiction');
+  assert.equal(kindFrom(['Biography & Autobiography']), 'nonfiction');
+  assert.equal(kindFrom(['Race relations', 'Great Britain']), 'nonfiction');
+  // Named outright, non-fiction wins over a stray "fiction".
+  assert.equal(kindFrom(['Nonfiction', 'Science fiction, history and criticism']), 'nonfiction');
+  assert.equal(kindFrom(['Dublin (Ireland)']), '');
+  assert.equal(kindFrom([]), '');
+});
+
+test('a book takes its shelf from Google’s categories, then Open Library’s subjects; yours is kept', async () => {
+  handlers = [
+    (u) => (u.startsWith('https://openlibrary.org/search.json') ? { docs: [{ ...olDune, subject: ['Dune (Imaginary place)', 'Fiction'] }] } : undefined),
+    (u) => (u === 'https://openlibrary.org/works/OL893415W.json' ? { title: 'Dune', subjects: ['Science fiction', 'Fiction'] } : undefined),
+    (u) => (u.startsWith('https://www.googleapis.com/books/v1/volumes?') ? { items: [{ ...gbDune, volumeInfo: { ...gbDune.volumeInfo, categories: ['Fiction'] } }] } : undefined),
+  ];
+  const store = fresh();
+  const dune = await addBook(store, { title: 'Dune', author: 'Frank Herbert' });
+  assert.equal(dune.kind, 'fiction');
+
+  // Unknown to both sources and no brain: no shelf yet, and it stands with the fiction.
+  const memoir = await addBook(store, { title: 'Untold Memoir', author: 'A. Person' });
+  assert.equal(memoir.kind, '');
+  assert.equal(updateBook(store, memoir.id, { kind: 'nonfiction' }).kind, 'nonfiction');
+
+  // Moved by hand, a refresh leaves it where you put it.
+  updateBook(store, dune.id, { kind: 'nonfiction' });
+  assert.equal((await refreshBook(store, dune.id)).kind, 'nonfiction');
+  // Given outright when added, the shelf is taken as given.
+  handlers = [];
+  assert.equal((await addBook(store, { title: 'Field Notes', kind: 'nonfiction' })).kind, 'nonfiction');
 });

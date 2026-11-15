@@ -1254,6 +1254,9 @@ export interface JourneyStatus {
 
 export type BookStatus = 'want' | 'reading' | 'read';
 
+/** Which shelf a book stands on. */
+export type BookKind = 'fiction' | 'nonfiction';
+
 export interface Book {
   id: string;
   title: string;
@@ -1276,6 +1279,8 @@ export interface Book {
   /** The spine's colour, read from the cover's left edge (#rrggbb), or '' until it is. */
   color: string;
   status: BookStatus;
+  /** Fiction or non-fiction; '' when it could not be told (it stands with the fiction). */
+  kind: BookKind | '';
   note: string;
   startedAt: string | null;
   finishedAt: string | null;

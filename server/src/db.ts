@@ -731,6 +731,10 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (guide_id, note_id)
   );
   `,
+  // Reading list: fiction or non-fiction, for its two shelves ('' until known).
+  `
+  ALTER TABLE reading_books ADD COLUMN kind TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

@@ -110,7 +110,11 @@ export function ReadingList() {
   const onShelf = [...all.filter((b) => b.status === 'reading'), ...all.filter((b) => b.status === 'want')];
   const done = all.filter((b) => b.status === 'read').sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''));
   const shown = shelf === 'shelf' ? onShelf : done;
-  const scroll = useScrollEdges<HTMLDivElement>('x', [shown.length, shelf]);
+  // Two shelves: fiction, and non-fiction. A book not yet told apart stands with the fiction.
+  const rows = [
+    { kind: 'fiction' as const, label: 'Fiction', books: shown.filter((b) => b.kind !== 'nonfiction') },
+    { kind: 'nonfiction' as const, label: 'Non-fiction', books: shown.filter((b) => b.kind === 'nonfiction') },
+  ].filter((r) => r.books.length > 0);
   const current = all.find((b) => b.id === open?.id) ?? null;
 
   return (
@@ -152,13 +156,10 @@ export function ReadingList() {
           </span>
         </button>
       ) : (
-        <div className="blur-wrap shelf-wrap">
-          <div className="shelf" ref={scroll.ref} onScroll={scroll.onScroll} role="list" aria-label={shelf === 'shelf' ? 'Books to read' : 'Books read'}>
-            {shown.map((b) => (
-              <Spine key={b.id} book={b} away={open?.id === b.id} onOpen={(origin) => setOpen({ id: b.id, origin })} />
-            ))}
-          </div>
-          <ScrollBlur axis="x" edges={scroll.edges} />
+        <div className="shelves">
+          {rows.map((r) => (
+            <ShelfRow key={r.kind} label={r.label} books={r.books} openId={open?.id ?? null} onOpen={(b, origin) => setOpen({ id: b.id, origin })} />
+          ))}
         </div>
       )}
 
@@ -194,6 +195,26 @@ const boxOf = (r: DOMRect): Box => ({ left: r.left, top: r.top, width: r.width, 
 
 /** The shelf slot a book stands in, to fly it back to. */
 const slotOf = (id: string) => document.querySelector<HTMLElement>(`[data-book-slot="${CSS.escape(id)}"]`);
+
+/** One shelf of books, with its name and count, scrolling sideways when it is full. */
+function ShelfRow({ label, books, openId, onOpen }: { label: string; books: Book[]; openId: string | null; onOpen: (b: Book, origin: Origin) => void }) {
+  const scroll = useScrollEdges<HTMLDivElement>('x', [books.length]);
+  return (
+    <section className="shelf-row" aria-label={label}>
+      <h3 className="shelf-label">
+        {label} <span className="faint">{books.length}</span>
+      </h3>
+      <div className="blur-wrap shelf-wrap">
+        <div className="shelf" ref={scroll.ref} onScroll={scroll.onScroll} role="list" aria-label={label}>
+          {books.map((b) => (
+            <Spine key={b.id} book={b} away={openId === b.id} onOpen={(origin) => onOpen(b, origin)} />
+          ))}
+        </div>
+        <ScrollBlur axis="x" edges={scroll.edges} />
+      </div>
+    </section>
+  );
+}
 
 function Spine({ book, away, onOpen }: { book: Book; away: boolean; onOpen: (origin: Origin) => void }) {
   const colour = useBinding(book);
@@ -391,12 +412,30 @@ function Book3D({ book, colour, aspect: known, hidden }: { book: Book; colour: s
   );
 }
 
-const IN_PLACE = `translate3d(0px, 0px, 0px) scale(1, 1) rotateX(${REST.x}deg) rotateY(${REST.y}deg)`;
+/** A book's place and turn on its way between the shelf and the window, relative to the window's book. */
+interface Pose {
+  dx: number;
+  dy: number;
+  /** Toward you: the book lifts off the shelf on its way. */
+  dz: number;
+  sx: number;
+  sy: number;
+  rx: number;
+  ry: number;
+}
+const IN_HAND: Pose = { dx: 0, dy: 0, dz: 0, sx: 1, sy: 1, rx: REST.x, ry: REST.y };
+const css = (p: Pose) => `translate3d(${p.dx.toFixed(1)}px, ${p.dy.toFixed(1)}px, ${p.dz.toFixed(1)}px) scale(${p.sx.toFixed(4)}, ${p.sy.toFixed(4)}) rotateX(${p.rx.toFixed(2)}deg) rotateY(${p.ry.toFixed(2)}deg)`;
+
+/** Halfway between two poses, lifted toward you and a little up, so the book arcs rather than slides. */
+function midway(a: Pose, b: Pose): Pose {
+  const m = (k: keyof Pose) => (a[k] + b[k]) / 2;
+  return { dx: m('dx'), dy: m('dy') - 24, dz: 140, sx: m('sx'), sy: m('sy'), rx: m('rx'), ry: m('ry') };
+}
 
 interface Flight {
   /** Where the book in hand sits in the window, untransformed. */
   box: Box;
-  frames: [string, string];
+  frames: string[];
   out: boolean;
 }
 
@@ -414,7 +453,8 @@ function FlyingBook({ book, colour, aspect, flight, onDone }: { book: Book; colo
     if (!el) return;
     const anim = el.animate(
       flight.frames.map((transform) => ({ transform })),
-      flight.out ? { duration: 460, easing: 'cubic-bezier(0.5, 0, 0.25, 1)', fill: 'forwards' } : { duration: 620, easing: 'cubic-bezier(0.2, 0.75, 0.2, 1)', fill: 'forwards' },
+      // Eased at both ends so the whole journey can be seen: off the shelf, across, and down into place.
+      flight.out ? { duration: 680, easing: 'cubic-bezier(0.45, 0, 0.25, 1)', fill: 'forwards' } : { duration: 860, easing: 'cubic-bezier(0.45, 0, 0.2, 1)', fill: 'forwards' },
     );
     anim.finished.then(() => done.current()).catch(() => undefined);
     return () => anim.cancel();
@@ -436,12 +476,19 @@ function FlyingBook({ book, colour, aspect, flight, onDone }: { book: Book; colo
  * Spine-out (90°), its spine is also widened to the shelf's: shelf spines are drawn thicker
  * than the book in hand, and the copy should land exactly on the one it becomes.
  */
-function placeAt(box: Box, to: Box, angle: number, depth: number): string {
+function placeAt(box: Box, to: Box, angle: number, depth: number): Pose {
   const dx = to.left + to.width / 2 - (box.left + box.width / 2);
   const dy = to.top + to.height / 2 - (box.top + box.height / 2);
   const sy = to.height / box.height;
   const sx = angle === 90 ? to.width / depth : sy;
-  return `translate3d(${dx.toFixed(1)}px, ${dy.toFixed(1)}px, 0px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)}) rotateX(0deg) rotateY(${angle}deg)`;
+  return { dx, dy, dz: 0, sx, sy, rx: 0, ry: angle };
+}
+
+/** The book in hand's tilt right now, read from its transform. */
+function tiltOf(el: HTMLElement): Pose {
+  const t = el.style.transform;
+  const num = (re: RegExp, fallback: number) => Number(re.exec(t)?.[1] ?? fallback);
+  return { ...IN_HAND, rx: num(/rotateX\((-?[\d.]+)deg\)/, REST.x), ry: num(/rotateY\((-?[\d.]+)deg\)/, REST.y) };
 }
 
 /** The book in hand's own box, as laid out, without its tilt. */
@@ -510,7 +557,8 @@ function BookModal({ book, origin, onClose }: { book: Book; origin: Origin | nul
     const el = bookEl();
     if (flying && origin && el) {
       const box = untilted(el);
-      setFlight({ box, frames: [placeAt(box, origin.rect, origin.angle, bookSize(book, 1.5).D), IN_PLACE], out: false });
+      const from = placeAt(box, origin.rect, origin.angle, bookSize(book, 1.5).D);
+      setFlight({ box, frames: [css(from), css(midway(from, IN_HAND)), css(IN_HAND)], out: false });
     } else setWaiting(false);
     return () => {
       document.body.style.overflow = '';
@@ -528,10 +576,11 @@ function BookModal({ book, origin, onClose }: { book: Book; origin: Origin | nul
     if (reducedMotion() || !el || !to || to.width === 0 || to.bottom < 0 || to.top > innerHeight) return onClose();
     const box = untilted(el);
     // From however it is tilted right now.
-    const tilt = el.style.transform || `rotateX(${REST.x}deg) rotateY(${REST.y}deg)`;
+    const from = tiltOf(el);
+    const shelf = placeAt(box, boxOf(to), 90, bookSize(book, 1.5).D);
     setLeaving(true);
     setWaiting(true);
-    setFlight({ box, frames: [`translate3d(0px, 0px, 0px) scale(1, 1) ${tilt}`, placeAt(box, boxOf(to), 90, bookSize(book, 1.5).D)], out: true });
+    setFlight({ box, frames: [css(from), css(midway(from, shelf)), css(shelf)], out: true });
   };
 
   useEffect(() => {
@@ -555,7 +604,7 @@ function BookModal({ book, origin, onClose }: { book: Book; origin: Origin | nul
     book.status === 'read' && book.finishedAt ? `Finished ${shortDay(todayStr(new Date(book.finishedAt)))}` : book.status === 'reading' && book.startedAt ? `Since ${shortDay(todayStr(new Date(book.startedAt)))}` : '';
 
   return (
-    <div className={cx('scrim book-scrim', leaving && 'is-leaving')} onMouseDown={(e) => e.target === e.currentTarget && close.current()}>
+    <div className={cx('scrim book-scrim', flying && !leaving && 'is-arriving', leaving && 'is-leaving')} onMouseDown={(e) => e.target === e.currentTarget && close.current()}>
       {flight && (
         <FlyingBook
           book={book}
@@ -604,6 +653,16 @@ function BookModal({ book, origin, onClose }: { book: Book; origin: Origin | nul
             <div className="book-status">
               <Seg label="Where you are with it" value={book.status} onChange={(status) => patch.mutate({ status })} options={(['want', 'reading', 'read'] as const).map((v) => ({ value: v, label: STATUS_LABEL[v] }))} />
               {since && <span className="hint">{since}</span>}
+              <span className="grow" />
+              <Seg
+                label="Which shelf"
+                value={book.kind || 'fiction'}
+                onChange={(kind) => patch.mutate({ kind })}
+                options={[
+                  { value: 'fiction', label: 'Fiction' },
+                  { value: 'nonfiction', label: 'Non-fiction' },
+                ]}
+              />
             </div>
 
             <section className="book-section">
