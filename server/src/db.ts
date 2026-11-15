@@ -637,6 +637,11 @@ const MIGRATIONS: string[] = [
     sent_at TEXT NOT NULL
   );
   `,
+  // What a plan item needs: how to get there from the stop before it, and what to know for it.
+  `
+  ALTER TABLE itinerary_items ADD COLUMN route TEXT;
+  ALTER TABLE itinerary_items ADD COLUMN details TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

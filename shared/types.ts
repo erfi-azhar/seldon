@@ -969,6 +969,28 @@ export interface ItineraryItem {
   notes: string;
   kind: 'activity' | 'food' | 'transit' | 'work' | 'rest';
   done: boolean;
+  /** How to get there from where you'll be just before. */
+  route: ItemRoute | null;
+  /** Everything else worth knowing for it, as small labelled modules. */
+  details: ItemDetail[];
+}
+
+/** One thing to know for a plan item: hours that day, cost, booking, what to bring, a heads-up… */
+export interface ItemDetail {
+  kind: 'hours' | 'cost' | 'booking' | 'bring' | 'dress' | 'contact' | 'food' | 'prayer' | 'heads-up' | 'tip';
+  /** A few words: "Open 11:00–23:00", "€25 entry", "Book ahead". */
+  label: string;
+  /** The detail in a sentence or two. */
+  text: string;
+  url?: string;
+}
+
+/** Getting to a plan item: from the stop before it (or the hotel, or the airport), how, how long, step by step. */
+export interface ItemRoute {
+  from: string;
+  mode: 'walk' | 'transit' | 'taxi' | 'drive';
+  minutes: number;
+  steps: string[];
 }
 
 export interface Trip {
