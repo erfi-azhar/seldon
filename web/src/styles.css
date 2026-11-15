@@ -9546,6 +9546,10 @@ button.layover-pill:hover .layover-lounge {
   font-size: 13.5px;
   color: var(--ink-2);
 }
+.jn-sub b {
+  font-weight: 600;
+  color: var(--ink);
+}
 .jn-line {
   display: inline-flex;
   align-items: center;

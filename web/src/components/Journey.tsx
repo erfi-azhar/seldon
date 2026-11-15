@@ -34,8 +34,16 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
         <b className="jn-title">
           Reach {leg.fromTerminal ? `Terminal ${leg.fromTerminal}` : airport} by {clock(reachAirportBy(leg), leg.startTz)}
         </b>
-        <span className="jn-sub">
-          Set off by {clock(leaveBy(leg), leg.startTz)}
+        <span className="jn-sub" title={`Set off by ${clock(leaveBy(leg), leg.startTz)}`}>
+          {now < leaveBy(leg) ? (
+            <>
+              Leave in <b className="num">{span((leaveBy(leg) - now) / MIN)}</b>
+            </>
+          ) : (
+            <>
+              <b>Leave now</b> · {span((reachAirportBy(leg) - now) / MIN)} to get there
+            </>
+          )}
           {leg.fromTerminal && ` · ${airport}`}
         </span>
         <a className="jn-btn" href={mapsTo(`${airport} Airport${leg.fromTerminal ? ` Terminal ${leg.fromTerminal}` : ''}, ${city(leg, 'from')}`)} target="_blank" rel="noreferrer">

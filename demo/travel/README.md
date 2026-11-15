@@ -4,7 +4,7 @@ The real web app, showing travel mode for the demo data's Tokyo trip at four mom
 switcher above the bottom nav:
 
 - **4 days before**: the countdown card on Today.
-- **Flight morning**: 05:10 in Singapore, SQ 636 leaving in under three hours.
+- **Flight morning**: 03:50 in Singapore, 45 minutes before it's time to leave for SQ 636.
 - **In the air**: 11:30 Singapore time, halfway to Tokyo.
 - **Day 2 in Tokyo**: away mode, with the stay, today's plan and the trip to-dos.
 
