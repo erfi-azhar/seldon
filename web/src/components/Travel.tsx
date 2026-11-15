@@ -4,7 +4,7 @@
 // do with it, or the day you are on when away.
 
 import { ArrowLeft, BedDouble, ShieldCheck, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { Cabin, EliteNights, FlightOption, ItineraryItem, LoungePick, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
@@ -13,10 +13,10 @@ import { useApp } from '../state.tsx';
 import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
-import { RouteCard } from './Journey.tsx';
+import { NowPanel, RouteCard } from './Journey.tsx';
 import { ItemModules } from './ItemModules.tsx';
 import { TripGuideBody } from './TripGuide.tsx';
-import { boardsAt, clock, journeys } from '../../../shared/journey.ts';
+import { activeJourney, boardsAt, clock, journeys, leaveBy, reachAirportBy, span, type Journey } from '../../../shared/journey.ts';
 import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
@@ -2212,13 +2212,19 @@ export function followingTrips(featured: Trip, rest: Trip[]): Trip[] {
  */
 export function TravelModeCard() {
   const { data: t } = useTravel();
+  const now = useNow();
   // A notch brings its trip up into the card; the one it replaces drops into a notch.
   const [chosen, setChosen] = useState<string | null>(null);
   const [picked, setPicked] = useState(false);
+  const segments = useMemo(() => t?.trips.flatMap((x) => x.segments) ?? [], [t]);
+  const journey = useMemo(() => activeJourney(segments, now), [segments, now]);
   if (!t) return null;
   const today = todayStr();
   const c = t.context;
-  const current = (c.mode === 'departing' || c.mode === 'away') && c.trip ? c.trip : null;
+  // On a travel day the card follows the journey, even into the hours after you land.
+  const travelDay = journey ? t.trips.find((x) => x.id === journey.legs[0]!.tripId) ?? null : null;
+  const dayTrip = travelDay ?? (c.mode === 'departing' && c.trip ? c.trip : null);
+  const current = dayTrip ?? (c.mode === 'away' && c.trip ? c.trip : null);
   const ahead = t.trips.filter((x) => x.endDate >= today && x.id !== current?.id).sort((a, b) => a.startDate.localeCompare(b.startDate));
   const featured = current ?? ahead[0];
   if (!featured) return null;
@@ -2227,7 +2233,15 @@ export function TravelModeCard() {
   return (
     <div className="trip-feature">
       <div key={shown.id} className={cx('trip-swap', picked && 'is-swapped')}>
-        {current && shown.id === current.id ? <TravelNowCard /> : <TripCountdown trip={shown} />}
+        {current && shown.id === current.id ? (
+          dayTrip ? (
+            <TravelDayCard trip={dayTrip} journey={travelDay ? journey : null} />
+          ) : (
+            <TravelNowCard />
+          )
+        ) : (
+          <TripCountdown trip={shown} />
+        )}
       </div>
       {group
         .filter((x) => x.id !== shown.id)
@@ -2245,7 +2259,7 @@ function useOpenTrip() {
 }
 
 /** A click on the card itself, not on one of its controls (a to-do, the add line, a button). */
-const onCardItself = (e: React.MouseEvent) => !(e.target as HTMLElement).closest('button, a, input, textarea, select, label, [role="checkbox"], .add-row, .task');
+const onCardItself = (e: React.MouseEvent) => !(e.target as HTMLElement).closest('button, a, input, textarea, select, label, summary, details, [role="checkbox"], .add-row, .task');
 
 /** A trip that follows the featured one, as a tab beneath its card. Opens the trip in the Travels sphere. */
 function TripNotch({ trip, label, onPick }: { trip: Trip; label: string; onPick: () => void }) {
@@ -2271,104 +2285,215 @@ function TripNotch({ trip, label, onPick }: { trip: Trip; label: string; onPick:
   );
 }
 
-function TravelNowCard() {
+/** Which of the travel card's folds are open: a per-device preference, remembered when the browser allows. */
+function useOpenFolds(): [Set<string>, (id: string, open: boolean) => void] {
+  const KEY = 'terminus.travelDay.open';
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(KEY) ?? '[]') as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const set = (id: string, on: boolean) =>
+    setOpen((prev) => {
+      if (prev.has(id) === on) return prev;
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      try {
+        localStorage.setItem(KEY, JSON.stringify([...next]));
+      } catch {
+        /* private mode: remembered for this visit only */
+      }
+      return next;
+    });
+  return [open, set];
+}
+
+/** One line of the travel card that opens to show more: what it is, the gist, and a chevron. */
+function Fold({ id, icon, title, gist, open, onToggle, children }: { id: string; icon: ReactNode; title: string; gist: ReactNode; open: boolean; onToggle: (id: string, open: boolean) => void; children: ReactNode }) {
+  return (
+    <details className="td-fold" open={open} onToggle={(e) => onToggle(id, (e.currentTarget as HTMLDetailsElement).open)}>
+      <summary>
+        <span className="td-fold-icon" aria-hidden>
+          {icon}
+        </span>
+        <span className="td-fold-title">{title}</span>
+        <span className="td-fold-gist">{gist}</span>
+        <ChevronDown size={15} className="td-fold-chev" aria-hidden />
+      </summary>
+      <div className="td-fold-body">{children}</div>
+    </details>
+  );
+}
+
+/** A lounge note's name, without the directions and asides that follow it. */
+const loungeName = (note: string) => note.split(/ \(| — | - /)[0]!.trim();
+
+/** The day's phases as a row of stops, the one you're in lit. */
+function DaySteps({ journey }: { journey: Journey }) {
+  const focus = Math.max(journey.current, 0);
+  return (
+    <ol className="td-steps" aria-label="Your travel day">
+      {journey.phases.map((p, i) => (
+        <li key={`${p.kind}-${i}`} className={cx(i < focus && 'is-done', i === focus && 'is-now')} aria-current={i === focus ? 'step' : undefined}>
+          <i aria-hidden />
+          <span className="td-step-time num">{clock(Date.parse(p.at), p.tz)}</span>
+          <span className="td-step-label">{p.label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/**
+ * Today on a travel day, in one card: what to do now and where you are in the day, the flight at a
+ * glance, then the lounge, Seldon's plan and the trip's to-dos folded into a line each. From 36 hours
+ * before a flight; the day's steps join 18 hours out and stay until 6 hours after you land.
+ */
+function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null }) {
   const { data: t } = useTravel();
   const { agentName, ask } = useApp();
   const openTrip = useOpenTrip();
   const now = useNow();
   const prepare = useWrite((id: string) => travelWrite.post(`/segments/${id}/companion`));
+  const [folds, setFold] = useOpenFolds();
+  const [lounges, setLounges] = useState<{ from: Segment; to: Segment } | null>(null);
+  if (!t) return null;
+  const phase = journey ? journey.phases[Math.max(journey.current, 0)]! : null;
+  // The flight the moment is about: on a connection, the one you're waiting for.
+  const f = journey && phase ? journey.legs[phase.kind === 'connection' ? phase.leg + 1 : phase.leg]! : t.context.flight;
+  if (!f) return null;
+  const takesOff = Date.parse(f.startUtc);
+  const beforeTakeoff = now < takesOff;
+  const notes = trip.companion[f.id];
+  const loungeNotes = notes?.lounges?.length ? notes.lounges : f.lounges.map((l) => l.access);
+  const openTodos = trip.todos.filter((x) => !x.done).length;
+  const loungeTrip = lounges ? t.trips.find((x) => x.id === lounges.to.tripId) : undefined;
+  const facts = [f.cabin, f.seat && `Seat ${f.seat}`, f.confirmation].filter(Boolean) as string[];
+
+  return (
+    <section className="card travel-mode travel-day is-link" onClick={(e) => onCardItself(e) && openTrip(trip)}>
+      <div className="tm-head">
+        <span className="tm-kicker">
+          <Plane size={13} aria-hidden /> {trip.title}
+        </span>
+        <PurposeChip purpose={trip.purpose} />
+      </div>
+
+      {journey && phase ? (
+        <NowPanel journey={journey} focus={Math.max(journey.current, 0)} now={now} trips={t.trips} home={t.settings.homeAirport} onLounges={setLounges} />
+      ) : (
+        <div className="journey-now">
+          <b className="jn-title">
+            {f.carrier} {f.number} leaves {dayOf(f.startLocal) === todayStr() ? 'today' : weekday(dayOf(f.startLocal))} at {time(f.startLocal)}
+          </b>
+          <span className="jn-sub">
+            Be at {city(f.fromName, f.fromCode)} by {clock(reachAirportBy(f), f.startTz)} · set off by {clock(leaveBy(f), f.startTz)}
+          </span>
+        </div>
+      )}
+      {journey && <DaySteps journey={journey} />}
+
+      <div className="td-flight">
+        {/* In the air and after landing, the panel above already draws the route. */}
+        {!(phase && (phase.kind === 'flight' || phase.kind === 'arrived')) && (
+          <div className="td-route">
+            <div className="td-end">
+              <b className="td-code num">{f.fromCode}</b>
+              <span className="td-time num">{time(f.startLocal)}</span>
+              <span className="td-city">{city(f.fromName, f.fromCode)}</span>
+            </div>
+            <div className="td-mid">
+              <span className="td-flightno">
+                {f.carrier} {f.number}
+              </span>
+              <span className="td-line" aria-hidden>
+                <i />
+                <Plane size={14} />
+                <i />
+              </span>
+              <span className="td-dur">{span((Date.parse(f.endUtc) - takesOff) / 60_000)}</span>
+            </div>
+            <div className="td-end is-right">
+              <b className="td-code num">{f.toCode}</b>
+              <span className="td-time num">{time(f.endLocal)}</span>
+              <span className="td-city">{city(f.toName, f.toCode)}</span>
+            </div>
+          </div>
+        )}
+        <div className="td-facts">
+          {beforeTakeoff && (
+            <span className="td-leaves">
+              Leaves in <b className="num">{untilLabel(f.startUtc, now)}</b>
+            </span>
+          )}
+          {facts.map((x) => (
+            <span key={x}>{x}</span>
+          ))}
+          <span className="td-clocks" title="Local time at each end now">
+            <Clock size={11} aria-hidden /> <span className="num">{clockIn(f.startTz, now)}</span> {f.fromCode} · <span className="num">{clockIn(f.endTz, now)}</span> {f.toCode}
+          </span>
+        </div>
+      </div>
+
+      {(beforeTakeoff || openTodos > 0) && (
+        <div className="td-folds">
+          {beforeTakeoff && (
+            <Fold id="lounge" icon={<Sofa size={14} />} title="Lounge" gist={loungeNotes.length ? `${loungeName(loungeNotes[0]!)}${loungeNotes.length > 1 ? ` · +${loungeNotes.length - 1}` : ''}` : 'None on this fare'} open={folds.has('lounge')} onToggle={setFold}>
+              <LoungeList seg={f} notes={notes?.lounges} />
+            </Fold>
+          )}
+          {beforeTakeoff &&
+            (notes?.plan?.length ? (
+              <Fold id="plan" icon={<Sparkles size={14} />} title={`${agentName}'s plan`} gist={plural(notes.plan.length, 'step')} open={folds.has('plan')} onToggle={setFold}>
+                <ul className="tm-plan">
+                  {notes.plan.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              </Fold>
+            ) : (
+              <button type="button" className="td-fold-action" disabled={prepare.isPending} onClick={() => prepare.mutate(f.id)}>
+                <span className="td-fold-icon" aria-hidden>
+                  {prepare.isPending ? <Spinner /> : <Sparkles size={14} />}
+                </span>
+                <span className="td-fold-title">Prepare this airport with {agentName}</span>
+              </button>
+            ))}
+          {openTodos > 0 && (
+            <Fold id="todos" icon={<ListChecks size={14} />} title="Still to do" gist={plural(openTodos, 'to-do')} open={folds.has('todos')} onToggle={setFold}>
+              <TripTodos trip={trip} past />
+            </Fold>
+          )}
+        </div>
+      )}
+      {prepare.error && <p className="error-text">{prepare.error.message}</p>}
+
+      <div className="td-foot">
+        <button type="button" className="link" onClick={() => ask(`I'm flying ${f.carrier} ${f.number} from ${f.fromCode} to ${f.toCode}. What should I do before boarding, and what should I know on arrival?`)}>
+          Ask {agentName} about this flight
+        </button>
+        <button type="button" className="trip-hero-open" onClick={() => openTrip(trip)}>
+          Full plan <ChevronRight size={14} aria-hidden />
+        </button>
+      </div>
+      {lounges && loungeTrip && <LayoverSheet trip={loungeTrip} from={lounges.from} to={lounges.to} loyalty={t.loyalty} onClose={() => setLounges(null)} />}
+    </section>
+  );
+}
+
+function TravelNowCard() {
+  const { data: t } = useTravel();
+  const { agentName, ask } = useApp();
+  const openTrip = useOpenTrip();
+  const now = useNow();
   const toggle = useWrite((i: ItineraryItem) => travelWrite.patch(`/itinerary/${i.id}`, { done: !i.done }));
-  if (!t || t.context.mode === 'none' || !t.context.trip) return null;
+  if (!t || t.context.mode !== 'away' || !t.context.trip) return null;
   const { context: c } = t;
   const trip = c.trip!;
   const today = todayStr();
-
-  if (c.mode === 'departing' && c.flight) {
-    const f = c.flight;
-    const notes = trip.companion[f.id];
-    const leaves = untilLabel(f.startUtc, now);
-    const lay = c.layovers.find((l) => l.nextSegmentId === f.id) ?? c.layovers.find((l) => l.afterSegmentId === f.id);
-    return (
-      <section className="card travel-mode tm-departing is-link" onClick={(e) => onCardItself(e) && openTrip(trip)}>
-        <div className="tm-head">
-          <span className="tm-kicker">
-            <Plane size={13} /> Travel mode · {trip.title}
-          </span>
-          <PurposeChip purpose={trip.purpose} />
-        </div>
-        <div className="tm-route">
-          <div>
-            <b className="num">{f.fromCode}</b>
-            <span>{city(f.fromName, f.fromCode)}</span>
-            <span className="tm-clock" title={`Local time at ${f.fromCode} now`}>
-              <Clock size={11} aria-hidden /> <span className="num">{clockIn(f.startTz, now)}</span> local
-            </span>
-          </div>
-          <div className="tm-plane">
-            <span className="num">{time(f.startLocal)}</span>
-            <i />
-            <Plane size={16} />
-            <i />
-            <span className="num">{time(f.endLocal)}</span>
-          </div>
-          <div className="right">
-            <b className="num">{f.toCode}</b>
-            <span>{city(f.toName, f.toCode)}</span>
-            <span className="tm-clock" title={`Local time at ${f.toCode} now`}>
-              <Clock size={11} aria-hidden /> <span className="num">{clockIn(f.endTz, now)}</span> local
-            </span>
-          </div>
-        </div>
-        <p className="tm-line">
-          <b>
-            {f.carrier} {f.number}
-          </b>{' '}
-          leaves in <b>{leaves}</b>
-          {f.cabin && ` · ${f.cabin}`}
-          {f.seat && ` · seat ${f.seat}`}
-          {f.confirmation && <span className="faint num"> · {f.confirmation}</span>}
-        </p>
-        <div className="tm-grid">
-          <Block icon={<Sofa size={13} />} title="Your lounge">
-            <LoungeList seg={f} notes={notes?.lounges} />
-          </Block>
-          {lay && (
-            <Block icon={<Clock size={13} />} title={`${lay.hours} h in ${lay.city}`}>
-              <p className="tm-small">
-                {lay.hours >= 5.5 && lay.airport === 'SIN' ? 'Long enough to leave the airport — Jewel, or a free Singapore tour if you have 5½ hours or more.' : lay.hours >= 6 ? 'Long enough to step out, if your visa allows.' : 'Time for the lounge, a proper meal and a prayer.'}
-              </p>
-            </Block>
-          )}
-        </div>
-        {notes?.plan?.length ? (
-          <Block icon={<Sparkles size={13} />} title={`${agentName}'s suggestions`}>
-            <ul className="tm-plan">
-              {notes.plan.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
-          </Block>
-        ) : (
-          <div className="row" style={{ gap: 8 }}>
-            <button type="button" className="btn btn-sm" disabled={prepare.isPending} onClick={() => prepare.mutate(f.id)}>
-              {prepare.isPending ? <Spinner /> : <Sparkles size={13} />} Prepare this airport with {agentName}
-            </button>
-          </div>
-        )}
-        {prepare.error && <p className="error-text">{prepare.error.message}</p>}
-        {trip.todos.some((x) => !x.done) && (
-          <Block icon={<ListChecks size={13} />} title="Still to do">
-            <TripTodos trip={trip} past />
-          </Block>
-        )}
-        <div className="tm-foot">
-          <button type="button" className="link" onClick={() => ask(`I'm flying ${f.carrier} ${f.number} from ${f.fromCode} to ${f.toCode} soon. What should I do before boarding, and what should I know on arrival?`)}>
-            Ask {agentName} about this flight
-          </button>
-        </div>
-      </section>
-    );
-  }
 
   // Away.
   const items = trip.itinerary.filter((i) => i.date === today);
@@ -2414,9 +2539,12 @@ function TravelNowCard() {
           </ul>
         )}
       </Block>
-      <Block icon={<ListChecks size={13} />} title="Trip to-dos">
-        <TripTodos trip={trip} />
-      </Block>
+      {/* Once every trip to-do is done, the section goes; the trip's page still has them. */}
+      {trip.todos.some((x) => !x.done) && (
+        <Block icon={<ListChecks size={13} />} title="Trip to-dos">
+          <TripTodos trip={trip} />
+        </Block>
+      )}
     </section>
   );
 }

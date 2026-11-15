@@ -26,7 +26,7 @@ const saved = (() => {
 })();
 
 function pick(id: string) {
-  const s = scenarios.find((x) => x.id === id) ?? scenarios[1]!;
+  const s = scenarios.find((x) => x.id === id) ?? scenarios.find((x) => x.id === 'departing')!;
   setNow(s.now);
   useScenario(s.id);
   try {

@@ -1,5 +1,26 @@
 [
-  { "id": "countdown", "label": "4 days before", "detail": "Thu evening, Singapore", "now": "2026-11-12T20:30:00+08:00" },
-  { "id": "departing", "label": "Flight morning", "detail": "Mon 05:10, Singapore", "now": "2026-11-16T05:10:00+08:00" },
-  { "id": "away", "label": "Day 2 in Tokyo", "detail": "Tue 11:15, Tokyo", "now": "2026-11-17T11:15:00+09:00" }
+  {
+    "id": "countdown",
+    "label": "4 days out",
+    "detail": "Thu evening, Singapore",
+    "now": "2026-11-12T20:30:00+08:00"
+  },
+  {
+    "id": "departing",
+    "label": "Flight day",
+    "detail": "Mon 05:10, Singapore",
+    "now": "2026-11-16T05:10:00+08:00"
+  },
+  {
+    "id": "flight",
+    "label": "In the air",
+    "detail": "Mon 11:30, Singapore",
+    "now": "2026-11-16T11:30:00+08:00"
+  },
+  {
+    "id": "away",
+    "label": "In Tokyo",
+    "detail": "Tue 11:15, Tokyo",
+    "now": "2026-11-17T11:15:00+09:00"
+  }
 ]

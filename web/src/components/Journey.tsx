@@ -1,18 +1,16 @@
 // Journey: a travel day as it happens, the route you took, and the settings behind both.
-// - JourneyCard (Today): the day's phases on the left, what you need right now on the right.
+// - NowPanel (Today, inside the travel card): what you need right now in the day's current phase.
 // - RouteCard (a trip's page): where your phone says you went, day by day.
 // - TravelNotifications and RouteRecording (Settings): lock-screen notifications on this device,
 //   and the OwnTracks app that reports your location while a trip is on.
 
 import { useQuery } from '@tanstack/react-query';
 import { Bell, BellOff, Clock, KeyRound, MapPin, Navigation, Route as RouteIcon, Send, Sofa } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { activeJourney, boardsAt, clock, leaveBy, reachAirportBy, span, type Journey as JourneyT } from '../../../shared/journey.ts';
+import { useEffect, useState } from 'react';
+import { boardsAt, clock, leaveBy, reachAirportBy, span, type Journey as JourneyT } from '../../../shared/journey.ts';
 import type { JourneyStatus, Segment, Trip, TripTrack } from '../../../shared/types.ts';
-import { api, useTravel, useWrite, write } from '../api.ts';
+import { api, useWrite, write } from '../api.ts';
 import { cx, plural } from '../lib.ts';
-import { useNow } from './Prayer.tsx';
-import { LayoverSheet } from './Travel.tsx';
 import { layoverPlan } from '../layover.ts';
 
 const MIN = 60_000;
@@ -20,35 +18,10 @@ const flightName = (f: Segment) => `${f.carrier} ${f.number}`.trim();
 const city = (f: Segment, end: 'from' | 'to') => (end === 'from' ? f.fromCity || f.fromName || f.fromCode : f.toCity || f.toName || f.toCode);
 const mapsTo = (place: string) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(place)}`;
 
-// ── Today: the travel day ───────────────────────────────────────────────────
+// ── Today: what you need right now ──────────────────────────────────────────
 
-/** On a travel day, where you are in it and what you need now. Nothing on other days. */
-export function JourneyCard() {
-  const { data: t } = useTravel();
-  const now = useNow();
-  const segments = useMemo(() => t?.trips.flatMap((x) => x.segments) ?? [], [t]);
-  const journey = useMemo(() => activeJourney(segments, now), [segments, now]);
-  const [lounges, setLounges] = useState<{ from: Segment; to: Segment } | null>(null);
-  if (!t || !journey) return null;
-  const focus = Math.max(journey.current, 0);
-  const loungeTrip = lounges ? t.trips.find((x) => x.id === lounges.to.tripId) : undefined;
-  return (
-    <section className="card journey" aria-label="Your travel day">
-      <ol className="journey-steps">
-        {journey.phases.map((p, i) => (
-          <li key={`${p.kind}-${i}`} className={cx(i === focus && 'is-now', i < focus && 'is-done')}>
-            <span className="num">{clock(Date.parse(p.at), p.tz)}</span>
-            <span>{p.label}</span>
-          </li>
-        ))}
-      </ol>
-      <NowPanel journey={journey} focus={focus} now={now} trips={t.trips} home={t.settings.homeAirport} onLounges={setLounges} />
-      {lounges && loungeTrip && <LayoverSheet trip={loungeTrip} from={lounges.from} to={lounges.to} loyalty={t.loyalty} onClose={() => setLounges(null)} />}
-    </section>
-  );
-}
-
-function NowPanel({ journey, focus, now, trips, home, onLounges }: { journey: JourneyT; focus: number; now: number; trips: Trip[]; home: string; onLounges: (c: { from: Segment; to: Segment }) => void }) {
+/** The travel day's current phase, as what to do now. Shown at the top of Today's travel card. */
+export function NowPanel({ journey, focus, now, trips, home, onLounges }: { journey: JourneyT; focus: number; now: number; trips: Trip[]; home: string; onLounges: (c: { from: Segment; to: Segment }) => void }) {
   const phase = journey.phases[focus]!;
   const leg = journey.legs[phase.leg]!;
   const next = journey.legs[phase.leg + 1];
