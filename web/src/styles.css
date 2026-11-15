@@ -9726,13 +9726,15 @@ button.layover-pill:hover .layover-lounge {
 .td-steps li.is-done {
   color: var(--ink-4);
 }
-/* The flight, as the trip page shows it, set into the travel card. */
-.flight-card.is-inline {
-  background: var(--surface-2, var(--surface));
-  box-shadow: inset 0 0 0 1px var(--line);
-}
+/* The flight, laid out as on the trip page but part of the travel card: no box of its own,
+   a rule above it like the card's other sections. */
+.flight-card.is-inline,
 .flight-card.is-inline:hover {
-  box-shadow: inset 0 0 0 1px var(--line);
+  padding: 14px 0 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
 .td-folds {
   display: grid;
