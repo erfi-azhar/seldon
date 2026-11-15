@@ -715,12 +715,11 @@ export function NextPrayerPill() {
   const tz = faith.settings.timezone;
   const cur = faith.current;
   const unprayed = cur && !currentDay(faith)?.log[cur.prayer];
-  const label = cur && unprayed ? `${NAME[cur.prayer]} · ends in ${untilLabel(cur.endsAt, now)}` : faith.next ? `${NAME[faith.next.prayer]} at ${hhmm(faith.next.at, tz)} · in ${untilLabel(faith.next.at, now)}` : null;
+  const label = cur && unprayed ? `${NAME[cur.prayer]} · ends at ${hhmm(cur.endsAt, tz)} · in ${untilLabel(cur.endsAt, now)}` : faith.next ? `${NAME[faith.next.prayer]} at ${hhmm(faith.next.at, tz)} · in ${untilLabel(faith.next.at, now)}` : null;
   if (!label) return null;
   return (
     <span className="glass-pill">
       <MoonStar size={13} /> {label}
-      {faith.ramadan && !faith.ramadan.inRamadan && faith.ramadan.daysUntil <= 100 && <span className="faint"> · Ramadan in {faith.ramadan.daysUntil}d</span>}
     </span>
   );
 }
