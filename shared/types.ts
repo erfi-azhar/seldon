@@ -1527,8 +1527,11 @@ export interface BankruptcyState {
   settlement: { target: number; estimated: boolean; remaining: number } | null;
   /** The contribution route: monthly × target months. */
   contribution: { target: number; remaining: number } | null;
-  /** Paid against what the monthly contribution schedule expects by now. */
-  schedule: { months: number; expected: number; behind: number } | null;
+  /**
+   * Paid against what the monthly contribution schedule expects: `expected` and `behind` count this
+   * month as due; `overdue` counts only the months already out.
+   */
+  schedule: { months: number; expected: number; behind: number; overdue: number } | null;
   thisMonth: { due: number; paid: number } | null;
   approvals: TravelApproval[];
   trips: TripCheck[];

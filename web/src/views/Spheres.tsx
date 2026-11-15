@@ -326,10 +326,23 @@ export function SphereDetail({ id }: { id: string }) {
             )}
           </section>
           {s.key === 'health' && <TrainingAndBody part="body" />}
-          {s.key === 'finances' && <BankruptcyCard />}
-          {s.key === 'finances' && <DebtsCard />}
         </div>}
       </div>
+
+      {/* Liabilities: what's owed, and the case that settles it. */}
+      {s.key === 'finances' && (
+        <>
+          <div className="band-label">Liabilities</div>
+          <div className="detail-grid fin-liabilities">
+            <div className="col">
+              <BankruptcyCard />
+            </div>
+            <div className="col">
+              <DebtsCard />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Reference: what you look things up in, and rarely change. */}
       <div className="band-label">Reference</div>

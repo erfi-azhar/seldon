@@ -40,7 +40,7 @@ test('the two routes, this month and the schedule, from the payments on file', (
   assert.deepEqual(s.settlement, { target: 54_462.35, estimated: true, remaining: 3_462.35 });
   assert.deepEqual(s.contribution, { target: 182_000, remaining: 131_000 });
   // January 2025 to November 2026 is 23 months of S$3,500.
-  assert.deepEqual(s.schedule, { months: 23, expected: 80_500, behind: 29_500 });
+  assert.deepEqual(s.schedule, { months: 23, expected: 80_500, behind: 29_500, overdue: 26_000 }, 'November is due but not yet late');
   assert.deepEqual(s.thisMonth, { due: 3_500, paid: 0 });
   assert.equal(s.payments[0]!.date, '2026-08-15', 'newest first');
 });

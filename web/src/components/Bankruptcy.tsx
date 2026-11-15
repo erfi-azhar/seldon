@@ -2,7 +2,7 @@
 // the schedule, payments with receipts, and travel approvals checked against planned trips.
 
 import { AlertTriangle, Check, ChevronRight, Mail, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Fragment, useState, type CSSProperties } from 'react';
 import type { BankruptcyCase, BankruptcyState } from '../../../shared/types.ts';
 import { bankruptcyWrite, useBankruptcy, useWrite } from '../api.ts';
 import { cx, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
@@ -35,6 +35,17 @@ function statementRequest(c: BankruptcyCase): string {
   return `mailto:${encodeURIComponent(c.trusteeEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
+const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+const monthAt = (fromYm: string, i: number) => {
+  const [y, m] = fromYm.split('-').map(Number) as [number, number];
+  const n = y * 12 + (m - 1) + i;
+  return { year: Math.floor(n / 12), month: n % 12 };
+};
+const monthName = (year: number, month: number, style: 'long' | 'short' = 'long') => new Date(Date.UTC(year, month, 15)).toLocaleDateString('en-GB', { month: style, year: 'numeric', timeZone: 'UTC' });
+const daysUntil = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+const inDays = (n: number) => (n <= 0 ? 'now' : n === 1 ? 'tomorrow' : `in ${n} days`);
+const tenths = (n: number) => (Math.round(n * 10) / 10).toLocaleString('en', { maximumFractionDigits: 1 });
+
 export function BankruptcyCard() {
   const { data: b } = useBankruptcy();
   useAmountsHidden();
@@ -43,10 +54,7 @@ export function BankruptcyCard() {
   const unapprove = useWrite(bankruptcyWrite.unapprove);
   if (!b?.active) return null;
   const c = b.case;
-  const closed = c.status !== 'active';
   const today = todayStr();
-  const due = b.thisMonth;
-  const owing = due && due.paid < due.due;
 
   return (
     <section className="card bk-card">
@@ -59,107 +67,35 @@ export function BankruptcyCard() {
         </button>
       </div>
 
-      {closed ? (
+      {c.status !== 'active' ? (
         <p className="empty">The case is {c.status}. {S(b.paid)} was paid in contributions.</p>
       ) : (
         <>
-          {b.settlement && (
-            <div className="bk-settle">
-              <div className="bk-settle-line">
-                {b.settlement.remaining <= 0 && b.settlement.estimated ? (
-                  <>
-                    <b className="bk-covered">Declared debts covered</b>
-                    <span className="muted">fees still to confirm: ask for the settlement figure</span>
-                  </>
-                ) : (
-                  <>
-                    <b className="num">{S(b.settlement.remaining)}</b>
-                    <span className="muted">{b.settlement.remaining <= 0 ? 'left: the quoted amount is paid' : 'left to settle the estate'}</span>
-                  </>
-                )}
-                <span className={cx('chip', b.settlement.estimated ? 'chip-outline' : 'chip-tint')} title={b.settlement.estimated ? 'From the declared liabilities and any fees you know of. Ask your trustee for the real figure.' : undefined}>
-                  {b.settlement.estimated ? (c.feesKnown === null ? 'estimate · before fees' : 'estimate') : `quoted ${shortDay(c.settlementQuote!.asOf)}`}
-                </span>
-              </div>
-              <ProgressBar value={b.settlement.target ? b.paid / b.settlement.target : 0} />
-              <span className="hint">
-                {S(b.paid)} paid of {S(b.settlement.target)} {b.settlement.estimated ? 'declared' : 'quoted'}
-              </span>
-            </div>
-          )}
+          <Settle b={b} />
+          <Contributions b={b} today={today} onRecord={() => setSheet('pay')} />
+          <Travel b={b} today={today} onApprove={() => setSheet('approve')} />
 
-          <div className="bk-stats">
-            {due && (
-              <div className={cx(owing && 'is-owing')}>
-                <span className="fin-label">This month</span>
-                <b className="num">{S(due.paid)}</b>
-                <span className="hint">of {S(due.due)} {due.paid >= due.due ? 'paid' : 'due'}</span>
-                <button type="button" className="btn btn-tint btn-sm" onClick={() => setSheet('pay')}>
-                  <Plus size={13} /> Record
-                </button>
-              </div>
-            )}
-            {b.schedule && (
-              <div className={cx(b.schedule.behind > 0 && 'is-owing')} title={`${plural(b.schedule.months, 'month')} at ${S(c.monthlyContribution ?? 0)} since ${c.contributionsFrom}: ${S(b.schedule.expected)} expected`}>
-                <span className="fin-label">Behind schedule</span>
-                <b className="num">{S(b.schedule.behind)}</b>
-                <span className="hint">vs {S(b.schedule.expected)} due so far</span>
-              </div>
-            )}
-            {b.contribution && (
-              <div>
-                <span className="fin-label">Contribution target</span>
-                <b className="num">{Math.round((b.paid / b.contribution.target) * 100)}%</b>
-                <span className="hint">of {S(b.contribution.target)}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="bk-section">
-            <div className="list-label bk-section-head">
-              <span>Travel</span>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSheet('approve')}>
-                <Plus size={13} /> Approval
-              </button>
-            </div>
-            {b.trips.length === 0 ? (
-              <p className="hint bk-pad">No upcoming trips. Get each one approved, with a day's margin at both ends.</p>
-            ) : (
-              <ul className="bk-trips">
-                {b.trips.map((t) => (
-                  <li key={t.tripId} className={cx(`is-${t.status}`)}>
-                    {t.status === 'covered' ? <Check size={14} className="bk-ok" aria-hidden /> : <AlertTriangle size={14} className="bk-warn" aria-hidden />}
+          {b.approvals.length > 0 && (
+            <details className="todo-fold">
+              <summary>
+                <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+                <span className="grow">Approvals on file</span>
+                <span className="todo-fold-meta">{b.approvals.length}</span>
+              </summary>
+              <ul className="bk-list">
+                {b.approvals.map((a) => (
+                  <li key={a.id}>
                     <span className="grow">
-                      <b>{t.title}</b> <span className="faint">{shortDay(t.leave)} – {shortDay(t.back)}</span>
-                      <span className="bk-trip-msg">{t.message}</span>
+                      {a.place || 'Overseas'} <span className="faint">{shortDay(a.from)} – {shortDay(a.to)}{a.to < today ? ' · past' : ''}{a.reference ? ` · ${a.reference}` : ''}</span>
                     </span>
+                    <button type="button" className="icon-btn icon-btn-sm" aria-label="Remove this approval" onClick={() => unapprove.mutate(a.id)}>
+                      <Trash2 size={13} />
+                    </button>
                   </li>
                 ))}
               </ul>
-            )}
-            {b.approvals.length > 0 && (
-              <details className="todo-fold">
-                <summary>
-                  <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
-                  <span className="grow">Approvals on file</span>
-                  <span className="todo-fold-meta">{b.approvals.length}</span>
-                </summary>
-                <ul className="bk-list">
-                  {b.approvals.map((a) => (
-                    <li key={a.id}>
-                      <span className="grow">
-                        {a.place || 'Overseas'} <span className="faint">{shortDay(a.from)} – {shortDay(a.to)}{a.to < today ? ' · past' : ''}{a.reference ? ` · ${a.reference}` : ''}</span>
-                      </span>
-                      <button type="button" className="icon-btn icon-btn-sm" aria-label="Remove this approval" onClick={() => unapprove.mutate(a.id)}>
-                        <Trash2 size={13} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
-
+            </details>
+          )}
           <details className="todo-fold">
             <summary>
               <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
@@ -171,8 +107,11 @@ export function BankruptcyCard() {
             <ul className="bk-list">
               {b.payments.map((p) => (
                 <li key={p.id}>
-                  <span className="grow">
-                    <span className="num">{S(p.amount)}</span> <span className="faint">{shortDay(p.date)}{p.date.slice(0, 4) !== today.slice(0, 4) ? ` ${p.date.slice(0, 4)}` : ''}{p.reference ? ` · ${p.reference}` : ''}</span>
+                  <span className="num bk-pay-amt">{S(p.amount)}</span>
+                  <span className="grow faint">
+                    {shortDay(p.date)}
+                    {p.date.slice(0, 4) !== today.slice(0, 4) ? ` ${p.date.slice(0, 4)}` : ''}
+                    {p.reference ? ` · ${p.reference}` : ''}
                   </span>
                   <button type="button" className="icon-btn icon-btn-sm" aria-label="Remove this payment" onClick={() => unpay.mutate(p.id)}>
                     <Trash2 size={13} />
@@ -197,6 +136,259 @@ export function BankruptcyCard() {
       {sheet === 'pay' && <PaySheet monthly={c.monthlyContribution} onClose={() => setSheet(null)} />}
       {sheet === 'approve' && <ApproveSheet onClose={() => setSheet(null)} />}
     </section>
+  );
+}
+
+/**
+ * The two ways out on one bar. It runs to the full contribution term (monthly × target months),
+ * fills with what's been paid, and marks the amount that settles the estate: the declared
+ * liabilities (plus known fees), or the trustee's quote once there is one.
+ */
+function Settle({ b }: { b: BankruptcyState }) {
+  const s = b.settlement;
+  if (!s) return null;
+  const c = b.case;
+  const covered = s.remaining <= 0;
+  // A quote is what's left to pay; on the bar it sits on top of what's already been paid.
+  const settleAt = s.estimated ? s.target : b.paid + s.target;
+  const full = b.contribution?.target ?? 0;
+  const scale = Math.max(full, settleAt, b.paid) || 1;
+  const pct = (n: number) => Math.min(100, (n / scale) * 100);
+  const end = c.contributionsFrom ? monthAt(c.contributionsFrom, c.targetMonths - 1) : null;
+  return (
+    <div className="bk-settle">
+      <div className="bk-settle-line">
+        {covered && s.estimated ? <b className="bk-covered">Declared debts covered</b> : <b className="num">{S(s.remaining)}</b>}
+        <span className="muted">{covered ? (s.estimated ? 'ask for the settlement figure, with fees' : 'the quoted amount is paid') : 'left to settle in full'}</span>
+        <span className={cx('chip', s.estimated ? 'chip-outline' : 'chip-tint')} title={s.estimated ? 'From the declared liabilities and any fees you know of. Ask your trustee for the real figure.' : undefined}>
+          {s.estimated ? (c.feesKnown === null ? 'estimate, before fees' : 'estimate') : `quoted ${shortDay(c.settlementQuote!.asOf)}`}
+        </span>
+      </div>
+      {full > 0 ? (
+        <div className="bk-bar">
+          <div className="bk-bar-row is-top">
+            <Mark at={pct(settleAt)} label={s.estimated ? (c.feesKnown === null ? 'Declared' : 'Declared + fees') : 'Settlement'} value={S(settleAt)} />
+            <Mark at={100} label={`Full term${end ? ` · ${monthName(end.year, end.month, 'short')}` : ''}`} value={S(full)} />
+          </div>
+          <div className="bk-track" role="img" aria-label={`${S(b.paid)} paid. ${S(settleAt)} settles the estate; the full contribution term is ${S(full)}.`}>
+            <i className="bk-fill" style={{ width: `${pct(b.paid)}%` }} />
+            <i className="bk-tick" style={{ left: `${pct(settleAt)}%` }} />
+          </div>
+          <div className="bk-bar-row">
+            <Mark at={pct(b.paid)} label="Paid" value={S(b.paid)} strong />
+          </div>
+        </div>
+      ) : (
+        <ProgressBar value={s.target ? Math.min(1, b.paid / s.target) : 0} />
+      )}
+      <span className="hint">
+        Paying {s.estimated ? 'the declared debts' : 'the quote'} ends the case by annulment{full > 0 ? `; otherwise contributions run the full ${c.targetMonths} months` : ''}.
+      </span>
+    </div>
+  );
+}
+
+/** A label pinned to a point on the bar, sliding so it never runs off either end. */
+function Mark({ at, label, value, strong }: { at: number; label: string; value: string; strong?: boolean }) {
+  return (
+    <span className={cx('bk-mark', strong && 'is-strong')} style={{ left: `${at}%`, transform: `translateX(-${at}%)` }}>
+      <span className="bk-mark-l">{label}</span>
+      <span className="num">{value}</span>
+    </span>
+  );
+}
+
+/**
+ * The monthly contributions as a calendar: one cell per month of the target, a row per year,
+ * filled as far as the money paid reaches. Months that were due and aren't covered show red, so
+ * how far behind (and why) reads at a glance.
+ */
+function Contributions({ b, today, onRecord }: { b: BankruptcyState; today: string; onRecord: () => void }) {
+  const c = b.case;
+  const sch = b.schedule;
+  const monthly = c.monthlyContribution;
+  if (!monthly) return null;
+  const head = (
+    <div className="bk-section-head">
+      <span className="fin-label">Monthly contributions</span>
+      <button type="button" className="btn btn-tint btn-sm" onClick={onRecord}>
+        <Plus size={13} /> Record
+      </button>
+    </div>
+  );
+  if (!sch || !c.contributionsFrom) {
+    return (
+      <div className="bk-section">
+        {head}
+        <p className="hint bk-pad">Set the first month contributions were due to see the schedule.</p>
+      </div>
+    );
+  }
+  const from = c.contributionsFrom;
+  const worth = b.paid / monthly; // months' worth paid
+  const due = Math.min(sch.months, c.targetMonths);
+  const first = monthAt(from, 0);
+  const now = monthAt(from, sch.months - 1);
+  const thisMonth = b.thisMonth;
+  const nowName = new Date(Date.UTC(now.year, now.month, 15)).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+  const lastOut = sch.months >= 2 ? monthAt(from, sch.months - 2) : null;
+
+  const rows: { year: number; cells: ({ i: number; fill: number; state: 'paid' | 'behind' | 'now' | 'later'; label: string } | null)[] }[] = [];
+  for (let i = 0; i < c.targetMonths; i++) {
+    const { year, month } = monthAt(from, i);
+    let row = rows.at(-1);
+    if (!row || row.year !== year) rows.push((row = { year, cells: Array(12).fill(null) }));
+    const fill = Math.max(0, Math.min(1, worth - i));
+    const state = fill >= 1 ? 'paid' : i < due - 1 ? 'behind' : i === due - 1 && i === sch.months - 1 ? 'now' : 'later';
+    const label = `${monthName(year, month)}: ${fill >= 1 ? 'paid' : fill > 0 ? `${Math.round(fill * 100)}% paid` : state === 'behind' ? 'not paid' : state === 'now' ? 'due this month' : 'to come'}`;
+    row.cells[month] = { i, fill, state, label };
+  }
+
+  return (
+    <div className="bk-section">
+      {head}
+      <div className="bk-sched-line">
+        {sch.behind > 0 ? (
+          <>
+            <b className="num is-bad">{S(sch.behind)}</b>
+            <span className="muted">behind, counting {nowName}</span>
+          </>
+        ) : (
+          <>
+            <b className="bk-covered">On schedule</b>
+            {worth > due && <span className="muted">{tenths(worth - due)} months ahead</span>}
+          </>
+        )}
+      </div>
+      <div className="bk-cal" role="img" aria-label={`${tenths(worth)} months' contributions paid of ${due} due so far, out of ${c.targetMonths}`}>
+        <span />
+        {MONTH_LETTERS.map((l, i) => (
+          <span key={i} className="bk-cal-m">
+            {l}
+          </span>
+        ))}
+        {rows.map((r) => (
+          <Fragment key={r.year}>
+            <span className="bk-cal-y">{r.year}</span>
+            {r.cells.map((cell, m) =>
+              cell ? <span key={m} className={cx('bk-cell', `is-${cell.state}`)} style={{ '--fill': cell.fill } as CSSProperties} title={cell.label} /> : <span key={m} />,
+            )}
+          </Fragment>
+        ))}
+      </div>
+      <ul className="bk-why">
+        <li>
+          <span className="bk-key is-paid" aria-hidden />
+          <span>
+            <b className="num">{S(b.paid)}</b> paid, enough for {tenths(worth)} of the {due} months due since {monthName(first.year, first.month)}
+          </span>
+        </li>
+        {sch.overdue > 0 && lastOut && (
+          <li>
+            <span className="bk-key is-behind" aria-hidden />
+            <span>
+              <b className="num">{S(sch.overdue)}</b> overdue, for months up to {monthName(lastOut.year, lastOut.month, 'short')}
+            </span>
+          </li>
+        )}
+        {thisMonth && (
+          <li>
+            <span className="bk-key is-now" aria-hidden />
+            <span>
+              {thisMonth.paid >= thisMonth.due ? (
+                <>
+                  {nowName}'s <b className="num">{S(thisMonth.due)}</b> is in
+                </>
+              ) : (
+                <>
+                  <b className="num">{S(thisMonth.due - thisMonth.paid)}</b> due for {nowName}
+                  {thisMonth.paid > 0 && `, ${S(thisMonth.paid)} in so far`}
+                </>
+              )}
+            </span>
+          </li>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+const TRAVEL_KEY = 'terminus:bk-travel-closed';
+const readClosed = () => {
+  try {
+    return localStorage.getItem(TRAVEL_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+/** Upcoming trips against the approvals on file, folding away to a one-line summary. */
+function Travel({ b, today, onApprove }: { b: BankruptcyState; today: string; onApprove: () => void }) {
+  const [closed, setClosed] = useState(readClosed);
+  const toggle = () => {
+    const next = !closed;
+    setClosed(next);
+    try {
+      if (next) localStorage.setItem(TRAVEL_KEY, '1');
+      else localStorage.removeItem(TRAVEL_KEY);
+    } catch {
+      // Blocked storage: it still holds for this visit.
+    }
+  };
+  const open = b.trips.filter((t) => t.status !== 'covered');
+  const next = open[0];
+  return (
+    <div className={cx('bk-section bk-travel', closed && 'is-closed')}>
+      <div className="bk-section-head">
+        <button type="button" className="bk-fold" aria-expanded={!closed} onClick={toggle}>
+          <ChevronRight size={14} className="bk-fold-chev" aria-hidden />
+          <span className="fin-label">Travel</span>
+          {open.length > 0 ? (
+            <span className="chip chip-bad">{open.length} need approval</span>
+          ) : b.trips.length > 0 ? (
+            <span className="chip chip-good">
+              <Check size={12} aria-hidden /> All approved
+            </span>
+          ) : null}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onApprove}>
+          <Plus size={13} /> Approval
+        </button>
+      </div>
+      {!closed &&
+        (b.trips.length === 0 ? (
+          <p className="hint bk-pad">No upcoming trips. Get each one approved, with a day's margin at both ends.</p>
+        ) : (
+          <>
+            {next && (
+              <p className="bk-alert">
+                <AlertTriangle size={14} aria-hidden />
+                <span>
+                  {open.length === 1 ? 'This trip needs' : `These ${open.length} trips need`} approval before you go. {open.length === 1 ? 'It leaves' : `The first, ${next.title}, leaves`} {inDays(daysUntil(today, next.leave))}.
+                </span>
+              </p>
+            )}
+            <ul className="bk-trips">
+              {b.trips.map((t) => (
+                <li key={t.tripId} className={cx(`is-${t.status}`)}>
+                  <span className="bk-trip-main">
+                    <b>{t.title}</b>
+                    <span className="faint">
+                      {shortDay(t.leave)} – {shortDay(t.back)} · {inDays(daysUntil(today, t.leave))}
+                    </span>
+                    {t.status === 'outside' && <span className="bk-trip-msg">{t.message.replace(/^Outside the approval: /, '')}</span>}
+                    {t.status === 'none' && t.earlyFlight && <span className="bk-trip-msg">Early flight: approval should start the evening before.</span>}
+                  </span>
+                  <span className={cx('chip', t.status === 'covered' ? 'chip-good' : 'chip-bad')}>
+                    {t.status === 'covered' && <Check size={12} aria-hidden />}
+                    {t.status === 'covered' ? 'Approved' : t.status === 'outside' ? 'Dates outside' : 'No approval'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ))}
+    </div>
   );
 }
 
