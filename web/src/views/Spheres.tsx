@@ -15,6 +15,7 @@ import { TravelGuides } from '../components/TravelGuides.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { ReadingList } from '../components/Reading.tsx';
 import { CryptoTwitterCard } from '../components/CryptoTwitter.tsx';
+import { BankruptcyCard } from '../components/Bankruptcy.tsx';
 import { BillsCard, CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PlanCard, PortfolioCard } from '../components/Finance.tsx';
 import { InlineEdit, Loading, Seg, useFolds } from '../components/ui.tsx';
 import { addDays, cx, dueLabel, hueStyle, parseDay, pct, plural, shortDay, todayStr } from '../lib.ts';
@@ -325,6 +326,7 @@ export function SphereDetail({ id }: { id: string }) {
             )}
           </section>
           {s.key === 'health' && <TrainingAndBody part="body" />}
+          {s.key === 'finances' && <BankruptcyCard />}
           {s.key === 'finances' && <DebtsCard />}
         </div>}
       </div>

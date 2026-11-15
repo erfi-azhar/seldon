@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, MarketState, PlanBucketKey, PlanRules, Quote, Recurring, SalaryPlan, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { Link } from 'wouter';
 import { amountsHidden, maskAmount, maskAmountsIn, useAmountsHidden } from '../privacy.ts';
+import { TrackCaseLink } from './Bankruptcy.tsx';
 import { financeWrite, useFinance, useMarket, useSpheres, useWrite } from '../api.ts';
 import { addDays, cx, dueLabel, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -1820,6 +1821,9 @@ export function DebtsCard() {
           )}
         </div>
       )}
+      <div className="bk-entry">
+        <TrackCaseLink />
+      </div>
       {adding && <DebtSheet debt={null} currency={c} onClose={() => setAdding(false)} />}
       {editing && <DebtSheet debt={editing} currency={c} onClose={() => setEditing(null)} />}
       {paying && <PaySheet debt={paying} onClose={() => setPaying(null)} />}

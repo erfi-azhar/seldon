@@ -731,6 +731,28 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (guide_id, note_id)
   );
   `,
+  // A bankruptcy case: contributions paid to the estate (with receipts) and approved travel windows.
+  // The case's own figures live in settings under 'bankruptcy'.
+  `
+  CREATE TABLE bk_payments (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    reference TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX bk_payments_by_date ON bk_payments(date);
+  CREATE TABLE bk_approvals (
+    id TEXT PRIMARY KEY,
+    place TEXT NOT NULL DEFAULT '',
+    from_date TEXT NOT NULL,
+    to_date TEXT NOT NULL,
+    reference TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

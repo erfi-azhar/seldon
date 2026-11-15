@@ -1139,6 +1139,9 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
   let srsPut = 0;
   let cpfPut = 0;
   let reliefRest = 0;
+  let payLate = false;
+  // Savings can only make up the rest when there are some: at least a month of essentials in cash.
+  const cushioned = cash >= essentials;
   if (relief) {
     const room = relief.srs.left + (relief.cpf?.left ?? 0);
     const month = Number(p.today.slice(5, 7));
@@ -1146,6 +1149,7 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
     // In December, only pay that lands by the 15th can still make it.
     const payInTime = month < 12 || active.some((r) => r.kind === 'income' && !r.holdingId && r.next && r.next.slice(0, 7) === p.today.slice(0, 7) && r.next <= decDeadline) || payFrom === 'history';
     const pace = month >= 11 ? room : room / (12 - month);
+    payLate = !payInTime;
     const put = payInTime ? Math.min(pace, left) : 0;
     srsPut = Math.min(put, relief.srs.left);
     cpfPut = Math.min(put - srsPut, relief.cpf?.left ?? 0);
@@ -1172,7 +1176,7 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
   if (relief && srsPut + cpfPut >= 1) {
     const put = srsPut + cpfPut;
     const saves = Math.round(sgTax(relief.chargeable) - sgTax(Math.max(0, relief.chargeable - put)));
-    const rest = reliefRest >= 1 ? ` — and ${m0(reliefRest, c)} more from savings by 15 Dec, if your cash allows` : '';
+    const rest = reliefRest >= 1 && cushioned ? ` — and ${m0(reliefRest, c)} more from savings by 15 Dec, if your cash allows` : '';
     add({
       key: 'relief',
       label: cpfPut >= 1 ? 'Tax relief: SRS and CPF' : 'Tax relief: SRS',
@@ -1181,8 +1185,16 @@ export function salaryPlan(store: Store, p: PlanInput): SalaryPlan | null {
       action: `Put ${m0(srsPut, c)} into SRS${cpfPut >= 1 ? ` and ${m0(cpfPut, c)} into your CPF Special Account` : ''}${rest}`,
     });
   }
-  if (relief && reliefRest >= 1 && srsPut + cpfPut < 1) {
-    notes.push(`${m0(reliefRest, c)} of ${relief.year}'s tax-relief room is left, worth about ${m0(relief.saving, c)} in tax. Your pay arrives after mid-December, so it would come from savings: by 15 Dec to be safe, if your cash allows.`);
+  if (relief && reliefRest >= 1) {
+    if (!cushioned) {
+      notes.push(`${m0(reliefRest, c)} of ${relief.year}'s tax-relief room goes unused this year: with less than a month of essentials in cash, the cushion comes first. Tax relief is worth having once there are savings to spare.`);
+    } else if (srsPut + cpfPut < 1) {
+      notes.push(
+        payLate
+          ? `${m0(reliefRest, c)} of ${relief.year}'s tax-relief room is left, worth about ${m0(relief.saving, c)} in tax. Your pay arrives after mid-December, so it would come from savings: by 15 Dec to be safe.`
+          : `Nothing is spare from this month's pay after the steps above, so ${m0(reliefRest, c)} of ${relief.year}'s tax-relief room, worth about ${m0(relief.saving, c)} in tax, would come from savings: by 15 Dec to be safe.`,
+      );
+    }
   }
   if (relief && gap > emergency && srsPut + cpfPut >= 1 && reliefRest >= 1) {
     notes.push("Your emergency fund isn't full yet, so only the money that would have been invested goes to tax relief from pay.");
@@ -1205,6 +1217,8 @@ export function reliefReminder(store: Store, today: string): boolean {
   const plan = financeState(store, today).plan;
   const r = plan?.relief;
   if (!r) return false;
+  // Without a month of essentials in cash, there's nothing to put in; the plan says so instead.
+  if (plan!.emergency.have < plan!.essentials) return false;
   const room = r.srs.left + (r.cpf?.left ?? 0);
   if (room < 1 || r.saving < 1) return false;
   const c = getSettings(store).currency;
