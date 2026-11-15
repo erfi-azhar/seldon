@@ -202,15 +202,17 @@ export function SphereDetail({ id }: { id: string }) {
       {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} projects={projects} />}
       {/* Learning's reading list is a shelf, and a shelf wants the full width. */}
       {s.key === 'learning' && <ReadingList />}
-      {/* With a daily card on the left, tasks join habits on the right so the columns even out. */}
+      {/* With a daily card on the left, tasks join habits on the right so the columns even out.
+          Work has no habits card: job alerts lead on the left, and what needs you sits beside them
+          when there is any, so the left column is never the empty one. */}
       <div className="detail-grid">
         <div className="col">
-          <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
+          {s.key === 'work' ? <JobAlertsCard /> : <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />}
           {s.key === 'health' && <HealthToday />}
           {s.key === 'faith' && <PrayerCard />}
           {s.key === 'finances' && <CashflowCard />}
           {s.key === 'finances' && <PlanCard />}
-          {(s.key === 'work' || s.key === 'finances') && habitsCard}
+          {s.key === 'finances' && habitsCard}
           {!hasDaily && (
             <section className="card">
               <div className="card-head">
@@ -229,7 +231,7 @@ export function SphereDetail({ id }: { id: string }) {
         <div className="col">
           {s.key === 'faith' && <FaithVerse />}
           {s.key === 'faith' && <QuranStudyCard />}
-          {s.key === 'work' ? <JobAlertsCard /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
+          {s.key === 'work' ? <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
           {s.key === 'finances' && <CryptoTwitterCard />}
           {s.key === 'finances' && <BillsCard />}
           {hasDaily && s.key !== 'work' && (
