@@ -10838,3 +10838,11 @@ button.fin-rec-main:disabled {
 .lx-out-note.faint {
   color: var(--ink-4);
 }
+
+/* Today: the time beside the weekday. */
+.hero-clock-sep {
+  opacity: 0.55;
+}
+.hero-clock {
+  font-variant-numeric: tabular-nums;
+}

@@ -293,6 +293,32 @@ export function ActivityFeed({ items }: { items: Activity[] }) {
   );
 }
 
+/** The time now, on this device, ticking over on the minute. */
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const d = new Date();
+      setNow(d);
+      timer = setTimeout(tick, 60_000 - (d.getSeconds() * 1000 + d.getMilliseconds()) + 50);
+    };
+    tick();
+    // A tab woken from the background shows the right time straight away.
+    const onVisible = () => document.visibilityState === 'visible' && setNow(new Date());
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+  return (
+    <time className="hero-clock" dateTime={now.toISOString()}>
+      {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+    </time>
+  );
+}
+
 /** A trip under two weeks away, for the plane that crosses the sky. */
 function useSkyTrip(): SkyTrip | null {
   const { data: t } = useTravel();
@@ -318,7 +344,13 @@ export function Today() {
       <Sky trip={skyTrip} />
       <header className="hero">
         <div>
-          <div className="hero-day">{weekdayLong(today)}</div>
+          <div className="hero-day">
+            {weekdayLong(today)}
+            <span className="hero-clock-sep" aria-hidden>
+              {' · '}
+            </span>
+            <Clock />
+          </div>
           <h1 className="hero-date">{monthDay(today)}</h1>
           <p className="hero-line">
             {greeting()}
