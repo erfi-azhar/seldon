@@ -1111,3 +1111,46 @@ export interface AccessToken {
   expiresAt: string | null;
   lastUsedAt: string | null;
 }
+
+// ── Reading list ────────────────────────────────────────────────────────────
+
+export type BookStatus = 'want' | 'reading' | 'read';
+
+export interface Book {
+  id: string;
+  title: string;
+  author: string;
+  year: number | null;
+  pages: number | null;
+  isbn: string;
+  synopsis: string;
+  /** Where the synopsis came from: 'Google Books', 'Open Library', the agent's name, or 'you'. */
+  synopsisSource: string;
+  /** Average rating out of 5, from the source with the most ratings. */
+  rating: number | null;
+  ratingsCount: number | null;
+  ratingSource: string;
+  /** Where the cover is served from (this server keeps a copy), or '' when none was found. */
+  cover: string;
+  buyUrl: string;
+  /** The book's page at its source, for more detail. */
+  infoUrl: string;
+  /** The spine's colour, read from the cover's left edge (#rrggbb), or '' until it is. */
+  color: string;
+  status: BookStatus;
+  note: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+}
+
+/** A match for a search, before it is added. */
+export interface BookCandidate {
+  /** 'ol:OL123W' (Open Library work) or 'gb:abc' (Google Books volume). */
+  ref: string;
+  title: string;
+  author: string;
+  year: number | null;
+  /** A small cover to tell editions apart by. */
+  thumb: string;
+}

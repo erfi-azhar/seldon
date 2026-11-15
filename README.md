@@ -136,6 +136,22 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   the real start depends on the local moon sighting), with the Hijri date throughout.
 - A starter kit of Quran reading, adhkar, Monday and Thursday fasts, Jumu'ah and sadaqah.
 
+### Learning: a reading list
+
+- **Books on a shelf.** The Learning sphere keeps the books you want to read standing
+  spine-out, each in its cover's colour; point at one and it turns to show its cover. Open
+  it and the book sits in your hand, tilting as you move and turning over as you drag,
+  beside its synopsis, ratings, page count and a link to buy it.
+- **Name a book, the rest is found.** Search by title, author or ISBN and pick the match:
+  Open Library and Google Books (both free, no account) supply the cover, synopsis and
+  ratings (whichever source has more of them). With neither synopsis to go on, your
+  background brain writes a short one from what it knows, and says so. Covers are kept on
+  your server once fetched.
+- **Buy it where you are.** The link searches the Amazon store for your time zone
+  (Amazon.sg in Singapore) by ISBN when one is known.
+- Mark a book *Reading* (it gets a ribbon) or *Read* (it moves to its own shelf), note why
+  it's on the list, or ask Seldon to add one.
+
 ### Travels
 
 - **Trips for work or leisure**, with their flights and hotel stays (local times at each
@@ -231,8 +247,8 @@ named like `delete_*`) are never offered to Seldon.
 ## Seldon, concretely
 
 - **It works through the same rules you do.** Every tool is a validated wrapper over the
-  data layer the app itself uses. There are 56, from logging a habit to logging a crypto
-  trade or adding a flight to a trip, plus the read tools of any MCP server you connect.
+  data layer the app itself uses. There are 60, from logging a habit to logging a crypto
+  trade or adding a book to your reading list, plus the read tools of any MCP server you connect.
 - **It cannot delete.** It can add, log, update and complete. What it adds or logs — tasks,
   goals, habits, check-ins, numbers, notes, food, workouts, trips — is attributed to it in
   the activity feed and can be undone with one tap. Journal writes can't be undone that
@@ -258,7 +274,7 @@ server/     Node + Hono. No build step: Node runs the TypeScript directly
   app.ts        HTTP API, sign-in, cross-site protections
   jobs.ts       The background scheduler (mail, job alerts, app sync, travel prep)
   agent/        The loop, the tools, the prompt, and the two provider adapters
-  features/     Signals, Gmail, Faith, Capture, Health, Finance, Markets, MCP, Gravl, Travel, Job alerts —
+  features/     Signals, Gmail, Faith, Capture, Health, Finance, Markets, MCP, Gravl, Travel, Job alerts, Reading —
                 each registers its own tables, routes, tools, jobs and snapshot section
 web/        React + Vite single-page app, installable as a PWA
 scripts/    seed-demo.ts
@@ -288,12 +304,13 @@ Set these in the environment before `npm start`.
 | `TERMINUS_ALLOWED_HOSTS` | — | Comma-separated hostnames the app may be reached at without a passphrase (for a private network such as a tailnet) |
 | `TERMINUS_DB` | `data/terminus.db` | Where the database lives |
 | `ANTHROPIC_API_KEY` | — | Used for Anthropic if no key is saved in Settings |
+| `GOOGLE_BOOKS_API_KEY` | — | Optional. Google Books answers without a key, but rations keyless requests from busy cloud addresses |
 
 The older `LIFEOS_*` names still work, and an existing `data/lifeos.db` keeps being used.
 
 Connections need outbound network access: `imap.gmail.com:993` for Gmail; `oauth2.googleapis.com` and `www.googleapis.com` for Google Calendar; your calendar's host (`calendar.google.com`, `*.icloud.com`) for calendar flights; the job boards'
 APIs (`boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com`, `apply.workable.com`,
-`api.smartrecruiters.com`); for crypto prices `data-api.binance.vision` and `data-stream.binance.vision` (Binance) or `api.exchange.coinbase.com` and `ws-feed.exchange.coinbase.com` (Coinbase), `api.frankfurter.dev` or `open.er-api.com` for currency rates, and `date.nager.at` for public holidays; any MCP servers you add; and whatever links you capture.
+`api.smartrecruiters.com`); for crypto prices `data-api.binance.vision` and `data-stream.binance.vision` (Binance) or `api.exchange.coinbase.com` and `ws-feed.exchange.coinbase.com` (Coinbase), `api.frankfurter.dev` or `open.er-api.com` for currency rates, `date.nager.at` for public holidays, `openlibrary.org`, `covers.openlibrary.org`, `www.googleapis.com` and `books.google.com` for the reading list; any MCP servers you add; and whatever links you capture.
 
 ### Hosting it
 

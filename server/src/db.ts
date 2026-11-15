@@ -570,6 +570,43 @@ const MIGRATIONS: string[] = [
   ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
   CREATE INDEX tasks_by_project ON tasks(project_id, done);
   `,
+  // The reading list: books you want to read, are reading, or have read, with what was
+  // found about each (synopsis, ratings, cover). Covers are cached apart, and not exported.
+  `
+  CREATE TABLE reading_books (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL DEFAULT '',
+    year INTEGER,
+    pages INTEGER,
+    isbn TEXT NOT NULL DEFAULT '',
+    synopsis TEXT NOT NULL DEFAULT '',
+    synopsis_source TEXT NOT NULL DEFAULT '',
+    rating REAL,
+    ratings_count INTEGER,
+    rating_source TEXT NOT NULL DEFAULT '',
+    cover_url TEXT NOT NULL DEFAULT '',
+    buy_url TEXT NOT NULL DEFAULT '',
+    info_url TEXT NOT NULL DEFAULT '',
+    color TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'want',
+    note TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX reading_books_by_status ON reading_books(status, position);
+
+  CREATE TABLE reading_covers (
+    book_id TEXT PRIMARY KEY REFERENCES reading_books(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    bytes BLOB,
+    fetched_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
