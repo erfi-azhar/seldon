@@ -150,7 +150,8 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
 - **Buy it where you are.** The link searches the Amazon store for your time zone
   (Amazon.sg in Singapore) by ISBN when one is known.
 - Mark a book *Reading* (it gets a ribbon) or *Read* (it moves to its own shelf), note why
-  it's on the list, or ask Seldon to add one.
+  it's on the list, or ask Seldon to add one. If Learning tracks a *Books finished* number,
+  each book you finish adds one to it, counting on from whatever you last logged.
 
 ### Travels
 

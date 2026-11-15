@@ -9,7 +9,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { NoBrain, think } from '../agent/think.ts';
 import { tool } from '../agent/tools.ts';
 import { read } from '../http.ts';
-import { Invalid, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
+import { dateInZone, Invalid, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
 import type { Book, BookCandidate, BookStatus } from '../../../shared/types.ts';
 import { safeFetch } from './fetcher.ts';
 import { registerFeature } from './registry.ts';
@@ -58,6 +58,7 @@ const gbKey = () => (process.env.GOOGLE_BOOKS_API_KEY ? `&key=${encodeURICompone
 /** Descriptions arrive as HTML (Google) or Markdown with link footnotes (Open Library). */
 export function cleanSynopsis(raw: string): string {
   let s = raw
+    .replace(/\r\n?/g, '\n')
     .replace(/<br\s*\/?>|<\/p>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
@@ -192,10 +193,14 @@ export function sameBook(a: { title: string; author: string }, b: { title: strin
 export async function searchBooks(q: string): Promise<BookCandidate[]> {
   const query = q.trim();
   if (!query) return [];
-  const [ol, gb] = await Promise.all([searchOl({ q: query }, 8), searchGb(query, 8)]);
+  // A title search too: a short title made of common words ("John of John") is buried in a general search.
+  const [ol, byTitle, gb] = await Promise.all([searchOl({ q: query }, 8), searchOl({ title: query }, 5), searchGb(query, 8)]);
   const out: Found[] = [];
   // Open Library first (whole works, not editions), then what only Google knows.
-  for (const f of [...ol, ...gb]) if (!out.some((o) => sameBook(o, f))) out.push(f);
+  for (const f of [...ol, ...byTitle, ...gb]) if (!out.some((o) => sameBook(o, f))) out.push(f);
+  // A book whose title is exactly what was typed comes first.
+  const typed = mainTitle(query);
+  out.sort((a, b) => Number(mainTitle(b.title) === typed) - Number(mainTitle(a.title) === typed));
   for (const f of out) remember(f);
   return out.slice(0, 8).map((f) => ({ ref: f.ref, title: f.title, author: f.author, year: f.year, thumb: f.thumb }));
 }
@@ -359,6 +364,26 @@ export function buyLink(zone: string | null, book: { title: string; author: stri
 
 // ── Books ───────────────────────────────────────────────────────────────────
 
+/** The "Books finished" number, in Learning if it is there, else wherever it is tracked. */
+function finishedMetric(store: Store) {
+  const named = store.listMetrics().filter((m) => m.name.trim().toLowerCase() === 'books finished');
+  const learning = learningSphere(store);
+  return named.find((m) => m.sphereId === learning) ?? named[0] ?? null;
+}
+
+/**
+ * Finishing a book adds one to "Books finished"; taking a book back off the Read shelf
+ * takes one away. It counts on from the latest value, so a count you logged yourself
+ * (books read before the list) is kept. Removing a book you read leaves the count alone.
+ */
+function countFinished(store: Store, delta: 1 | -1): void {
+  const metric = finishedMetric(store);
+  if (!metric) return;
+  const value = Math.max(0, (metric.latest ?? 0) + delta);
+  if (value === metric.latest) return;
+  store.addMetricEntry(metric.id, { value, date: dateInZone(nowIso(), store.zone()) });
+}
+
 const SELECT = `SELECT b.*, c.source AS cover_source, c.bytes IS NULL AS cover_missing FROM reading_books b LEFT JOIN reading_covers c ON c.book_id = b.id`;
 
 const hash = (s: string) => {
@@ -435,6 +460,7 @@ export async function addBook(store: Store, input: { ref?: string; title: string
     )
     .run(id, b.title, b.author, b.year, b.pages, b.isbn, synopsis, synopsisSource, b.rating, b.ratingsCount, b.ratingSource, b.coverUrl, buyLink(store.zone(), b), b.infoUrl, status, (first ?? 1) - 1, status === 'reading' ? now : null, status === 'read' ? now : null, now, now);
   store.record('created', 'book', id, learningSphere(store), `Added “${b.title}” to the reading list`);
+  if (status === 'read') countFinished(store, 1);
   return getBook(store, id);
 }
 
@@ -476,6 +502,7 @@ export function updateBook(store: Store, id: string, patch: z.infer<typeof patch
   if (!sets.length) return cur;
   set('updated_at', nowIso());
   store.db.prepare(`UPDATE reading_books SET ${sets.join(', ')} WHERE id = ?`).run(...vals, id);
+  if (patch.status !== undefined && patch.status !== cur.status && (patch.status === 'read' || cur.status === 'read')) countFinished(store, patch.status === 'read' ? 1 : -1);
   return getBook(store, id);
 }
 

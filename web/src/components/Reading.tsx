@@ -452,7 +452,7 @@ function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
             {book.synopsis ? (
               <>
                 <div className={cx('book-synopsis-text', long && !more && 'is-clamped')}>
-                  {book.synopsis.split(/\n{2,}/).map((p, i) => (
+                  {book.synopsis.split(/\r?\n\s*\r?\n/).map((p, i) => (
                     <p key={i}>{p}</p>
                   ))}
                 </div>
