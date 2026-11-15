@@ -1937,6 +1937,7 @@ export function TravelTrips() {
   const [newTrip, setNewTrip] = useState(false);
   const [importing, setImporting] = useState(false);
   const [showPast, setShowPast] = useState(false);
+  const row = useScrollEdges<HTMLDivElement>('x', [t?.trips.length, showPast]);
   // Older links to a trip (?trip=…) now go to its own page.
   const wanted = new URLSearchParams(useUrlSearch()).get('trip');
   const [, navigate] = useLocation();
@@ -1962,17 +1963,21 @@ export function TravelTrips() {
         </div>
       </div>
       {upcoming.length === 0 && <p className="empty">Nothing booked. Start a trip, or send a confirmation.</p>}
-      <div className="trip-list">
-        {upcoming.map((trip) => (
-          <TripSummary key={trip.id} trip={trip} />
-        ))}
-        {past.length > 0 && (
-          <button type="button" className="link trip-past-toggle" onClick={() => setShowPast((v) => !v)}>
-            {showPast ? 'Hide past trips' : `Past trips (${past.length})`}
-          </button>
-        )}
-        {showPast && past.map((trip) => <TripSummary key={trip.id} trip={trip} />)}
+      {/* One row, side by side, scrolled sideways: the next trip first. */}
+      <div className="blur-wrap trip-row-wrap">
+        <div ref={row.ref} onScroll={row.onScroll} className="trip-list is-row">
+          {upcoming.map((trip) => (
+            <TripSummary key={trip.id} trip={trip} />
+          ))}
+          {showPast && past.map((trip) => <TripSummary key={trip.id} trip={trip} />)}
+        </div>
+        <ScrollBlur axis="x" edges={row.edges} />
       </div>
+      {past.length > 0 && (
+        <button type="button" className="link trip-past-toggle" onClick={() => setShowPast((v) => !v)}>
+          {showPast ? 'Hide past trips' : `Past trips (${past.length})`}
+        </button>
+      )}
       {newTrip && <TripSheet trip={null} onClose={() => setNewTrip(false)} />}
       {importing && <ImportSheet onClose={() => setImporting(false)} />}
     </section>
