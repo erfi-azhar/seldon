@@ -10853,3 +10853,11 @@ button.fin-rec-main:disabled {
   background: var(--surface);
   border-radius: 999px;
 }
+
+/* Today: the time beside the weekday. */
+.hero-clock-sep {
+  opacity: 0.55;
+}
+.hero-clock {
+  font-variant-numeric: tabular-nums;
+}
