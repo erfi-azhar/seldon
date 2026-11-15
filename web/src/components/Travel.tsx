@@ -13,7 +13,7 @@ import { useApp } from '../state.tsx';
 import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
-import { NowPanel, RouteCard } from './Journey.tsx';
+import { NowPanel, RouteCard, WelcomeTitle } from './Journey.tsx';
 import { ItemModules } from './ItemModules.tsx';
 import { TripGuideBody } from './TripGuide.tsx';
 import { activeJourney, boardsAt, checkInCloses, clock, journeys, leaveBy, reachAirportBy, type Journey } from '../../../shared/journey.ts';
@@ -2559,6 +2559,9 @@ function TravelNowCard() {
           <Palmtree size={13} /> {trip.title} · day {c.dayOfTrip} of {c.tripDays}
         </span>
         <PurposeChip purpose={trip.purpose} />
+      </div>
+      <div className="journey-now tm-welcome">
+        <WelcomeTitle tz={c.here?.tz ?? c.stay?.startTz} city={c.here?.city || trip.destination || trip.title} />
       </div>
       {c.stay && (
         <div className="tm-stay">

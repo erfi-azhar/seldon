@@ -24,6 +24,12 @@
     "now": "2026-11-16T11:30:00+08:00"
   },
   {
+    "id": "landed",
+    "label": "Landed",
+    "detail": "Mon 16:30, Tokyo",
+    "now": "2026-11-16T16:30:00+09:00"
+  },
+  {
     "id": "away",
     "label": "In Tokyo",
     "detail": "Tue 11:15, Tokyo",

@@ -92,6 +92,7 @@ function segmentFromRow(r: Row, accounts: LoyaltyAccount[], stays?: MarriottStay
     confirmation: r.confirmation,
     fromTerminal: r.from_terminal ?? '',
     toTerminal: r.to_terminal ?? '',
+    checkedInAt: r.checked_in_at ?? null,
     address: r.address,
     notes: r.notes,
     source: r.source,
@@ -407,10 +408,17 @@ export function fileSegment(store: Store, input: SegmentInput, source: string, e
   return { segment, created, tripId: trip!.id, newTrip };
 }
 
+/** Mark a flight checked in, or not: the travel card then counts down to the gate instead of check-in. */
+export function setCheckedIn(store: Store, id: string, checkedIn: boolean): void {
+  const r = store.db.prepare('SELECT kind FROM trip_segments WHERE id = ?').get(id) as { kind: string } | undefined;
+  if (!r || r.kind !== 'flight') throw new NotFound('Flight');
+  store.db.prepare('UPDATE trip_segments SET checked_in_at = ? WHERE id = ?').run(checkedIn ? nowIso() : null, id);
+}
+
 export function updateSegment(store: Store, id: string, p: Partial<SegmentInput>): Segment {
   const r = store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Booking');
-  const { lounges: _l, perks: _p, startUtc: _s, endUtc: _e, ...cur } = segmentFromRow(r, []);
+  const { lounges: _l, perks: _p, startUtc: _s, endUtc: _e, checkedInAt: _c, ...cur } = segmentFromRow(r, []);
   // Names and a flight's own title follow its codes and number: drop the stale ones so normalise derives them again.
   const changed = (k: 'fromCode' | 'toCode' | 'carrier' | 'number') => p[k] !== undefined && clean(p[k]).toUpperCase() !== cur[k].toUpperCase();
   if (changed('fromCode') && p.fromName === undefined) cur.fromName = '';
@@ -1623,6 +1631,10 @@ registerFeature({
     });
     app.patch('/api/travel/segments/:id', async (c) => {
       updateSegment(store, c.req.param('id'), await read(c, segmentInput.partial()));
+      return c.json(state(c));
+    });
+    app.post('/api/travel/segments/:id/checkin', async (c) => {
+      setCheckedIn(store, c.req.param('id'), (await read(c, z.object({ checkedIn: z.boolean() }))).checkedIn);
       return c.json(state(c));
     });
     app.delete('/api/travel/segments/:id', (c) => {

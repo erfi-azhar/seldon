@@ -47,6 +47,10 @@ async function handle(method: string, path: string, body: Json): Promise<Respons
     if (task.tripId) for (const s of Object.values(rec.scenarios)) s['/travel']?.trips?.find((t: Json) => t.id === task.tripId)?.todos.push({ ...task });
     return json(task, 201);
   }
+  if (method === 'POST' && (m = path.match(/^\/travel\/segments\/([^/]+)\/checkin$/))) {
+    each(m[1]!, (o) => 'checkedInAt' in o && (o.checkedInAt = body.checkedIn ? new Date().toISOString() : null));
+    return json(data['/travel']);
+  }
   if (method === 'PATCH' && (m = path.match(/^\/travel\/itinerary\/([^/]+)$/))) {
     each(m[1]!, (o) => 'done' in o && Object.assign(o, body));
     return json(data['/travel']);

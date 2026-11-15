@@ -9546,6 +9546,18 @@ button.layover-pill:hover .layover-lounge {
   font-size: 13.5px;
   color: var(--ink-2);
 }
+.jn-gloss {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.jn-gloss i {
+  font-style: italic;
+  color: var(--ink-2);
+}
+/* The welcome on the trip card while you're away: the headline, then the day below it. */
+.tm-welcome {
+  margin-top: -2px;
+}
 .jn-sub b {
   font-weight: 600;
   color: var(--ink);
@@ -9607,10 +9619,27 @@ button.layover-pill:hover .layover-lounge {
   grid-column: 1 / -1;
 }
 .jn-arc {
+  position: relative;
   width: 100%;
   height: 52px;
   margin: 6px 0 0;
   color: oklch(0.6 0.13 245);
+}
+.jn-arc svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+/* The plane on the arc, with a soft glow of the same blue. */
+.jn-plane {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, oklch(0.6 0.13 245 / 0.22), transparent);
 }
 .jn-ends {
   display: grid;

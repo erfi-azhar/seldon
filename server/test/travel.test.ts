@@ -293,6 +293,15 @@ test('travel API: trips, bookings, a plan you edit, settings; imports need a bra
   assert.equal(imp.status, 400);
   assert.match(imp.json.error!, /Connect a brain/);
   assert.equal((await call('POST', `/travel/trips/${id}/draft`)).status, 400);
+  // Checking in is kept with the flight, for every device; a stay can't be checked in.
+  const flightId = s.trips[0]!.segments.find((x) => x.kind === 'flight')!.id;
+  assert.equal(s.trips[0]!.segments[0]!.checkedInAt, null);
+  s = (await call('POST', `/travel/segments/${flightId}/checkin`, { checkedIn: true })).json;
+  assert.ok(s.trips[0]!.segments.find((x) => x.id === flightId)!.checkedInAt);
+  s = (await call('POST', `/travel/segments/${flightId}/checkin`, { checkedIn: false })).json;
+  assert.equal(s.trips[0]!.segments.find((x) => x.id === flightId)!.checkedInAt, null);
+  assert.equal((await call('POST', '/travel/segments/nope/checkin', { checkedIn: true })).status, 404);
+  assert.equal((await call('POST', `/travel/segments/${flightId}/checkin`, {})).status, 400);
   assert.equal((await call('DELETE', `/travel/trips/${id}`)).json.trips.length, 0);
 });
 
