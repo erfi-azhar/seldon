@@ -8537,3 +8537,55 @@ button.layover-pill:hover .layover-lounge {
     padding: 10px;
   }
 }
+
+/* Coming up: a fold at the foot of today's to-dos. */
+.coming-up {
+  border-top: 1px solid var(--line);
+  margin-top: 2px;
+}
+.coming-up > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.coming-up > summary::-webkit-details-marker {
+  display: none;
+}
+.coming-up > summary:focus-visible {
+  outline: 2px solid var(--ink-3);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.coming-up-chevron {
+  color: var(--ink-3);
+  transition: transform 0.18s;
+}
+.coming-up[open] .coming-up-chevron {
+  transform: rotate(90deg);
+}
+.coming-up-title {
+  font-size: 11.5px;
+  font-weight: 550;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.coming-up > summary .hint {
+  margin-left: auto;
+}
+.coming-up > summary:hover .coming-up-title,
+.coming-up > summary:hover .coming-up-chevron {
+  color: var(--ink);
+}
+.coming-up > ul {
+  padding-bottom: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .coming-up-chevron {
+    transition: none;
+  }
+}
