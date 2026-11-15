@@ -498,6 +498,24 @@ export interface PrayerDay {
   log: Partial<Record<PrayerName, PrayerStatus>>;
 }
 
+// ── Weather, for the Today sky ──────────────────────────────────────────────
+
+export type WeatherKind = 'clear' | 'cloudy' | 'overcast' | 'fog' | 'drizzle' | 'rain' | 'showers' | 'snow' | 'storm';
+
+/** The weather now at a place, from Open-Meteo. */
+export interface Weather {
+  kind: WeatherKind;
+  /** The WMO weather code it was read from. */
+  code: number;
+  /** Share of the sky under cloud, 0–100. */
+  cloudCover: number;
+  /** Rain, showers and snow in the last hour, in mm. */
+  precipitation: number;
+  windKmh: number;
+  /** When Open-Meteo last updated it (ISO). */
+  observedAt: string;
+}
+
 export interface FaithState {
   configured: boolean;
   settings: PrayerSettings;

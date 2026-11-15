@@ -4,13 +4,16 @@
 // and the sun and moon sit where they really are: left to right by how far east or west
 // they are, up and down by how high. The moon is drawn in its real phase. Clouds drift
 // and stars twinkle; a click sends a shooting star after dark, or a few birds by day.
-// When a trip is under two weeks away a small plane crosses now and then.
+// When a trip is under two weeks away a small plane crosses now and then. The weather
+// where you are shows too: cloud cover, grey skies, rain, snow, fog and storms.
 //
 // It draws a coarse grid (a dot every 5px, 3px on a phone), slowly when nothing is moving, and not at
 // all while hidden or scrolled away. With reduced motion it holds still.
 
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
+import type { Weather } from '../../../shared/types.ts';
+import { useWeather } from '../api.ts';
 import { moonPhase, moonPosition, sunPosition, useSun, type Blend, type Phase, type SunState } from '../sun.ts';
 
 type RGB = [number, number, number];
@@ -150,7 +153,9 @@ type Effect =
   | { kind: 'birds'; x: number; y: number; dir: 1 | -1; born: number; flock: { ox: number; oy: number; ph: number }[] };
 
 const STAR_LIFE = 1.3;
-const BIRD_LIFE = 6;
+/** Birds cross the sky at this many band heights a second, and leave once all are out of it. */
+const BIRD_SPEED = 0.32;
+const BIRD_MAX_LIFE = 45;
 /** A plane crosses every so often while a trip is near. */
 const PLANE_EVERY = 55;
 const PLANE_FLIGHT = 18;
@@ -171,6 +176,26 @@ function planeSegments(p: { x: number; y: number }, strength: number): Segment[]
   ];
 }
 
+type Flock = Extract<Effect, { kind: 'birds' }>;
+
+function birdAt(e: Flock, b: Flock['flock'][number], age: number): { x: number; y: number } {
+  return {
+    x: e.x + e.dir * BIRD_SPEED * age + b.ox * (1 + age * 0.05),
+    y: e.y - 0.02 * age + b.oy + 0.01 * Math.sin(age * 2.4 + b.ph),
+  };
+}
+
+/** Whether an effect is still in the sky: a shooting star for its moment, birds until they've flown off. */
+function alive(e: Effect, now: number, aspect: number): boolean {
+  const age = now - e.born;
+  if (e.kind === 'star') return age < STAR_LIFE;
+  if (age > BIRD_MAX_LIFE) return false;
+  return e.flock.some((b) => {
+    const p = birdAt(e, b, age);
+    return p.x > -0.1 && p.x < aspect + 0.1 && p.y > -0.1;
+  });
+}
+
 function effectSegments(effects: Effect[], now: number): Segment[] {
   const out: Segment[] = [];
   for (const e of effects) {
@@ -183,12 +208,10 @@ function effectSegments(effects: Effect[], now: number): Segment[] {
       const speed = Math.hypot(e.vx, e.vy);
       out.push({ x1: hx, y1: hy, x2: hx - (e.vx / speed) * len, y2: hy - (e.vy / speed) * len, width: 0.022, kind: 'light', strength: life });
     } else {
-      const fade = Math.min(1, (BIRD_LIFE - age) / 1.2);
       for (const b of e.flock) {
-        const bx = e.x + e.dir * 0.2 * age + b.ox * (1 + age * 0.15);
-        const by = e.y - 0.035 * age + b.oy + 0.01 * Math.sin(age * 2.4 + b.ph);
+        const { x: bx, y: by } = birdAt(e, b, age);
         const flap = 0.022 * Math.sin(age * 11 + b.ph);
-        const s = { width: 0.011, kind: 'ink' as const, strength: fade };
+        const s = { width: 0.011, kind: 'ink' as const, strength: 1 };
         out.push({ ...s, x1: bx, y1: by, x2: bx - 0.032, y2: by - flap - 0.008 });
         out.push({ ...s, x1: bx, y1: by, x2: bx + 0.032, y2: by - flap - 0.008 });
       }
@@ -196,6 +219,115 @@ function effectSegments(effects: Effect[], now: number): Segment[] {
   }
   return out;
 }
+
+// ── Weather ───────────────────────────────────────────────────────────────────
+
+interface Look {
+  /** Share of the sky under cloud, 0–1; below 0 when the weather isn't known. */
+  cover: number;
+  /** How grey the sky has turned: overcast, wet, foggy or snowy. */
+  grey: number;
+  fog: number;
+  rain: number;
+  snow: number;
+  storm: boolean;
+  /** Cloud speed, as a share of a calm day's. */
+  wind: number;
+}
+
+const UNKNOWN: Look = { cover: -1, grey: 0, fog: 0, rain: 0, snow: 0, storm: false, wind: 1 };
+
+function lookOf(w: Weather | null): Look {
+  if (!w) return UNKNOWN;
+  const cover = w.cloudCover / 100;
+  const wet = w.kind === 'drizzle' || w.kind === 'rain' || w.kind === 'showers' || w.kind === 'storm';
+  const heavy = clamp(0.3 + w.precipitation / 3);
+  return {
+    cover,
+    grey: Math.max(smooth(0.6, 1, cover), wet ? 0.65 : 0, w.kind === 'fog' || w.kind === 'snow' ? 0.5 : 0),
+    fog: w.kind === 'fog' ? 1 : 0,
+    rain: w.kind === 'drizzle' ? 0.3 : w.kind === 'rain' || w.kind === 'showers' ? 0.45 + 0.55 * heavy : w.kind === 'storm' ? 1 : 0,
+    snow: w.kind === 'snow' ? 0.4 + 0.6 * heavy : 0,
+    storm: w.kind === 'storm',
+    wind: clamp(0.6 + w.windKmh / 20, 0.5, 3),
+  };
+}
+
+const greyed = (c: RGB, t: number): RGB => {
+  const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  return mix(c, [l * 0.96, l * 0.98, l * 1.04], t);
+};
+
+/** The phase's colours under the weather: greyer and dimmer as it closes in, cloud as reported. */
+function weathered(p: Palette, w: Look): Palette {
+  if (w.cover < 0) return p;
+  const g = w.grey;
+  return {
+    ...p,
+    top: mul(greyed(p.top, g * 0.6), 1 - 0.12 * g),
+    mid: mul(greyed(p.mid, g * 0.6), 1 - 0.12 * g),
+    low: greyed(p.low, g * 0.5),
+    cloud: mul(greyed(p.cloud, g * 0.75), 1 - 0.2 * g),
+    // As it closes in, the clouds lose their shading and run together into one grey layer.
+    cloudShade: mix(mul(greyed(p.cloudShade, g * 0.7), 1 - 0.1 * g), mul(greyed(p.cloud, g * 0.75), 1 - 0.2 * g), 0.5 * g),
+    clouds: w.cover < 0.5 ? 0.12 + 0.48 * (w.cover / 0.5) : 0.6 + 0.4 * ((w.cover - 0.5) / 0.5),
+    stars: p.stars * (1 - smooth(0.3, 0.95, w.cover)) * (1 - w.fog),
+    glowStrength: p.glowStrength * (1 - 0.75 * g),
+    moon: p.moon * (1 - 0.7 * g),
+    wind: p.wind * w.wind,
+  };
+}
+
+/**
+ * Rain streaks or snowflakes for this frame, laid onto the dot grid: how strongly each
+ * cell is covered, 0–1. Null when nothing is falling.
+ */
+function precipitation(w: Look, seconds: number, cols: number, rows: number, aspect: number): Float32Array | null {
+  if (w.rain <= 0 && w.snow <= 0) return null;
+  const grid = new Float32Array(cols * rows);
+  const put = (x: number, y: number, a: number) => {
+    const ci = Math.floor((x / aspect) * cols);
+    const cj = Math.floor(y * rows);
+    if (ci < 0 || ci >= cols || cj < 0 || cj >= rows) return;
+    const at = cj * cols + ci;
+    if (a > grid[at]!) grid[at] = a;
+  };
+  if (w.rain > 0) {
+    const slant = 0.1 + 0.05 * w.wind;
+    const drops = Math.round(w.rain * 0.9 * cols);
+    for (let d = 0; d < drops; d++) {
+      const speed = 1.5 + 0.8 * hash(d, 3);
+      const len = 0.05 + 0.07 * hash(d, 4) * w.rain;
+      const y = ((hash(d, 2) * 1.4 + seconds * speed) % 1.4) - 0.2;
+      const x = hash(d, 1) * (aspect + 0.5) - 0.3 + slant * y;
+      const steps = Math.ceil(len * rows) + 1;
+      for (let n = 0; n <= steps; n++) {
+        const t = n / steps;
+        put(x - slant * len * t, y - len * t, 1 - 0.6 * t);
+      }
+    }
+  }
+  if (w.snow > 0) {
+    const flakes = Math.round(w.snow * 0.45 * cols);
+    for (let d = 0; d < flakes; d++) {
+      const speed = 0.08 + 0.08 * hash(d, 13);
+      const y = ((hash(d, 12) * 1.3 + seconds * speed) % 1.3) - 0.15;
+      const x = hash(d, 11) * (aspect + 0.2) - 0.1 + 0.04 * Math.sin(seconds * (0.5 + 0.4 * hash(d, 14)) + d) + 0.02 * w.wind * y;
+      put(x, y, 0.7 + 0.3 * hash(d, 15));
+    }
+  }
+  return grid;
+}
+
+/** A soft lightning glow, never a strobe: a quick rise and a slow fade, seconds apart. */
+function flashLevel(scene: Scene, seconds: number): number {
+  const age = seconds - scene.flashAt;
+  if (age < 0 || age > 1.6) return 0;
+  return 0.3 * (age < 0.12 ? age / 0.12 : Math.exp(-(age - 0.12) / 0.35));
+}
+
+const SNOW: RGB = [244, 247, 252];
+const FLASH: RGB = [236, 240, 255];
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
@@ -209,6 +341,10 @@ interface Scene {
   /** How far the clouds have drifted, added to a little each frame at the phase's wind. */
   drift: number;
   sun: SunState;
+  weather: Weather | null;
+  /** When the last lightning flash began, and when the next is due (seconds). */
+  flashAt: number;
+  nextFlash: number;
   effects: Effect[];
   plane: { x: number; y: number } | null;
 }
@@ -228,7 +364,8 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   ctx.clearRect(0, 0, w, h);
 
   const { sun: s } = scene;
-  const pal = blendPalette(s.blend);
+  const look = lookOf(scene.weather);
+  const pal = weathered(blendPalette(s.blend), look);
   const aspect = w / h;
   const now = Date.now();
   const sunPos = sunPosition(now, s.place.lat, s.place.lng);
@@ -267,6 +404,14 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   const cols = Math.ceil(w / cell);
   const rows = Math.ceil(h / cell);
   const drift = scene.drift;
+  const falling = precipitation(look, seconds, cols, rows, aspect);
+  // Rain shows as darker streaks against a pale sky and lighter ones against a dark sky.
+  const fallColor = look.snow > 0 ? SNOW : lum(pal.cloud) > 0.55 ? mix(pal.cloud, [84, 100, 128], 0.6) : mix(pal.cloud, [235, 240, 250], 0.35);
+  const flash = look.storm ? flashLevel(scene, seconds) : 0;
+  // Under heavy cloud the sun's disc is only a pale shape behind it.
+  const discShows = 1 - 0.65 * look.grey;
+  // Fog is a pale haze by day and a dim grey one at night, lighter than the dark sky behind it.
+  const haze = add(greyed(mix(pal.low, pal.cloud, 0.5), 0.85), [14, 15, 18], 1);
   for (let j = 0; j < rows; j++) {
     const v = (j + 0.5) / rows;
     const k = v / HZ;
@@ -277,7 +422,8 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
     const toPage = smooth(0, 0.85, into);
     const alpha = 1 - smooth(0.6, 1, into);
     const base = k < 0.6 ? mix(pal.top, pal.mid, smooth(0, 0.6, k)) : mix(pal.mid, pal.low, smooth(0.6, 1, k));
-    const band = Math.max(0, 1 - Math.abs(k - 0.42) * 1.7);
+    // Clouds keep to the middle of the sky, unless it has closed in.
+    const band = Math.max(0, 1 - Math.abs(k - 0.42) * 1.7, look.grey);
     for (let i = 0; i < cols; i++) {
       const x = ((i + 0.5) / cols) * aspect;
       let c = base;
@@ -308,9 +454,11 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
         }
       }
 
+      let clouded = 0;
       if (pal.clouds > 0.01 && band > 0) {
         const n = fbm(x * 2.1 + drift, v * 6.5 + drift * 0.15);
-        const cover = smooth(0.52, 0.74, n * band + 0.16) * pal.clouds;
+        const cover = smooth(0.52, 0.74, n * band + 0.16 + 0.42 * look.grey) * pal.clouds;
+        clouded = cover;
         if (cover > 0.01) {
           let cloud = mix(pal.cloudShade, pal.cloud, smooth(0.45, 0.85, n));
           // At night, clouds near the moon catch its light.
@@ -319,10 +467,13 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
         }
       }
 
+      if (look.fog > 0) c = mix(c, haze, look.fog * (0.35 + 0.45 * Math.min(1, k)));
+      if (flash > 0) c = mix(c, FLASH, flash * (0.05 + 0.4 * clouded));
+
       if (sun.y < HZ + SUN_R) {
         const d = Math.sqrt(d2);
         if (d < SUN_R * 1.05) {
-          disc = smooth(SUN_R * 1.05, SUN_R * 0.8, d);
+          disc = smooth(SUN_R * 1.05, SUN_R * 0.8, d) * discShows;
           c = mix(c, pal.core, disc);
         }
       }
@@ -337,6 +488,9 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
         const on = nx > (1 - 2 * lit.fraction) * half;
         c = mix(c, on ? MOON_LIT : mix(c, MOON_LIT, 0.08), pal.moon);
       }
+
+      const fall = falling ? falling[j * cols + i]! : 0;
+      if (fall > 0) c = mix(c, fallColor, fall * (look.snow > 0 ? 0.85 : 0.5));
 
       for (const sg of segments) {
         const minX = Math.min(sg.x1, sg.x2) - sg.width;
@@ -394,8 +548,10 @@ export function Sky({ trip }: { trip: SkyTrip | null }) {
   const sun = useSun();
   const [, navigate] = useLocation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const scene = useRef<Scene>({ sun, effects: [], plane: null, drift: 0 });
+  const { data: weather } = useWeather(sun.source === 'guess' ? null : sun.place);
+  const scene = useRef<Scene>({ sun, weather: null, effects: [], plane: null, drift: 0, flashAt: -99, nextFlash: 4 });
   scene.current.sun = sun;
+  scene.current.weather = weather ?? null;
   const tripRef = useRef(trip);
   tripRef.current = trip;
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
@@ -415,16 +571,23 @@ export function Sky({ trip }: { trip: SkyTrip | null }) {
       raf = requestAnimationFrame(frame);
       const sec = seconds();
       const sc = scene.current;
-      sc.effects = sc.effects.filter((e) => sec - e.born < (e.kind === 'star' ? STAR_LIFE : BIRD_LIFE));
-      const p = tripRef.current ? planeAt(sec, canvas.clientWidth / Math.max(1, canvas.clientHeight)) : null;
+      const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+      sc.effects = sc.effects.filter((e) => alive(e, sec, aspect));
+      const p = tripRef.current ? planeAt(sec, aspect) : null;
       sc.plane = p;
-      // Smooth while something is flying; otherwise a slow drift is enough.
+      const look = lookOf(sc.weather);
+      if (look.storm && sec >= sc.nextFlash) {
+        sc.flashAt = sec;
+        sc.nextFlash = sec + 7 + Math.random() * 12;
+      }
+      // Smooth while something is flying, steady while rain or snow falls; otherwise a slow drift is enough.
       const busy = sc.effects.length > 0 || p !== null;
-      if (t - last < (busy ? 33 : 90)) return;
+      const falling = look.rain > 0 || look.snow > 0 || look.storm;
+      if (t - last < (busy ? 33 : falling ? 50 : 90)) return;
       last = t;
       // Step the clouds on by the time since the last frame (capped, so a tab coming back
       // from the background doesn't jump them), at the wind of the moment.
-      sc.drift += Math.min(0.25, sec - lastSec) * 0.03 * blendPalette(sc.sun.blend).wind;
+      sc.drift += Math.min(0.25, sec - lastSec) * 0.03 * weathered(blendPalette(sc.sun.blend), look).wind;
       lastSec = sec;
       draw(canvas, sc, sec);
     };
@@ -516,7 +679,7 @@ export function Sky({ trip }: { trip: SkyTrip | null }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas && matchMedia('(prefers-reduced-motion: reduce)').matches) draw(canvas, scene.current, 0);
-  }, [sun]);
+  }, [sun, weather]);
 
   return (
     <div className="sky" aria-hidden="true">

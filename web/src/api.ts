@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import type {
   AgentEvent,
+  Weather,
   ChatContext,
   Conversation,
   ConversationSummary,
@@ -226,6 +227,21 @@ export const useSignals = (filter: { sphereId?: string; source?: string } = {}) 
 
 export const useIntegration = (id: string) =>
   useQuery({ queryKey: ['integration', id], queryFn: () => api<IntegrationStatus>('GET', `/integrations/${id}`), refetchInterval: (q) => (q.state.data?.running ? 3_000 : 30_000) });
+
+/** The weather now at a place (rounded to about a kilometre), for the Today sky. */
+export const useWeather = (place: { lat: number; lng: number } | null) => {
+  const lat = place ? Math.round(place.lat * 100) / 100 : null;
+  const lng = place ? Math.round(place.lng * 100) / 100 : null;
+  return useQuery({
+    queryKey: ['weather', lat, lng],
+    queryFn: () => api<Weather>('GET', `/weather?lat=${lat}&lng=${lng}`),
+    enabled: lat !== null && lng !== null,
+    staleTime: 10 * 60_000,
+    refetchInterval: 10 * 60_000,
+    // No weather is fine: the sky just shows the time of day.
+    retry: false,
+  });
+};
 
 export const useFaith = () =>
   useQuery({ queryKey: ['faith', todayStr()], queryFn: () => api<FaithState>('GET', withDate('/faith')), refetchInterval: 60_000 });
