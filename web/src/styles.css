@@ -10839,6 +10839,21 @@ button.fin-rec-main:disabled {
   color: var(--ink-4);
 }
 
+/* A connection to or from a flight on another trip: a caption over the layover pill. */
+.layover-gap.is-cross {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.layover-caption {
+  position: relative;
+  padding: 0 8px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  background: var(--surface);
+  border-radius: 999px;
+}
+
 /* Today: the time beside the weekday. */
 .hero-clock-sep {
   opacity: 0.55;

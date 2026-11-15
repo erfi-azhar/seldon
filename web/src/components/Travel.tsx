@@ -894,6 +894,12 @@ function BeyondAirport({ plan, to, city }: { plan: LayoverPlan; to: Segment; cit
           <b className="num">{at(plan.backBy)}</b>
         </li>
       </ol>
+      {plan.atHome && (
+        <p className="lx-out-how">
+          <MapPin size={13} aria-hidden />
+          Home is about 40 minutes away by taxi. Check in online for {`${to.carrier} ${to.number}`.trim()} before you land, so on the way back it’s bag drop at most, then straight through.
+        </p>
+      )}
       {!plan.atHome && (
         <p className="lx-out-how">
           <MapPin size={13} aria-hidden />
@@ -1159,26 +1165,49 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
   const setDay = (d: string, open: boolean) => setDayFolds({ ...dayFolds, [d]: open });
   const allOpen = days.every(dayOpen);
   const setAllDays = (open: boolean) => setDayFolds(Object.fromEntries(days.map((d) => [d, open])));
+  // Connections reach across trips (home from one, straight on to the next), so look at every flight.
+  const chains = journeys(state.trips.flatMap((t) => t.segments.filter((x) => x.kind === 'flight')));
+  const neighbour = (f: Segment, step: -1 | 1) => {
+    const c = chains.find((j) => j.some((x) => x.id === f.id));
+    const i = c ? c.findIndex((x) => x.id === f.id) : -1;
+    return c && i >= 0 ? c[i + step] : undefined;
+  };
+  const tripName = (f: Segment) => state.trips.find((t) => t.id === f.tripId)?.title;
+
+  /** The wait between two connecting flights, as a pill that opens the layover sheet. */
+  const gap = (a: Segment, b: Segment, caption?: string) => {
+    const wait = minutesBetween(a.endUtc, b.startUtc);
+    if (!(wait > 0 && wait < 24 * 60)) return null;
+    // Long enough to leave the airport, by the same reckoning as the layover sheet.
+    const plan = layoverPlan(a, b, home);
+    const long = plan.verdict === 'out';
+    return (
+      <div className={cx('layover-gap', wait < 60 && 'is-tight', long && 'is-long', caption && 'is-cross')}>
+        {caption && <span className="layover-caption">{caption}</span>}
+        <button type="button" className="layover-pill" onClick={() => setConnection({ from: a, to: b })} aria-haspopup="dialog">
+          <Clock size={12} aria-hidden />
+          <b>{hm(wait)}</b> layover in {a.toCity || a.toName || a.toCode}
+          {wait < 60 ? ' · tight' : long ? (plan.atHome ? ' · time to go home' : ' · time to go out') : ''}
+          <Sofa size={12} className="layover-lounge" aria-label="See lounges" />
+        </button>
+      </div>
+    );
+  };
+
   const row = (s: Segment) => {
     if (s.kind === 'stay') return <StayCard key={s.id} s={s} tier={bonvoyTier} onEdit={() => setBooking(s)} />;
     if (s.kind !== 'flight') return <StayRow key={s.id} s={s} onEdit={() => setBooking(s)} />;
-    const next = flights[flights.indexOf(s) + 1];
-    const wait = next && s.toCode && s.toCode === next.fromCode ? minutesBetween(s.endUtc, next.startUtc) : 0;
-    // Long enough to leave the airport, by the same reckoning as the layover sheet.
-    const long = !!next && wait > 0 && wait < 24 * 60 && layoverPlan(s, next, home).verdict === 'out';
+    const i = flights.indexOf(s);
+    const next = flights[i + 1];
+    // The first and last flights shown may connect to a flight on another trip.
+    const from = i === 0 ? neighbour(s, -1) : undefined;
+    const onward = i === flights.length - 1 ? neighbour(s, 1) : undefined;
     return (
       <Fragment key={s.id}>
+        {from && from.tripId !== trip.id && gap(from, s, `From ${`${from.carrier} ${from.number}`.trim()}${tripName(from) ? ` · ${tripName(from)}` : ''}`)}
         <FlightRow s={s} onEdit={() => setBooking(s)} />
-        {wait > 0 && wait < 24 * 60 && (
-          <div className={cx('layover-gap', wait < 60 && 'is-tight', long && 'is-long')}>
-            <button type="button" className="layover-pill" onClick={() => setConnection({ from: s, to: next })} aria-haspopup="dialog">
-              <Clock size={12} aria-hidden />
-              <b>{hm(wait)}</b> layover in {s.toCity || s.toName || s.toCode}
-              {wait < 60 ? ' · tight' : long ? ' · time to go out' : ''}
-              <Sofa size={12} className="layover-lounge" aria-label="See lounges" />
-            </button>
-          </div>
-        )}
+        {next && s.toCode && s.toCode === next.fromCode && gap(s, next)}
+        {onward && onward.tripId !== trip.id && gap(s, onward, `Then ${`${onward.carrier} ${onward.number}`.trim()} to ${onward.toCity || onward.toCode}${tripName(onward) ? ` · ${tripName(onward)}` : ''}`)}
       </Fragment>
     );
   };
@@ -1334,7 +1363,9 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
       {editing && <TripSheet trip={trip} onClose={() => setEditing(false)} />}
       {booking && <BookingSheet trip={trip} segment={booking === 'new' ? null : booking} onClose={() => setBooking(null)} />}
       {item && <ItemSheet trip={trip} item={item.item} date={item.date} onClose={() => setItem(null)} />}
-      {connection && <LayoverSheet trip={trip} from={connection.from} to={connection.to} loyalty={state.loyalty} onClose={() => setConnection(null)} />}
+      {connection && (
+        <LayoverSheet trip={state.trips.find((t) => t.id === connection.to.tripId) ?? trip} from={connection.from} to={connection.to} loyalty={state.loyalty} onClose={() => setConnection(null)} />
+      )}
     </div>
   );
 }
