@@ -1,18 +1,18 @@
 // Quran study: your place in the mushaf, with three ways into the ayah there — listen and
 // repeat it (recitation), read what a mufassir wrote on it (tafsir), and write what it
-// says to you (reflection). Text, translation and tafsir come from quran.com via the server.
+// says to you (reflection). The Faith sphere has a small card; studying happens on its own
+// page at /quran. Text, translation and tafsir come from quran.com via the server.
 
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link } from 'wouter';
 import type { Note, QuranChapter, QuranStudy, QuranVerse } from '../../../shared/types.ts';
-import { api, useWrite, write } from '../api.ts';
-import { cx, plural, shortDay, todayStr } from '../lib.ts';
+import { api, useSpheres, useWrite, write } from '../api.ts';
+import { cx, hueStyle, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { arabicDigits, PlayIcon, RECITER, useRecitation, type Track } from './recitation.tsx';
-import { AutoTextarea, Seg } from './ui.tsx';
-
-type Tab = 'recite' | 'tafsir' | 'reflect';
+import { AutoTextarea, Loading, Seg } from './ui.tsx';
 
 const useStudy = () => useQuery({ queryKey: ['quran-study', todayStr()], queryFn: () => api<QuranStudy>('GET', '/quran/study') });
 const useChapters = () => useQuery({ queryKey: ['quran-chapters'], queryFn: () => api<QuranChapter[]>('GET', '/quran/chapters'), staleTime: Infinity, retry: 1 });
@@ -26,38 +26,137 @@ function nextKey(list: QuranChapter[], surah: number, ayah: number): string {
   return surah < 114 ? `${surah + 1}:1` : '1:1';
 }
 
-export function QuranStudyCard() {
+/** The ayah at your place, and the controls that move it. */
+function useStudyPlace() {
   const { data: study } = useStudy();
   const { data: chapters, isError: chaptersFailed } = useChapters();
-  const [tab, setTab] = useState<Tab>('recite');
-  const [jumping, setJumping] = useState(false);
   const move = useWrite((key: string) => write.put('/quran/study', { key }));
   const mark = useWrite((key: string) => write.post('/quran/study/mark', { key }));
-  const { data: verse, isError: verseFailed, refetch } = useQuery({
+  const verseQuery = useQuery({
     queryKey: ['quran-verse', study?.key, study?.tafsir],
     queryFn: () => api<QuranVerse>('GET', `/quran/verse?key=${study!.key}&tafsir=${study!.tafsir}`),
     enabled: !!study,
     staleTime: Infinity,
     retry: 1,
   });
+  return { study, chapters, chaptersFailed, move, mark, ...verseQuery };
+}
+
+const statsLine = (study: QuranStudy) =>
+  `${study.week ? `${study.week} this week` : 'Nothing studied yet this week'}${study.streak > 1 ? ` · ${study.streak}-day streak` : ''}`;
+
+/** In the Faith sphere: where you are, and the way into the study page. */
+export function QuranStudyCard() {
+  const { study, chapters, data: verse } = useStudyPlace();
   if (!study) return null;
+  const chapter = chapters?.[study.surah - 1];
+  const progress = chapter ? study.ayah / chapter.verses : 0;
+  return (
+    <section className="card quran-card" aria-label="Quran study">
+      <div className="card-head">
+        <div>
+          <h2 className="card-title">Quran study</h2>
+          <span className="hint">{statsLine(study)}</span>
+        </div>
+        {study.studiedToday && (
+          <span className="quran-today">
+            <Check size={12} /> Today
+          </span>
+        )}
+      </div>
+      <Link href="/quran" className="quran-card-body">
+        <div className="quran-card-place">
+          <b>{chapter?.name ?? `Surah ${study.surah}`}</b>
+          <span>
+            {chapter ? `${chapter.meaning} · ayah ${study.ayah} of ${chapter.verses}` : `Ayah ${study.ayah}`}
+          </span>
+        </div>
+        {verse && (
+          <p className="quran-card-arabic" lang="ar" dir="rtl">
+            {verse.arabic}
+          </p>
+        )}
+        <div className="quran-card-progress" aria-hidden>
+          <i style={{ width: `${Math.max(2, progress * 100)}%` }} />
+        </div>
+      </Link>
+      <div className="quran-card-foot">
+        <span className="hint">Recite · Tafsir · Reflect</span>
+        <Link href="/quran" className="btn btn-primary btn-sm">
+          {study.total ? 'Continue studying' : 'Start studying'} <ArrowRight size={14} />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+/** The study page: one ayah at a time, with room to listen, read and write. */
+export function QuranStudyPage() {
+  const { study, chapters, chaptersFailed, move, mark, data: verse, isError: verseFailed, refetch } = useStudyPlace();
+  const { data: spheres } = useSpheres();
+  const [side, setSide] = useState<'tafsir' | 'reflect'>('tafsir');
+  const [jumping, setJumping] = useState(false);
+  const faith = spheres?.find((x) => x.key === 'faith');
+
+  // ← and → step through the ayat, unless you are typing.
+  useEffect(() => {
+    if (!study || !chapters) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable]')) return;
+      if (e.key === 'ArrowLeft') move.mutate(prevKey(chapters, study.surah, study.ayah));
+      if (e.key === 'ArrowRight') move.mutate(nextKey(chapters, study.surah, study.ayah));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [study, chapters, move]);
+
+  if (!study) return <Loading />;
   const chapter = chapters?.[study.surah - 1];
   const failed = verseFailed || chaptersFailed;
 
   return (
-    <section className="card quran-study" aria-label="Quran study">
-      <div className="card-head">
+    <div className="page tint quran-page" style={faith ? hueStyle(faith.hue) : undefined}>
+      <Link href={faith ? `/spheres/${faith.id}` : '/spheres'} className="back">
+        <ArrowLeft size={15} /> {faith?.name ?? 'Spheres'}
+      </Link>
+
+      <header className="quran-page-head">
         <div>
-          <h2 className="card-title">Quran study</h2>
-          <span className="hint">
-            {study.week ? `${study.week} this week` : 'Nothing studied yet this week'}
-            {study.streak > 1 && ` · ${study.streak}-day streak`}
-          </span>
+          <span className="quran-eyebrow">Quran study · {statsLine(study)}</span>
+          <h1>
+            {chapter?.name ?? `Surah ${study.surah}`} <span className="quran-page-arabic-name">{chapter?.nameArabic}</span>
+          </h1>
+          {chapter && (
+            <p className="muted">
+              {chapter.meaning} · ayah {study.ayah} of {chapter.verses}
+            </p>
+          )}
         </div>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setJumping((j) => !j)} aria-expanded={jumping}>
-          <BookOpen size={13} /> {chapter ? `${chapter.name} ${study.key}` : study.key}
-        </button>
-      </div>
+        <div className="quran-page-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setJumping((j) => !j)} aria-expanded={jumping}>
+            <BookOpen size={14} /> Go to an ayah
+          </button>
+          {chapters && (
+            <div className="quran-nav">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => move.mutate(prevKey(chapters, study.surah, study.ayah))} aria-label="Previous ayah" title="Previous ayah (←)">
+                <ChevronLeft size={15} />
+              </button>
+              <button
+                type="button"
+                className={cx('btn btn-sm quran-mark', study.studiedToday ? 'btn-ghost' : 'btn-primary')}
+                onClick={() => mark.mutate(study.key)}
+                disabled={mark.isPending}
+              >
+                <Check size={14} /> {study.studiedToday ? 'Studied today · next' : 'Studied · next'}
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => move.mutate(nextKey(chapters, study.surah, study.ayah))} aria-label="Next ayah" title="Next ayah (→)">
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
 
       {jumping && chapters && (
         <JumpTo
@@ -71,57 +170,51 @@ export function QuranStudyCard() {
       )}
 
       {failed ? (
-        <div className="quran-failed">
+        <section className="card quran-failed">
           <p className="muted">quran.com couldn’t be reached just now, so the ayah can’t be shown.</p>
           <button type="button" className="btn btn-sm" onClick={() => void refetch()}>
             Try again
           </button>
-        </div>
+        </section>
       ) : !verse ? (
-        <div className="quran-loading" aria-busy>
-          <span className="spinner" />
-        </div>
+        <Loading />
       ) : (
-        <>
-          <p className="quran-arabic" lang="ar" dir="rtl">
-            {verse.arabic} <span className="verse-end">﴿{arabicDigits(verse.ayah)}﴾</span>
-          </p>
-          <p className="quran-translation">{verse.translation}</p>
+        <div className="quran-page-grid">
+          <section className="card quran-ayah">
+            <div className="quran-ayah-recite">
+              <RecitePanel verse={verse} />
+            </div>
+            <p className="quran-arabic" lang="ar" dir="rtl">
+              {verse.arabic} <span className="verse-end">﴿{arabicDigits(verse.ayah)}﴾</span>
+            </p>
+            <p className="quran-translation">{verse.translation}</p>
+            <span className="hint quran-source">
+              {verse.translator} translation ·{' '}
+              <a href={`https://quran.com/${verse.key}`} target="_blank" rel="noreferrer">
+                {verse.key} on quran.com
+              </a>
+            </span>
+          </section>
 
-          <div className="quran-tabs">
-            <Seg
-              label="Study"
-              value={tab}
-              onChange={setTab}
-              options={[
-                { value: 'recite', label: 'Recite' },
-                { value: 'tafsir', label: 'Tafsir' },
-                { value: 'reflect', label: 'Reflect' },
-              ]}
-            />
-          </div>
-          <div className="quran-panel">
-            {tab === 'recite' && <RecitePanel verse={verse} />}
-            {tab === 'tafsir' && <TafsirPanel verse={verse} study={study} />}
-            {tab === 'reflect' && <ReflectPanel verse={verse} chapter={chapter} />}
-          </div>
-        </>
-      )}
-
-      {chapters && (
-        <div className="quran-nav">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => move.mutate(prevKey(chapters, study.surah, study.ayah))} aria-label="Previous ayah">
-            <ChevronLeft size={15} />
-          </button>
-          <button type="button" className={cx('btn btn-sm quran-mark', study.studiedToday ? 'btn-ghost' : 'btn-primary')} onClick={() => mark.mutate(study.key)} disabled={mark.isPending}>
-            <Check size={14} /> {study.studiedToday ? 'Studied today · next' : 'Studied · next'}
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => move.mutate(nextKey(chapters, study.surah, study.ayah))} aria-label="Next ayah">
-            <ChevronRight size={15} />
-          </button>
+          <section className="card quran-side">
+            <div className="quran-tabs">
+              <Seg
+                label="Study"
+                value={side}
+                onChange={setSide}
+                options={[
+                  { value: 'tafsir', label: 'Tafsir' },
+                  { value: 'reflect', label: 'Reflect' },
+                ]}
+              />
+            </div>
+            <div className="quran-panel">
+              {side === 'tafsir' ? <TafsirPanel verse={verse} study={study} /> : <ReflectPanel verse={verse} chapter={chapter} />}
+            </div>
+          </section>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -188,7 +281,8 @@ function RecitePanel({ verse }: { verse: QuranVerse }) {
 }
 
 function TafsirPanel({ verse, study }: { verse: QuranVerse; study: QuranStudy }) {
-  const [all, setAll] = useState(false);
+  // Beside the ayah on a wide screen there's room for all of it; on a phone, start folded.
+  const [all, setAll] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 861px)').matches);
   const choose = useWrite((tafsir: number) => write.put('/quran/study', { tafsir }));
   const t = verse.tafsir;
   const covers = t && t.covers.length > 1 ? `${t.covers[0]}–${t.covers.at(-1)!.split(':')[1]}` : null;
