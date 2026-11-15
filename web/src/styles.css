@@ -8538,6 +8538,40 @@ button.layover-pill:hover .layover-lounge {
   }
 }
 
+/* The time it is at an airport, on the day of travel. */
+.tm-route .tm-clock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.tm-route .tm-clock span {
+  display: inline;
+  margin: 0;
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.tm-route .right .tm-clock {
+  justify-content: flex-end;
+}
+.lx-clock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.lx-clock b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 /* Coming up: a fold at the foot of today's to-dos. */
 .coming-up {
   border-top: 1px solid var(--line);

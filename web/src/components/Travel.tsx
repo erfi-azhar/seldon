@@ -27,6 +27,14 @@ const duration = (s: Segment) => {
   return mins > 0 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : '';
 };
 const hm = (mins: number) => (mins > 0 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m` : '');
+/** The time now in an airport's zone, "14:05"; the device's own when the zone is unknown. */
+const clockIn = (tz: string, now: number) => {
+  try {
+    return new Date(now).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz || undefined });
+  } catch {
+    return new Date(now).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+};
 const minutesBetween = (fromUtc: string, toUtc: string) => Math.round((Date.parse(toUtc) - Date.parse(fromUtc)) / 60_000);
 /** A hotel's everyday name: "The Mercury Garden Shenzhen Nanshan, A Tribute Portfolio Hotel" → before the comma. */
 const shortStay = (title: string) => title.split(',')[0]!.trim() || title;
@@ -677,6 +685,10 @@ function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip; from: 
 
   const wait = minutesBetween(from.endUtc, to.startUtc);
   const city = to.fromCity || to.fromName || to.fromCode;
+  const now = useNow();
+  // On the day: the time it is at the connecting airport, from a day before landing until departure.
+  const onTheDay = now > Date.parse(from.endUtc) - 24 * 3_600_000 && now < Date.parse(to.startUtc);
+  const outOfCredit = /\b402\b|credit/i.test(find.error?.message ?? '');
   const flight = (x: Segment) => `${x.carrier} ${x.number}`.trim();
   const kf = loyalty.find((a) => a.program === 'KrisFlyer');
   const cards = loyalty.filter((a) => a.kind === 'lounge');
@@ -720,6 +732,11 @@ function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip; from: 
           <AirlineTail code={to.carrier} size={28} />
         </div>
       </div>
+      {onTheDay && (
+        <p className="lx-clock">
+          <Clock size={12} aria-hidden /> It’s <b className="num">{clockIn(to.startTz, now)}</b> in {city} now
+        </p>
+      )}
 
       <section className="lx-block">
         <h3 className="lx-h">Lounge for you</h3>
@@ -751,7 +768,7 @@ function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip; from: 
           </div>
         ) : (
           <div className="lx-finding">
-            <span>{find.error ? find.error.message : `${agentName} can find the lounge for you.`}</span>
+            <span>{outOfCredit ? `${agentName}’s model is out of credit. Top it up with your model provider, or choose another model in Settings, then try again.` : find.error ? find.error.message : `${agentName} can find the lounge for you.`}</span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => find.mutate(undefined)}>
               <Sparkles size={13} /> {find.error ? 'Try again' : 'Find it'}
             </button>
@@ -2066,6 +2083,9 @@ function TravelNowCard() {
           <div>
             <b className="num">{f.fromCode}</b>
             <span>{city(f.fromName, f.fromCode)}</span>
+            <span className="tm-clock" title={`Local time at ${f.fromCode} now`}>
+              <Clock size={11} aria-hidden /> <span className="num">{clockIn(f.startTz, now)}</span> local
+            </span>
           </div>
           <div className="tm-plane">
             <span className="num">{time(f.startLocal)}</span>
@@ -2077,6 +2097,9 @@ function TravelNowCard() {
           <div className="right">
             <b className="num">{f.toCode}</b>
             <span>{city(f.toName, f.toCode)}</span>
+            <span className="tm-clock" title={`Local time at ${f.toCode} now`}>
+              <Clock size={11} aria-hidden /> <span className="num">{clockIn(f.endTz, now)}</span> local
+            </span>
           </div>
         </div>
         <p className="tm-line">
