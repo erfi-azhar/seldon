@@ -14,6 +14,7 @@ import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
 import { RouteCard } from './Journey.tsx';
+import { journeys } from '../../../shared/journey.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
 
@@ -1075,8 +1076,18 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
     return todayStr(d);
   });
   const past = trip.endDate < today;
-  const flights = trip.segments.filter((s) => s.kind === 'flight');
+  const allFlights = trip.segments.filter((s) => s.kind === 'flight');
   const others = trip.segments.filter((s) => s.kind !== 'flight');
+  // The way home is a journey of flights ending back at the home airport; the rest are the way out.
+  const home = state.settings.homeAirport;
+  const homeward = new Set(journeys(allFlights).filter((j) => j[j.length - 1]!.toCode === home && j[0]!.fromCode !== home).flat().map((f) => f.id));
+  const outbound = allFlights.filter((f) => !homeward.has(f.id));
+  const inbound = allFlights.filter((f) => homeward.has(f.id));
+  const twoWays = outbound.length > 0 && inbound.length > 0;
+  // What matters now: the way out until you've landed, then the way home. A switch shows the other.
+  const landed = outbound.length > 0 && Date.now() > Math.max(...outbound.map((f) => Date.parse(f.endUtc)));
+  const [way, setWay] = useState<'out' | 'back'>(() => (landed ? 'back' : 'out'));
+  const flights = !twoWays ? allFlights : way === 'back' ? inbound : outbound;
   const legs = globeLegs(flights);
   const openTodos = trip.todos.filter((x) => !x.done).length;
   const bonvoyTier = state.loyalty.find((a) => /bonvoy|marriott/i.test(a.program))?.tier ?? '';
@@ -1125,13 +1136,31 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
         </div>
       </header>
 
-      <FoldCard id={`${trip.id}.flights`} icon={<Plane size={15} />} title="Flights" peek={flights.length > 0 && `${plural(flights.length, 'flight')} · ${routeLine(flights)}`}>
-          {flights.length === 0 ? (
+      <FoldCard
+        id={`${trip.id}.flights`}
+        icon={<Plane size={15} />}
+        title="Flights"
+        peek={allFlights.length > 0 && (twoWays ? `Out ${routeLine(outbound)} · home ${routeLine(inbound)}` : `${plural(allFlights.length, 'flight')} · ${routeLine(allFlights)}`)}
+      >
+          {twoWays && (
+            <div className="opt-dir">
+              <Seg
+                label="Which way"
+                value={way}
+                onChange={setWay}
+                options={[
+                  { value: 'out', label: `Departing · ${outbound.length}` },
+                  { value: 'back', label: `Returning · ${inbound.length}` },
+                ]}
+              />
+            </div>
+          )}
+          {allFlights.length === 0 ? (
             <p className="empty">{trip.options.length ? 'Nothing booked yet. Compare the options below.' : 'No flights yet. Add them, paste a confirmation, or let Gmail bring them in.'}</p>
           ) : legs.length ? (
             <div className="flight-pair">
               <div className="globe-card">
-                <RouteGlobe legs={legs} fill />
+                <RouteGlobe key={way} legs={legs} fill />
               </div>
               <div className="flight-stack">{flights.map(row)}</div>
             </div>
