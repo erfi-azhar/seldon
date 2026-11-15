@@ -10528,3 +10528,23 @@ button.layover-pill:hover .layover-lounge {
     transition: none;
   }
 }
+
+/* Flight options split by direction: a switch over the cards, labels among the folded chips. */
+.opt-dir {
+  display: flex;
+  margin: 2px 0 6px;
+}
+.opt-peek-group {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 0 2px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.opt-peek-group:first-child {
+  padding-left: 0;
+}
