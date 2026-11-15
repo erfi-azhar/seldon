@@ -6390,10 +6390,6 @@ textarea.title-input {
   color: oklch(0.52 0.12 245);
 }
 /* In the air the route is a live timeline: flown solid to a small plane, the time left above it. */
-.fc-dur b {
-  font-weight: 600;
-  color: var(--ink);
-}
 .fc-live-rail {
   position: relative;
   flex: 1;

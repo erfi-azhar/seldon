@@ -78,6 +78,74 @@ const { LAND_POINTS, SEA_POINTS } = (() => {
   return { LAND_POINTS: new Float32Array(land), SEA_POINTS: new Float32Array(sea) };
 })();
 
+// ── Finer land, for zooming in close: loaded the first time you do ───────────────
+
+/** From this radius in, the dot-per-degree land comes apart, and the 0.2° land takes over. */
+const FINE_R = 1000;
+
+interface FineLand {
+  lat0: number;
+  step: number;
+  rows: number;
+  cols: number;
+  /** 1 where a cell is land, row by row. */
+  land: Uint8Array;
+  /** Each row's latitude, as cos and sin; each column's longitude, likewise. */
+  rowCos: Float32Array;
+  rowSin: Float32Array;
+  colCos: Float32Array;
+  colSin: Float32Array;
+}
+
+let fineLand: FineLand | null = null;
+let fineLoading: Promise<FineLand> | null = null;
+
+function loadFineLand(): Promise<FineLand> {
+  fineLoading ??= import('../land-fine.ts').then(({ LAND_FINE: F }) => {
+    const raw = atob(F.runs);
+    const land = new Uint8Array(F.rows * F.cols);
+    let i = 0;
+    const read = () => {
+      let n = 0;
+      let shift = 0;
+      let b: number;
+      do {
+        b = raw.charCodeAt(i++);
+        n |= (b & 0x7f) << shift;
+        shift += 7;
+      } while (b & 0x80);
+      return n;
+    };
+    for (let r = 0; r < F.rows; r++) {
+      let c = 0;
+      let v = 0;
+      while (c < F.cols) {
+        const n = read();
+        if (v) land.fill(1, r * F.cols + c, r * F.cols + c + n);
+        c += n;
+        v ^= 1;
+      }
+    }
+    const rowCos = new Float32Array(F.rows);
+    const rowSin = new Float32Array(F.rows);
+    for (let r = 0; r < F.rows; r++) {
+      const lat = (F.lat0 - (r + 0.5) * F.step) * RAD;
+      rowCos[r] = Math.cos(lat);
+      rowSin[r] = Math.sin(lat);
+    }
+    const colCos = new Float32Array(F.cols);
+    const colSin = new Float32Array(F.cols);
+    for (let c = 0; c < F.cols; c++) {
+      const lon = (-180 + (c + 0.5) * F.step) * RAD;
+      colCos[c] = Math.cos(lon);
+      colSin[c] = Math.sin(lon);
+    }
+    fineLand = { lat0: F.lat0, step: F.step, rows: F.rows, cols: F.cols, land, rowCos, rowSin, colCos, colSin };
+    return fineLand;
+  });
+  return fineLoading;
+}
+
 // ── The view: where the globe faces and how big it is ───────────────────────────
 
 interface View {
@@ -170,6 +238,8 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
   // The view you've turned or zoomed to, while tracking a flight; null follows the plane.
   const userView = useRef<View | null>(null);
   const [moved, setMoved] = useState(false);
+  // Gliding back to the plane after Follow the plane: from where, since when.
+  const returning = useRef<{ from: View; at: number } | null>(null);
   const { w } = size;
   const H = size.h;
   // A dome across the card; or, filling a tall box, the whole globe, centred in a layout band of
@@ -238,6 +308,15 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
     const cx = w / 2;
     let drawn: View | null = null;
     let shown: View | null = null;
+    const still = reduced();
+    const INTRO = T_FOCUS + T_FRAME + T_DRAW;
+    /** The globe point under screen height y (on the card) on the middle line, for a view. */
+    const under = (v: View, y: number): V3 => {
+      const { n } = axes(v.centre);
+      const ny = Math.max(-0.99, Math.min(0.99, (cyOf(v) - (y - oy)) / v.R));
+      const k = Math.sqrt(1 - ny * ny);
+      return norm([v.centre[0] * k + n[0] * ny, v.centre[1] * k + n[1] * ny, v.centre[2] * k + n[2] * ny]);
+    };
 
     /** Sphere, dots and rim for a view, onto the layer. */
     const paintGlobe = (v: View) => {
@@ -271,8 +350,48 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
           lctx.fillRect(x - size / 2, y - size / 2, size, size);
         }
       };
-      dots(SEA_POINTS, 0.16);
-      dots(LAND_POINTS, 0.7);
+      const F = R >= FINE_R ? fineLand : null;
+      if (R >= FINE_R && !F)
+        void loadFineLand().then(() => {
+          drawn = null;
+          if (still) frame(INTRO);
+        });
+      if (F) {
+        // Close in: the 0.2° land, only the cells in view. The sea every other cell each way.
+        // Dots grow with the zoom (a third of the gap between them), so the land stays solid.
+        const fsize = Math.max(1.3, Math.min(4, R * F.step * RAD * 0.36));
+        const mid = under(v, oy + L / 2);
+        const [mlat, mlon] = latLon(mid);
+        const reach = (Math.asin(Math.min(1, Math.hypot(w / 2, L / 2 + 20) / R)) / RAD) * 1.08 + F.step;
+        const r0 = Math.max(0, Math.floor((F.lat0 - (mlat + reach)) / F.step));
+        const r1 = Math.min(F.rows - 1, Math.ceil((F.lat0 - (mlat - reach)) / F.step));
+        const widest = Math.min(89, Math.max(Math.abs(mlat + reach), Math.abs(mlat - reach)));
+        const span = Math.min(180, reach / Math.max(0.05, Math.cos(widest * RAD)));
+        const cA = Math.floor((mlon - span + 180) / F.step);
+        const cB = Math.ceil((mlon + span + 180) / F.step);
+        for (let r = r0; r <= r1; r++) {
+          const rc = F.rowCos[r]!;
+          const rs = F.rowSin[r]!;
+          for (let cc = cA; cc <= cB && cc < cA + F.cols; cc++) {
+            const col = ((cc % F.cols) + F.cols) % F.cols;
+            const isLand = F.land[r * F.cols + col] === 1;
+            if (!isLand && ((r & 1) || (col & 1))) continue;
+            const px = rc * F.colCos[col]!;
+            const py = rc * F.colSin[col]!;
+            const z = px * c[0] + py * c[1] + rs * c[2];
+            if (z <= 0.02) continue;
+            const y = cy - R * (px * n[0] + py * n[1] + rs * n[2]);
+            if (y < -oy || y > H - oy) continue;
+            const x = cx + R * (px * e[0] + py * e[1] + rs * e[2]);
+            if (x < 0 || x > w) continue;
+            lctx.globalAlpha = (isLand ? 0.7 : 0.16) * Math.min(1, z * 2) * (1 - fades * clamp01((y - L * 0.58) / (L * 0.42)));
+            lctx.fillRect(x - fsize / 2, y - fsize / 2, fsize, fsize);
+          }
+        }
+      } else {
+        dots(SEA_POINTS, 0.16);
+        dots(LAND_POINTS, 0.7);
+      }
       for (const d of rim) {
         const x = cx + Math.cos(d.a) * R * d.r;
         const y = cy + Math.sin(d.a) * R * d.r;
@@ -407,7 +526,6 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
     let shownLeg = -1;
 
     const tracked = live && plan[live.leg] ? live : null;
-    const INTRO = T_FOCUS + T_FRAME + T_DRAW;
 
     /** Tracking the flight in the air: once in to it, then the plane where it really is, each frame. */
     const liveFrame = (time: number) => {
@@ -436,8 +554,15 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
         view = { centre: norm(slerp(p.focus.centre, close.centre, k)), R: p.focus.R + (close.R - p.focus.R) * k, cy: cyOf(p.focus) + (L * 0.5 - cyOf(p.focus)) * k };
         destIn = clamp01((t - T_FOCUS - T_FRAME * 0.4) / (T_FRAME * 0.5));
       } else view = close;
-      // Once you've turned or zoomed it, the view is yours until you ask it to follow the plane again.
+      // Once you've turned or zoomed it, the view is yours until you ask it to follow the plane again;
+      // then it glides back over a second.
       if (userView.current) view = userView.current;
+      else if (returning.current) {
+        const g = returning.current;
+        const k = still ? 1 : easeInOut(clamp01((performance.now() - g.at) / 1100));
+        view = { centre: norm(slerp(g.from.centre, view.centre, k)), R: g.from.R * (view.R / g.from.R) ** k, cy: cyOf(g.from) + (cyOf(view) - cyOf(g.from)) * k };
+        if (k >= 1) returning.current = null;
+      }
       shown = view;
       if (!drawn || angle(drawn.centre, view.centre) > 1e-5 || Math.abs(drawn.R - view.R) > 0.01 || cyOf(drawn) !== cyOf(view)) paintGlobe(view);
 
@@ -622,29 +747,31 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
     // Tracking a flight, the globe is yours to turn and zoom: drag to turn it, pinch (or ctrl/⌘ and
     // the wheel, as a trackpad pinch sends) to zoom, double-click to zoom in. Plain scrolling still
     // scrolls the page. Follow the plane (the button) gives the overhead view back.
-    const still = reduced();
     const gestures = (() => {
       if (!tracked) return () => {};
-      // Land is a dot per degree, so closer than this the dots part and the coastlines are lost.
+      // Close in, the 0.2° land takes over; closer than this even its dots part.
       const Rmin = R0 * 0.85;
-      const Rmax = Math.max(R0 * 3.2, 1200);
+      const Rmax = Math.max(R0 * 3.2, 3200);
       const redraw = () => still && frame(INTRO);
       const take = (v: View) => {
         userView.current = v;
         setMoved(true);
         redraw();
       };
-      /** The globe point under screen height y on the middle line, for a view. */
-      const under = (v: View, y: number): V3 => {
-        const { n } = axes(v.centre);
-        const ny = Math.max(-0.99, Math.min(0.99, (cyOf(v) - (y - oy)) / v.R));
-        const k = Math.sqrt(1 - ny * ny);
-        return norm([v.centre[0] * k + n[0] * ny, v.centre[1] * k + n[1] * ny, v.centre[2] * k + n[2] * ny]);
-      };
-      /** Zoom by a factor, keeping the point at height y where it is. */
-      const zoom = (v: View, by: number, y: number): View => {
+
+      /** Zoom by a factor, keeping the point under (x, y) where it is. */
+      const zoom = (v: View, by: number, y: number, x = w / 2): View => {
         const R = Math.max(Rmin, Math.min(Rmax, v.R * by));
-        return facing(under(v, y), R, y - oy, v.cy);
+        if (v.cy === undefined) return facing(under(v, y), R, y - oy);
+        // Looking straight down: find the point under (x, y), then set the centre so it stays there.
+        const { e, n } = axes(v.centre);
+        const ex = (x - w / 2) / v.R;
+        const ny = (v.cy - (y - oy)) / v.R;
+        const k = Math.sqrt(Math.max(0, 1 - ex * ex - ny * ny));
+        const p = norm([v.centre[0] * k + e[0] * ex + n[0] * ny, v.centre[1] * k + e[1] * ex + n[1] * ny, v.centre[2] * k + e[2] * ex + n[2] * ny]);
+        const [plat, plon] = latLon(p);
+        const lat = Math.max(-80, Math.min(80, plat - (((v.cy - (y - oy)) / R) / RAD)));
+        return { centre: vec(lat, plon - ((x - w / 2) / R / Math.max(0.2, Math.cos(lat * RAD))) / RAD), R, cy: v.cy };
       };
       /** Turn by a drag of dx, dy pixels: the globe follows the finger. */
       const turn = (v: View, dx: number, dy: number): View => {
@@ -652,7 +779,7 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
         return { ...v, centre: vec(Math.max(-80, Math.min(80, lat + (dy / v.R) / RAD)), lon - (dx / v.R / Math.max(0.2, Math.cos(lat * RAD))) / RAD) };
       };
       const pts = new Map<number, { x: number; y: number }>();
-      let start: { view: View; a: { x: number; y: number }; dist: number; midY: number } | null = null;
+      let start: { view: View; a: { x: number; y: number }; dist: number; midX: number; midY: number } | null = null;
       const local = (e: PointerEvent) => {
         const r = cv.getBoundingClientRect();
         return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -662,7 +789,7 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
         const list = [...pts.values()];
         const a = list[0]!;
         const b = list[1];
-        start = { view: userView.current ?? shown, a, dist: b ? Math.hypot(b.x - a.x, b.y - a.y) : 0, midY: b ? (a.y + b.y) / 2 : a.y };
+        start = { view: userView.current ?? shown, a, dist: b ? Math.hypot(b.x - a.x, b.y - a.y) : 0, midX: b ? (a.x + b.x) / 2 : a.x, midY: b ? (a.y + b.y) / 2 : a.y };
       };
       const down = (e: PointerEvent) => {
         cv.setPointerCapture(e.pointerId);
@@ -675,7 +802,7 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
         const list = [...pts.values()];
         if (list.length >= 2 && start.dist > 0) {
           const [a, b] = list as [{ x: number; y: number }, { x: number; y: number }];
-          take(zoom(start.view, Math.hypot(b.x - a.x, b.y - a.y) / start.dist, start.midY));
+          take(zoom(start.view, Math.hypot(b.x - a.x, b.y - a.y) / start.dist, start.midY, start.midX));
         } else take(turn(start.view, list[0]!.x - start.a.x, list[0]!.y - start.a.y));
       };
       const up = (e: PointerEvent) => {
@@ -686,9 +813,14 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
       const wheel = (e: WheelEvent) => {
         if (!(e.ctrlKey || e.metaKey) || !shown) return;
         e.preventDefault();
-        take(zoom(userView.current ?? shown, Math.exp(-e.deltaY * 0.004), local(e as unknown as PointerEvent).y));
+        const at = local(e as unknown as PointerEvent);
+        take(zoom(userView.current ?? shown, Math.exp(-e.deltaY * 0.004), at.y, at.x));
       };
-      const dbl = (e: MouseEvent) => shown && take(zoom(userView.current ?? shown, 1.5, local(e as unknown as PointerEvent).y));
+      const dbl = (e: MouseEvent) => {
+        if (!shown) return;
+        const at = local(e as unknown as PointerEvent);
+        take(zoom(userView.current ?? shown, 1.6, at.y, at.x));
+      };
       cv.addEventListener('pointerdown', down);
       cv.addEventListener('pointermove', move);
       cv.addEventListener('pointerup', up);
@@ -770,6 +902,7 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
             type="button"
             className="rg-follow"
             onClick={() => {
+              if (userView.current) returning.current = { from: userView.current, at: performance.now() };
               userView.current = null;
               setMoved(false);
             }}

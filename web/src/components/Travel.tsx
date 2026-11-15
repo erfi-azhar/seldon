@@ -616,9 +616,7 @@ function LiveTrack({ start, end }: { start: number; end: number }) {
   const k = Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)));
   return (
     <>
-      <span className="fc-dur">
-        <b className="num">{span((end - now) / 60_000)}</b> left
-      </span>
+      <span className="fc-dur">{span((end - now) / 60_000)} left</span>
       <span className="fc-track" role="img" aria-label={`${Math.round(k * 100)}% of the way`}>
         <i className="fc-dot is-done" />
         <span className="fc-live-rail">
