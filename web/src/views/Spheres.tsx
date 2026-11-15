@@ -11,6 +11,7 @@ import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
+import { ReadingList } from '../components/Reading.tsx';
 import { BillsCard, CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PortfolioCard } from '../components/Finance.tsx';
 import { InlineEdit, Loading, Seg } from '../components/ui.tsx';
 import { addDays, cx, dueLabel, hueStyle, parseDay, pct, plural, shortDay, todayStr } from '../lib.ts';
@@ -197,6 +198,8 @@ export function SphereDetail({ id }: { id: string }) {
       {s.key === 'finances' && <MoneyHero />}
       {/* Work's to-dos are the heart of the sphere, so they get the full width. */}
       {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} projects={projects} />}
+      {/* Learning's reading list is a shelf, and a shelf wants the full width. */}
+      {s.key === 'learning' && <ReadingList />}
       {/* With a daily card on the left, tasks join habits on the right so the columns even out. */}
       <div className="detail-grid">
         <div className="col">

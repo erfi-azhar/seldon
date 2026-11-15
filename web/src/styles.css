@@ -9687,3 +9687,658 @@ button.layover-pill:hover .layover-lounge {
     display: none;
   }
 }
+
+/* ── Reading list ───────────────────────────────────────────────────────── */
+/* Books stand spine-out on a shelf, each in its cover's colour. Pointing at one turns it
+   to show its cover, and its neighbours make room. Open it and it sits in your hand. */
+
+.reading-card {
+  margin-bottom: 20px;
+}
+.reading-card .card-head .seg button {
+  height: 26px;
+  padding: 0 11px;
+  font-size: 12.5px;
+}
+.shelf-wrap {
+  margin: 0 8px 14px;
+}
+.shelf {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  min-height: 290px;
+  padding: 22px 14px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* The shelf they stand on. */
+  background:
+    linear-gradient(to top, var(--sunken) 0 10px, transparent 10px),
+    linear-gradient(to top, var(--line-2) 0, transparent 1px) 0 calc(100% - 10px) / 100% 1px no-repeat;
+  border-radius: 0 0 16px 16px;
+}
+.shelf::-webkit-scrollbar {
+  display: none;
+}
+.spine-slot {
+  position: relative;
+  flex: none;
+  width: var(--s);
+  height: var(--bh);
+  margin-bottom: 10px;
+  perspective: 1100px;
+  transition: width 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.spine-btn {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 3px;
+  transform-style: preserve-3d;
+}
+.spine-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+.spine-book {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--s);
+  height: 100%;
+  transform-style: preserve-3d;
+  /* Turns about the edge where the spine meets the front cover. */
+  transform-origin: 100% 50%;
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.spine-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0 12px;
+  overflow: hidden;
+  background: var(--binding);
+  color: var(--binding-ink);
+  border-radius: 2px 1px 1px 2px;
+  /* Round, like a bound spine: lighter where it turns toward the light. */
+  box-shadow:
+    inset 3px 0 4px -2px rgb(255 255 255 / 0.28),
+    inset -4px 0 6px -3px rgb(0 0 0 / 0.32),
+    0 1px 2px rgb(0 0 0 / 0.18);
+  backface-visibility: hidden;
+}
+.spine-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(255 255 255 / 0.08), transparent 35%, transparent 70%, rgb(0 0 0 / 0.1));
+  pointer-events: none;
+}
+.spine-title,
+.spine-author {
+  writing-mode: vertical-rl;
+  /* Set as one line turned on its side, so punctuation turns with the letters. */
+  text-orientation: sideways;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 0;
+}
+.spine-title {
+  flex: 1 1 auto;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+.spine-author {
+  flex: 0 1 auto;
+  max-height: 40%;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+.spine-mark {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  opacity: 0.6;
+}
+.spine-cover {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: var(--c);
+  height: 100%;
+  overflow: hidden;
+  border-radius: 1px 3px 3px 1px;
+  transform-origin: 0 50%;
+  transform: rotateY(90deg);
+  background: var(--binding);
+  box-shadow: inset 4px 0 6px -4px rgb(0 0 0 / 0.4);
+  backface-visibility: hidden;
+}
+.spine-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(0 0 0 / 0.22), transparent 6%, rgb(255 255 255 / 0.1) 9%, transparent 16%);
+}
+.spine-ribbon {
+  position: absolute;
+  top: -10px;
+  left: calc(var(--s) * 0.5 - 4px);
+  width: 8px;
+  height: 22px;
+  background: oklch(0.55 0.17 28);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+  transition: opacity 0.2s;
+}
+@media (hover: hover) {
+  .spine-slot:hover,
+  .spine-slot:has(.spine-btn:focus-visible) {
+    width: calc(var(--s) * 0.28 + var(--c) * 0.96);
+  }
+  .spine-slot:hover .spine-book,
+  .spine-btn:focus-visible .spine-book {
+    transform: translateX(calc(var(--s) * -0.72)) rotateY(-74deg);
+  }
+  .spine-slot:hover .spine-ribbon,
+  .spine-btn:focus-visible .spine-ribbon {
+    opacity: 0;
+  }
+}
+
+/* A cover set in type, for books with no cover image. */
+.cover-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+.cover-type {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 14% 12%;
+  background: var(--binding);
+  color: var(--binding-ink);
+  text-align: left;
+}
+.cover-type-title {
+  font-family: var(--serif);
+  font-size: clamp(16px, 2.2em, 30px);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+.spine-cover .cover-type-title {
+  font-size: 19px;
+}
+.cover-type-rule {
+  width: 28px;
+  height: 1.5px;
+  background: currentColor;
+  opacity: 0.6;
+}
+.cover-type-author {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.shelf-empty {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: calc(100% - 28px);
+  margin: 0 14px 14px;
+  padding: 18px;
+  border: 1px dashed var(--line-2);
+  border-radius: 16px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.shelf-empty:hover {
+  background: var(--surface-2);
+}
+.shelf-empty > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13.5px;
+}
+.shelf-ghosts {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  flex: none;
+}
+.shelf-ghosts i {
+  width: 14px;
+  height: 64px;
+  border-radius: 2px;
+  border: 1.5px solid var(--line-2);
+}
+.shelf-ghosts i:nth-child(2) {
+  height: 72px;
+  width: 18px;
+}
+.shelf-ghosts i:nth-child(3) {
+  height: 58px;
+}
+.shelf-ghosts i:nth-child(4) {
+  height: 68px;
+  transform: rotate(8deg);
+  transform-origin: bottom left;
+}
+
+/* The book, in hand */
+.book-modal {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 1.15fr);
+  width: min(100%, 960px);
+  max-height: min(90dvh, 760px);
+  overflow: hidden;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  backdrop-filter: blur(30px) saturate(1.8);
+  border: 1px solid var(--glass-edge);
+  border-radius: 30px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6), var(--shadow-3);
+  animation: rise 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.book-modal:focus-visible {
+  outline: none;
+}
+.book-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+}
+.book-modal-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 460px;
+  /* A pool of the book's own colour behind it. */
+  background:
+    radial-gradient(60% 50% at 50% 48%, color-mix(in oklab, var(--binding) 26%, transparent), transparent 70%),
+    var(--surface-2);
+  border-right: 1px solid var(--line);
+}
+.book-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  width: 100%;
+  flex: 1;
+  perspective: 1400px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.book-stage.is-dragging {
+  cursor: grabbing;
+}
+.b3d {
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  transform-style: preserve-3d;
+  will-change: transform;
+  --glare-x: 50%;
+  --glare-y: 30%;
+}
+.b3d-face {
+  position: absolute;
+  backface-visibility: hidden;
+}
+.b3d-front {
+  inset: 0;
+  overflow: hidden;
+  border-radius: 2px 5px 5px 2px;
+  background: var(--binding);
+  transform: translateZ(calc(var(--d) / 2));
+}
+.b3d-hinge {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(0 0 0 / 0.28), rgb(0 0 0 / 0.04) 2.5%, rgb(255 255 255 / 0.16) 4%, transparent 8%);
+  pointer-events: none;
+}
+.b3d-glare {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(70% 55% at var(--glare-x) var(--glare-y), rgb(255 255 255 / 0.26), transparent 70%);
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+.b3d-back {
+  inset: 0;
+  border-radius: 5px 2px 2px 5px;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--binding) 82%, #000), var(--binding));
+  transform: rotateY(180deg) translateZ(calc(var(--d) / 2));
+}
+.b3d-spine {
+  top: 0;
+  left: calc(50% - var(--d) / 2);
+  width: var(--d);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 0;
+  overflow: hidden;
+  background: var(--binding);
+  color: var(--binding-ink);
+  box-shadow: inset 4px 0 6px -3px rgb(255 255 255 / 0.25), inset -4px 0 6px -3px rgb(0 0 0 / 0.35);
+  transform: rotateY(-90deg) translateZ(calc(var(--w) / 2));
+}
+.b3d-spine .spine-title {
+  font-size: min(16px, calc(var(--d) * 0.55));
+}
+.b3d-spine .spine-author {
+  font-size: min(9.5px, calc(var(--d) * 0.36));
+}
+/* The block of pages: fore-edge, head and tail, a hair inside the boards. */
+.b3d-edge,
+.b3d-top,
+.b3d-bottom {
+  background: repeating-linear-gradient(var(--page-dir, 90deg), #f4efe4 0 1px, #e3dccd 1px 2px);
+}
+.b3d-edge {
+  top: 3px;
+  left: calc(50% - var(--d) / 2);
+  width: calc(var(--d) - 2px);
+  height: calc(100% - 6px);
+  --page-dir: 90deg;
+  box-shadow: inset 0 0 6px rgb(0 0 0 / 0.12);
+  transform: rotateY(90deg) translateZ(calc(var(--w) / 2 - 3px));
+}
+.b3d-top,
+.b3d-bottom {
+  left: 0;
+  top: calc(50% - var(--d) / 2);
+  width: calc(100% - 3px);
+  height: calc(var(--d) - 2px);
+  --page-dir: 0deg;
+}
+.b3d-top {
+  transform: rotateX(90deg) translateZ(calc(var(--h) / 2 - 3px));
+}
+.b3d-bottom {
+  transform: rotateX(-90deg) translateZ(calc(var(--h) / 2 - 3px));
+}
+.b3d-shadow {
+  width: calc(var(--w) * 1.1);
+  height: 22px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(22 20 16 / 0.32), transparent);
+  filter: blur(4px);
+  transform: translateX(var(--shadow-x, 0));
+}
+.book-stage-hint {
+  margin: 0 0 18px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.book-stage-hint .for-touch {
+  display: none;
+}
+@media (hover: none) {
+  .book-stage-hint .for-pointer {
+    display: none;
+  }
+  .book-stage-hint .for-touch {
+    display: inline;
+  }
+}
+
+.book-modal-info {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 26px 30px 24px;
+  overflow-y: auto;
+}
+.book-status-line {
+  padding-right: 40px;
+}
+.book-status-line .seg button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+.book-title {
+  font-family: var(--serif);
+  font-size: 34px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.book-author {
+  margin-top: -6px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+.book-facts {
+  margin-top: -8px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.book-rating {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+}
+.book-rating b {
+  font-weight: 600;
+}
+.stars {
+  position: relative;
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 1px;
+}
+.stars-base {
+  color: var(--line-2);
+}
+.stars-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: oklch(0.75 0.15 75);
+}
+.book-synopsis h3,
+.book-note h3 {
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.book-synopsis-text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.book-synopsis-text.is-clamped {
+  max-height: 13.5em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+.book-synopsis-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.book-note .inline-edit {
+  font-size: 14px;
+}
+.book-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.book-actions a.btn {
+  text-decoration: none;
+}
+.book-modal-info > .hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: -6px;
+}
+
+/* Adding */
+.book-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.book-search .input {
+  flex: 1;
+}
+.book-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -10px;
+}
+.book-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.book-result:hover:not(:disabled),
+.book-result.is-picked {
+  background: var(--glass-press);
+}
+.book-result:disabled:not(.is-picked) {
+  opacity: 0.5;
+}
+.book-result .grow {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13.5px;
+}
+.book-result .muted {
+  font-size: 12.5px;
+}
+.book-result-thumb {
+  flex: none;
+  width: 34px;
+  height: 50px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--sunken);
+  box-shadow: var(--shadow-1);
+}
+.book-result-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.book-result-typed {
+  margin: 0 -10px;
+  width: calc(100% + 20px);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+@media (max-width: 760px) {
+  .book-modal {
+    grid-template-columns: 1fr;
+    max-height: 92dvh;
+    overflow-y: auto;
+    border-radius: 26px;
+  }
+  .book-modal-stage {
+    min-height: 0;
+    padding-top: 18px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .book-stage {
+    padding: 26px 0 4px;
+  }
+  .book-modal-info {
+    overflow: visible;
+    padding: 20px 20px 22px;
+  }
+  .book-title {
+    font-size: 28px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spine-slot,
+  .spine-book {
+    transition: none;
+  }
+}
