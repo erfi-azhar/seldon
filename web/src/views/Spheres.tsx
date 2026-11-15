@@ -11,6 +11,7 @@ import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
+import { CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PortfolioCard } from '../components/Finance.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
 import { cx, dueLabel, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -125,8 +126,8 @@ export function SphereDetail({ id }: { id: string }) {
   const habitIdeas = (kit?.habits ?? []).filter((h) => !habitNames.has(h.name.toLowerCase()));
   const metricIdeas = (kit?.metrics ?? []).filter((m) => !metricNames.has(m.name.toLowerCase()));
   const quiet = s.stats.quietDays;
-  // Spheres with a card you use every day: food, prayers, work to-dos and job alerts.
-  const hasDaily = s.key === 'health' || s.key === 'faith' || s.key === 'work';
+  // Spheres with a card you use every day: food, prayers, work to-dos and job alerts, money and markets.
+  const hasDaily = s.key === 'health' || s.key === 'faith' || s.key === 'work' || s.key === 'finances';
 
   const habitsCard = (
     <section className="card">
@@ -189,6 +190,7 @@ export function SphereDetail({ id }: { id: string }) {
       {/* Today: what you act on most days. */}
       <div className="band-label">Today</div>
       {s.key === 'travels' && <TravelTrips />}
+      {s.key === 'finances' && <MoneyHero />}
       {/* With a daily card on the left, tasks join habits on the right so the columns even out. */}
       <div className="detail-grid">
         <div className="col">
@@ -197,7 +199,8 @@ export function SphereDetail({ id }: { id: string }) {
           <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
           {s.key === 'health' && <HealthToday />}
           {s.key === 'faith' && <PrayerCard />}
-          {s.key === 'work' && habitsCard}
+          {s.key === 'finances' && <CashflowCard />}
+          {(s.key === 'work' || s.key === 'finances') && habitsCard}
           {!hasDaily && (
             <section className="card">
               <div className="card-head">
@@ -215,7 +218,7 @@ export function SphereDetail({ id }: { id: string }) {
         </div>
         <div className="col">
           {s.key === 'faith' && <FaithVerse />}
-          {s.key === 'work' ? <JobAlertsCard /> : habitsCard}
+          {s.key === 'work' ? <JobAlertsCard /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
           {hasDaily && s.key !== 'work' && (
             <section className="card">
               <div className="card-head">
@@ -265,6 +268,7 @@ export function SphereDetail({ id }: { id: string }) {
             )}
           </section>
           {s.key === 'health' && <TrainingAndBody part="training" />}
+          {s.key === 'finances' && <PortfolioCard />}
         </div>
         <div className="col">
           <section className="card">
@@ -293,6 +297,7 @@ export function SphereDetail({ id }: { id: string }) {
             )}
           </section>
           {s.key === 'health' && <TrainingAndBody part="body" />}
+          {s.key === 'finances' && <DebtsCard />}
         </div>
       </div>
 

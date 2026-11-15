@@ -450,6 +450,89 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX trip_stay_options_by_trip ON trip_stay_options(trip_id, position);
   `,
+  // finances — money in and out, what you own (crypto priced live), what you owe, price alerts.
+  `
+  CREATE TABLE fin_transactions (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX fin_transactions_by_date ON fin_transactions(date);
+
+  CREATE TABLE fin_holdings (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    symbol TEXT NOT NULL DEFAULT '',
+    quantity REAL NOT NULL DEFAULT 0,
+    cost_basis REAL NOT NULL DEFAULT 0,
+    price REAL,
+    currency TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE fin_trades (
+    id TEXT PRIMARY KEY,
+    holding_id TEXT REFERENCES fin_holdings(id) ON DELETE SET NULL,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    price REAL NOT NULL,
+    fee REAL NOT NULL DEFAULT 0,
+    cost_out REAL NOT NULL DEFAULT 0,
+    realized REAL,
+    date TEXT NOT NULL,
+    venue TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_holding INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX fin_trades_by_date ON fin_trades(date);
+
+  CREATE TABLE fin_debts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    lender TEXT NOT NULL DEFAULT '',
+    balance REAL NOT NULL,
+    original REAL,
+    apr REAL,
+    min_payment REAL,
+    due_day INTEGER,
+    currency TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    closed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE fin_debt_payments (
+    id TEXT PRIMARY KEY,
+    debt_id TEXT NOT NULL REFERENCES fin_debts(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX fin_debt_payments_by_debt ON fin_debt_payments(debt_id, date);
+
+  CREATE TABLE fin_alerts (
+    id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    price REAL NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    triggered_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

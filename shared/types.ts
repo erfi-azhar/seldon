@@ -608,6 +608,149 @@ export interface HealthState {
   body: BodyReading[];
 }
 
+// ── Finances ────────────────────────────────────────────────────────────────
+
+export type TxKind = 'income' | 'expense';
+
+export interface Transaction {
+  id: string;
+  date: string;
+  kind: TxKind;
+  amount: number;
+  currency: string;
+  category: string;
+  description: string;
+  source: string;
+}
+
+export type HoldingKind = 'cash' | 'crypto' | 'stock' | 'fund' | 'retirement' | 'property' | 'other';
+
+export interface Holding {
+  id: string;
+  kind: HoldingKind;
+  name: string;
+  /** A ticker: BTC for crypto (priced live), AAPL for a stock. Empty for cash or property. */
+  symbol: string;
+  quantity: number;
+  /** What it cost in total, in its own currency. */
+  costBasis: number;
+  /** Unit price you set; null when it is priced live. */
+  price: number | null;
+  currency: string;
+  notes: string;
+  updatedAt: string;
+  /** Worked out: unit price used, value and gain, in its own currency and in the base currency. */
+  unitPrice: number | null;
+  live: boolean;
+  value: number | null;
+  gain: number | null;
+  gainPct: number | null;
+  valueBase: number | null;
+  change24hPct: number | null;
+}
+
+export interface Trade {
+  id: string;
+  holdingId: string | null;
+  symbol: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  /** Price per coin, in USD. */
+  price: number;
+  fee: number;
+  /** Profit or loss a sale locked in, in USD; null for a buy. */
+  realized: number | null;
+  date: string;
+  venue: string;
+  notes: string;
+}
+
+export type DebtKind = 'credit_card' | 'loan' | 'mortgage' | 'car' | 'student' | 'personal' | 'bnpl' | 'other';
+
+export interface Debt {
+  id: string;
+  name: string;
+  kind: DebtKind;
+  lender: string;
+  balance: number;
+  original: number | null;
+  apr: number | null;
+  minPayment: number | null;
+  dueDay: number | null;
+  currency: string;
+  notes: string;
+  closedAt: string | null;
+  /** At the minimum payment: months to clear it and the interest paid on the way. null when it never clears. */
+  payoff: { months: number; interest: number; date: string } | null;
+  paidOffPct: number | null;
+  /** The next due date from dueDay. */
+  nextDue: string | null;
+  payments: { id: string; date: string; amount: number }[];
+}
+
+export interface PriceAlert {
+  id: string;
+  symbol: string;
+  direction: 'above' | 'below';
+  price: number;
+  note: string;
+  triggeredAt: string | null;
+}
+
+export interface Quote {
+  /** The coin, e.g. BTC. Prices are in US dollars. */
+  symbol: string;
+  price: number;
+  open: number;
+  high: number;
+  low: number;
+  changePct: number;
+  /** 24h volume in US dollars. */
+  volume: number;
+  source: 'binance' | 'coinbase' | 'fixed';
+  at: number;
+}
+
+export interface MarketState {
+  quotes: Quote[];
+  /** Hourly closes over the last day, oldest first, by coin. */
+  sparks: Record<string, number[]>;
+  /** How prices are arriving: a live stream, polling, or not at all. */
+  status: 'live' | 'polling' | 'offline' | 'idle';
+  source: string | null;
+  error: string | null;
+  /** Coins no venue lists. */
+  unknown: string[];
+}
+
+export interface FinanceState {
+  date: string;
+  currency: string;
+  /** Rates from one US dollar; null until fetched. */
+  fx: { rates: Record<string, number>; at: string } | null;
+  month: {
+    key: string;
+    income: number;
+    expense: number;
+    net: number;
+    savingsRate: number | null;
+    byCategory: { category: string; kind: TxKind; amount: number; budget: number | null }[];
+  };
+  /** The last six months, oldest first. */
+  months: { key: string; income: number; expense: number }[];
+  transactions: Transaction[];
+  budgets: Record<string, number>;
+  holdings: Holding[];
+  allocation: { kind: HoldingKind; value: number }[];
+  trades: Trade[];
+  crypto: { value: number; cost: number; gain: number; realized: number; change24h: number } | null;
+  debts: Debt[];
+  alerts: PriceAlert[];
+  watchlist: string[];
+  netWorth: { assets: number; debts: number; net: number; unpriced: string[] };
+  market: MarketState;
+}
+
 // ── MCP connections ─────────────────────────────────────────────────────────
 
 export interface McpServerView {

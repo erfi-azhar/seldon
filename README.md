@@ -89,6 +89,31 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
   Gravl Macros) under Settings → Connections; Terminus signs in with OAuth and syncs every
   three hours. Any other MCP server can be added by URL. See [Health apps](#health-apps).
 
+### Finances
+
+- **Money in and out.** Income and spending by category, this month against monthly
+  budgets (a bar per category, red when over), six months side by side, and what's left.
+  Tell Seldon "spent $14 on lunch and $60 on Grab this week" and it logs both.
+- **Portfolio.** Bank balances, CPF or other retirement accounts, funds, stocks, property
+  and coins, with an allocation bar and gain on what each cost. Everything adds up in your
+  base currency (set on the card; guessed from your time zone, SGD in Singapore), with
+  rates refreshed twice a day.
+- **Debts.** Cards, loans, a mortgage, buy-now-pay-later: balance, rate, minimum and due
+  day. Each shows how much is paid off, when it clears at the minimum and the interest on
+  the way — or that the minimum doesn't cover the interest. With more than one, it names
+  where extra money goes furthest (the highest rate). Payments can be taken back.
+- **Net worth** is what you own less what you owe, at the top of the sphere. If the sphere
+  tracks a *Net worth* number, it follows once a day.
+- **A crypto desk, live.** Prices stream tick by tick from Binance's public market data
+  (no account or key), with Coinbase taking over for coins Binance doesn't list or where it
+  refuses to serve (it blocks some regions, the US among them), and polling every minute
+  if no stream stays open. Each coin shows its price (flashing as it moves), 24-hour change
+  and a day's sparkline. Log buys and sales and the position keeps its average cost; a sale
+  records its realized profit or loss, and holdings show unrealized P&L and the day's move.
+  Set a price alert and it arrives under *Needs you* once it's crossed — checked on every
+  tick while the page is open and every minute otherwise. Seldon can read live prices,
+  log trades and set alerts too.
+
 ### Faith, for a Muslim
 
 - **Prayer times where you are**, calculated on your device (no lookups) with the method
@@ -195,8 +220,8 @@ named like `delete_*`) are never offered to Seldon.
 ## Seldon, concretely
 
 - **It works through the same rules you do.** Every tool is a validated wrapper over the
-  data layer the app itself uses. There are 40, from logging a habit to adding a flight to
-  a trip, plus the read tools of any MCP server you connect.
+  data layer the app itself uses. There are 53, from logging a habit to logging a crypto
+  trade or adding a flight to a trip, plus the read tools of any MCP server you connect.
 - **It cannot delete.** It can add, log, update and complete. What it adds or logs — tasks,
   goals, habits, check-ins, numbers, notes, food, workouts, trips — is attributed to it in
   the activity feed and can be undone with one tap. Journal writes can't be undone that
@@ -222,7 +247,7 @@ server/     Node + Hono. No build step: Node runs the TypeScript directly
   app.ts        HTTP API, sign-in, cross-site protections
   jobs.ts       The background scheduler (mail, job alerts, app sync, travel prep)
   agent/        The loop, the tools, the prompt, and the two provider adapters
-  features/     Signals, Gmail, Faith, Capture, Health, MCP, Gravl, Travel, Job alerts —
+  features/     Signals, Gmail, Faith, Capture, Health, Finance, Markets, MCP, Gravl, Travel, Job alerts —
                 each registers its own tables, routes, tools, jobs and snapshot section
 web/        React + Vite single-page app, installable as a PWA
 scripts/    seed-demo.ts
@@ -257,7 +282,7 @@ The older `LIFEOS_*` names still work, and an existing `data/lifeos.db` keeps be
 
 Connections need outbound network access: `imap.gmail.com:993` for Gmail; `oauth2.googleapis.com` and `www.googleapis.com` for Google Calendar; your calendar's host (`calendar.google.com`, `*.icloud.com`) for calendar flights; the job boards'
 APIs (`boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com`, `apply.workable.com`,
-`api.smartrecruiters.com`); any MCP servers you add; and whatever links you capture.
+`api.smartrecruiters.com`); for crypto prices `data-api.binance.vision` and `data-stream.binance.vision` (Binance) or `api.exchange.coinbase.com` and `ws-feed.exchange.coinbase.com` (Coinbase), and `api.frankfurter.dev` or `open.er-api.com` for currency rates; any MCP servers you add; and whatever links you capture.
 
 ### Hosting it
 
@@ -321,6 +346,8 @@ boards, an MCP server with its OAuth server, and model replies for triage and ex
   guided weekly review that ends with next week's three priorities.
 - *Calendar*, so the day's plan and travel mode reflect the day's meetings.
 - *Notifications* for prayers, flights and new signals, through the installed app.
-- *Finances and Family tools:* accounts and budgets; people and important dates.
+- *Finances, further:* recurring income and bills, importing bank statements, and syncing
+  trades from an exchange with a read-only key.
+- *Family tools:* people and important dates.
 - *Native shells* (Capacitor, Tauri) wrapping this same web app, for widgets and
   lock-screen capture.
