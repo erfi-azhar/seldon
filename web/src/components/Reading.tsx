@@ -1,6 +1,6 @@
 // The reading list, in the Learning sphere: books stand on a shelf spine-out, each in its
 // cover's colour. Point at one and it turns to show its cover; open it and the book sits
-// in your hand, turning as you move, with its synopsis, ratings and where to buy it.
+// in your hand, tilting as you move, with its synopsis, ratings and where to buy it.
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bookmark, ExternalLink, Plus, RefreshCw, Search, ShoppingBag, Trash2, X } from 'lucide-react';
@@ -227,11 +227,14 @@ function Cover({ book, colour, onAspect }: { book: Book; colour: string; onAspec
 const reducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Where the book rests when nothing is moving it: turned a little, to show it has depth. */
-const REST = { x: 6, y: -24 };
+const REST = { x: 4, y: -12 };
+/** How far it may lean either way: always the front, with no more than a glimpse of spine or pages. */
+const LIMIT = { x: 16, y: 30 };
+const clamp = (v: number, max: number) => Math.max(-max, Math.min(max, v));
 
 /**
- * A book you can turn: it leans toward the pointer as it moves over the stage, and
- * dragging spins it right round. Let go and it settles back to face you.
+ * A book that leans toward the pointer as it moves over the stage (or under a finger as it
+ * drags), and settles back when let go. It only ever tilts: the front always faces you.
  */
 function Book3D({ book, colour }: { book: Book; colour: string }) {
   const stage = useRef<HTMLDivElement>(null);
@@ -282,7 +285,7 @@ function Book3D({ book, colour }: { book: Book; colour: string }) {
     const r = stage.current!.getBoundingClientRect();
     const nx = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1));
     const ny = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1));
-    target.current = { x: REST.x - ny * 16, y: REST.y + nx * 34 };
+    target.current = { x: clamp(REST.x - ny * 12, LIMIT.x), y: clamp(REST.y + nx * 22, LIMIT.y) };
     run();
   };
 
@@ -295,16 +298,13 @@ function Book3D({ book, colour }: { book: Book; colour: string }) {
   const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d || d.id !== e.pointerId) return lean(e);
-    target.current = { x: Math.max(-40, Math.min(40, d.from.x - (e.clientY - d.y) * 0.35)), y: d.from.y + (e.clientX - d.x) * 0.6 };
+    target.current = { x: clamp(d.from.x - (e.clientY - d.y) * 0.25, LIMIT.x), y: clamp(d.from.y + (e.clientX - d.x) * 0.3, LIMIT.y) };
     run();
   };
   const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!drag.current || drag.current.id !== e.pointerId) return;
     drag.current = null;
     stage.current?.classList.remove('is-dragging');
-    // Settle on the nearest full turn, facing you, rather than unwinding every spin.
-    const turns = Math.round((angle.current.y - REST.y) / 360);
-    angle.current.y -= turns * 360;
     target.current = { ...REST };
     run();
   };
@@ -419,8 +419,8 @@ function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
         <div className="book-modal-stage">
           <Book3D book={book} colour={colour} />
           <p className="book-stage-hint">
-            <span className="for-pointer">Move to tilt · drag to turn</span>
-            <span className="for-touch">Drag to turn it over</span>
+            <span className="for-pointer">Move to tilt</span>
+            <span className="for-touch">Drag to tilt</span>
           </p>
         </div>
 

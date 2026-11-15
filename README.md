@@ -140,7 +140,7 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
 
 - **Books on a shelf.** The Learning sphere keeps the books you want to read standing
   spine-out, each in its cover's colour; point at one and it turns to show its cover. Open
-  it and the book sits in your hand, tilting as you move and turning over as you drag,
+  it and the book sits in your hand, front on, tilting as you move,
   beside its synopsis, ratings, page count and a link to buy it.
 - **Name a book, the rest is found.** Search by title, author or ISBN and pick the match:
   Open Library and Google Books (both free, no account) supply the cover, synopsis and
