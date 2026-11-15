@@ -11,7 +11,7 @@
 
 import type { Weather } from '../../shared/types.ts';
 import { moonPhase, moonPosition, sunPosition, type Blend, type Phase, type SunState } from './sun.ts';
-import { closeIn, discShows, fallColor, fallStrength, FLASH as LIGHTNING, flashLevel, greyed, hazeOf, lookOf, precipitation, weatherSky, type Look } from './weather.ts';
+import { closeIn, discShows, fallPainter, FLASH as LIGHTNING, flashLevel, greyed, hazeOf, lookOf, precipitation, weatherSky, type Look } from './weather.ts';
 
 export type RGB = [number, number, number];
 type V3 = [number, number, number];
@@ -578,8 +578,7 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
   const flash = pose.flash;
   // Rain or snow over the whole scene, in front of the land.
   const falling = precipitation(look, st.t, cols, rows, W / H);
-  const fall = fallColor(look, pal);
-  const fallBy = fallStrength(look);
+  const paintFall = fallPainter(look, pal);
   for (let j = 0; j < rows; j++) {
     const v = (j * cell + cell / 2 - view.top) / view.unit;
     // How far into a fade this row is: 0 is all scene, 1 all page. Into the page below
@@ -607,7 +606,7 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
       const x = (i * cell + cell / 2 - view.cx) / view.unit;
       let c = colorAt(f, x, v, i, j);
       const fell = falling ? falling[j * cols + i]! : 0;
-      if (fell > 0) c = mix(c, fall, fell * fallBy);
+      if (fell > 0) c = paintFall(c, fell);
       if (flash > 0) c = mix(c, FLASH, flash);
       const b = B4[j & 3][i & 3];
       const r = pc * 0.5 * clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22);
