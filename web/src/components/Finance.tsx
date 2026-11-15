@@ -472,6 +472,8 @@ export function BillsCard() {
   const today = todayStr();
   const soon = addDays(today, 3);
   const byId = new Map(f.recurring.map((r) => [r.id, r]));
+  const holdingName = new Map(f.holdings.map((h) => [h.id, h.name]));
+  const into = (id: string) => `adds to ${holdingName.get(id) ?? 'a holding'}`;
   // One line per item: its next date, so a weekly gym doesn't fill the list.
   const seen = new Set<string>();
   const next = f.upcoming.filter((u) => !seen.has(u.recurringId) && (seen.add(u.recurringId), true));
@@ -514,7 +516,7 @@ export function BillsCard() {
                   <button type="button" className="fin-up-name" onClick={() => r && setEditing(r)}>
                     <span className="clamp-1">{u.name}</span>
                     <span className="faint clamp-1">
-                      {[r && scheduleText(r), u.debtId ? 'pays down a debt' : u.auto ? 'logs itself' : !waiting && 'mark it paid'].filter(Boolean).join(' · ')}
+                      {[r && scheduleText(r), u.holdingId ? into(u.holdingId) : u.debtId ? 'pays down a debt' : u.auto ? 'logs itself' : !waiting && 'mark it paid'].filter(Boolean).join(' · ')}
                     </span>
                   </button>
                   <span className={cx('num', u.kind === 'income' && 'is-up')}>
@@ -554,6 +556,7 @@ export function BillsCard() {
                       <span className="faint">
                         {r.active ? scheduleText(r) : 'Paused'}
                         {r.active && r.next && ` · next ${shortDay(r.next)}`}
+                        {r.holdingId && ` · ${into(r.holdingId)}`}
                       </span>
                     </span>
                     <span className={cx('num', r.kind === 'income' && 'is-up')}>{money(r.amount, r.currency)}</span>
@@ -637,6 +640,7 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
     weekend: item?.weekend ?? (startKind === 'income' ? 'before' : 'none'),
     endDate: item?.endDate ?? '',
     debtId: item?.debtId ?? '',
+    holdingId: item?.holdingId ?? '',
   });
   // "Last day" and "last working day" only make sense for items that come round by the month.
   const byMonth = r.cadence === 'monthly' || r.cadence === 'quarterly';
@@ -660,7 +664,7 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
   });
   // An edit sends the schedule only when it changed, so a weekend-shifted date never becomes the new day.
   const save = useWrite(() => {
-    if (!item) return financeWrite.post('/recurring', { ...body(), kind, debt_id: r.debtId || null });
+    if (!item) return financeWrite.post('/recurring', { ...body(), kind, debt_id: r.debtId || null, holding_id: r.holdingId || null });
     const { next, day, cadence, ...rest } = body();
     const rescheduled = r.next !== item.next || mode !== dayModeOf(item);
     return financeWrite.patch(`/recurring/${item.id}`, { ...rest, ...(rescheduled ? { next, day } : {}), ...(r.cadence !== item.cadence ? { cadence } : {}) });
@@ -669,6 +673,11 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
   const remove = useWrite(() => financeWrite.del(`/recurring/${item!.id}`));
   const debts = f.debts.filter((d) => !d.closedAt);
   const forDebt = !!(item?.debtId ?? r.debtId);
+  // Somewhere to pay money into: a cash balance, or a holding at a value you set (CPF, property).
+  const payable = f.holdings.filter((h) => h.kind === 'cash' || h.kind === 'retirement' || h.kind === 'property' || h.kind === 'other');
+  const intoId = item?.holdingId ?? r.holdingId;
+  const intoHolding = intoId ? f.holdings.find((h) => h.id === intoId) : undefined;
+  const linked = forDebt || !!intoId;
   const cats = kind === 'income' ? INCOME : EXPENSE;
   const a = parseNumber(r.amount);
   const err = save.error ?? pause.error ?? remove.error;
@@ -697,7 +706,7 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
         </>
       }
     >
-      {!item && !forDebt && (
+      {!item && !linked && (
         <Seg
           label="Kind"
           value={kind}
@@ -711,11 +720,11 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
           ]}
         />
       )}
-      <div className="field-row" style={{ marginTop: item || forDebt ? 0 : 14 }}>
+      <div className="field-row" style={{ marginTop: item || linked ? 0 : 14 }}>
         <Field label="Name">
           <input className="input" value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} placeholder={kind === 'income' ? 'Salary' : 'Rent, SP Group, Netflix…'} data-autofocus />
         </Field>
-        <Field label={`Amount (${item?.currency ?? f.currency})`} hint={!r.auto ? 'What it usually comes to' : undefined}>
+        <Field label={`Amount (${item?.currency ?? intoHolding?.currency ?? f.currency})`} hint={!r.auto ? 'What it usually comes to' : undefined}>
           <input className="input num" inputMode="decimal" value={r.amount} onChange={(e) => setR({ ...r, amount: e.target.value })} />
         </Field>
       </div>
@@ -780,7 +789,20 @@ function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Rec
           </select>
         </Field>
       )}
-      {!forDebt && (
+      {!item && kind === 'income' && payable.length > 0 && (
+        <Field label="Pays into" hint="Each payment adds to that holding instead of counting as income — CPF contributions and interest, a standing order into savings">
+          <select className="select" value={r.holdingId} onChange={(e) => setR({ ...r, holdingId: e.target.value })}>
+            <option value="">No, it comes to me</option>
+            {payable.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {item && intoHolding && <p className="hint">Each payment adds to {intoHolding.name}.</p>}
+      {!linked && (
         <div className="fin-chips" role="group" aria-label="Category">
           {cats.map((x) => (
             <button key={x} type="button" className={cx('chip', r.category === x ? 'chip-tint' : 'chip-outline')} aria-pressed={r.category === x} onClick={() => setR({ ...r, category: x })}>

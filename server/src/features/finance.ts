@@ -208,7 +208,27 @@ export function updateHolding(store: Store, id: string, patch: { name?: string; 
 
 function deleteHolding(store: Store, id: string): void {
   if (store.db.prepare('DELETE FROM fin_holdings WHERE id = ?').run(id).changes === 0) throw new NotFound('Holding');
+  // Money that was paid into it has nowhere to go now.
+  store.db.prepare('UPDATE fin_recurring SET active = 0 WHERE holding_id = ?').run(id);
   syncSymbols(store);
+}
+
+/** Holdings that money can be paid into: a cash balance, or one held at a value you set (CPF, property). */
+const PAYABLE: ReadonlySet<string> = new Set(['cash', 'retirement', 'property', 'other']);
+
+/**
+ * Pay into a holding: a cash balance grows by the amount, a valued one is worth that much more.
+ * Cost basis is left alone, since a payment might be a contribution or interest. False when the
+ * holding is gone.
+ */
+function payIntoHolding(store: Store, id: string, amount: number, label: string): boolean {
+  const h = store.db.prepare('SELECT * FROM fin_holdings WHERE id = ?').get(id) as Row | undefined;
+  if (!h || !PAYABLE.has(h.kind)) return false;
+  if (h.kind === 'cash') store.db.prepare('UPDATE fin_holdings SET quantity = quantity + ?, updated_at = ? WHERE id = ?').run(amount, nowIso(), id);
+  else if (!(h.quantity > 0)) store.db.prepare('UPDATE fin_holdings SET quantity = 1, price = ?, updated_at = ? WHERE id = ?').run(r2(amount), nowIso(), id);
+  else store.db.prepare('UPDATE fin_holdings SET price = ?, updated_at = ? WHERE id = ?').run((h.price ?? 0) + amount / h.quantity, nowIso(), id);
+  store.record('updated', 'fin_holding', id, financeSphere(store)?.id ?? null, `${label}: ${money(amount, h.currency)} into ${h.name}`);
+  return true;
 }
 
 function valueHolding(r: Row, quote: Quote | null, fx: FxRates | null, base: string): Holding {
@@ -634,6 +654,7 @@ const recurringFromRow = (r: Row, hol: ReadonlySet<string>): Recurring => ({
   auto: !!r.auto,
   endDate: r.end_date,
   debtId: r.debt_id,
+  holdingId: r.holding_id ?? null,
   active: !!r.active,
   next: r.active ? occurrence(r, r.done, hol) : null,
   monthly: r2(r.amount * PER_MONTH[r.cadence as Frequency]),
@@ -662,21 +683,27 @@ export interface RecurringInput {
   auto?: boolean;
   endDate?: string | null;
   debtId?: string | null;
+  /** Paid into this holding instead of logged as income or spending. */
+  holdingId?: string | null;
   currency?: string;
 }
 
 export function addRecurring(store: Store, input: RecurringInput, today: string): Recurring {
   if (!(input.amount > 0)) throw new Invalid('An amount above zero');
   if (input.debtId && !store.db.prepare('SELECT 1 AS x FROM fin_debts WHERE id = ?').get(input.debtId)) throw new NotFound('Debt');
+  if (input.debtId && input.holdingId) throw new Invalid('Either a debt to pay down or a holding to pay into, not both');
+  const holding = input.holdingId ? (store.db.prepare('SELECT kind, currency FROM fin_holdings WHERE id = ?').get(input.holdingId) as Row | undefined) : undefined;
+  if (input.holdingId && !holding) throw new NotFound('Holding');
+  if (holding && !PAYABLE.has(holding.kind)) throw new Invalid('Money can be paid into a cash, retirement, property or other holding');
   const monthBased = !!CADENCE_MONTHS[input.cadence];
   const id = newId();
   const row: Row = {
     id,
-    kind: input.debtId ? 'expense' : input.kind,
+    kind: input.debtId ? 'expense' : holding ? 'income' : input.kind,
     name: input.name.trim().slice(0, 80) || input.category,
     amount: r2(input.amount),
-    currency: (input.currency ?? getSettings(store).currency).toUpperCase(),
-    category: input.debtId ? 'Debt' : cleanCategory(input.category),
+    currency: (holding?.currency ?? input.currency ?? getSettings(store).currency).toUpperCase(),
+    category: input.debtId ? 'Debt' : holding ? 'Savings' : cleanCategory(input.category),
     cadence: input.cadence,
     anchor: input.next,
     day: monthBased ? (input.day ?? Number(input.next.slice(8, 10))) : null,
@@ -684,21 +711,22 @@ export function addRecurring(store: Store, input: RecurringInput, today: string)
     auto: input.auto ?? true,
     end_date: input.endDate ?? null,
     debt_id: input.debtId ?? null,
+    holding_id: input.holdingId ?? null,
   };
   // It starts from the next date given, never by logging months gone by.
   const hol = holidays(store);
   row.done = pastCount(row, today, hol);
   store.db
-    .prepare('INSERT INTO fin_recurring (id, kind, name, amount, currency, category, cadence, anchor, day, done, weekend, auto, end_date, debt_id, active, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)')
-    .run(id, row.kind, row.name, row.amount, row.currency, row.category, row.cadence, row.anchor, row.day, row.done, row.weekend, Number(row.auto), row.end_date, row.debt_id, nowIso());
+    .prepare('INSERT INTO fin_recurring (id, kind, name, amount, currency, category, cadence, anchor, day, done, weekend, auto, end_date, debt_id, holding_id, active, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)')
+    .run(id, row.kind, row.name, row.amount, row.currency, row.category, row.cadence, row.anchor, row.day, row.done, row.weekend, Number(row.auto), row.end_date, row.debt_id, row.holding_id, nowIso());
   const saved = recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row, hol);
-  store.record('created', 'fin_recurring', id, financeSphere(store)?.id ?? null, `${saved.kind === 'income' ? 'Expecting' : 'Recurring'}: ${saved.name}, ${money(saved.amount, saved.currency)} ${saved.cadence}`);
+  store.record('created', 'fin_recurring', id, financeSphere(store)?.id ?? null, `${saved.holdingId ? 'Paying in' : saved.kind === 'income' ? 'Expecting' : 'Recurring'}: ${saved.name}, ${money(saved.amount, saved.currency)} ${saved.cadence}`);
   return saved;
 }
 
 registerUndo('created:fin_recurring', (db, id) => void db.prepare('DELETE FROM fin_recurring WHERE id = ?').run(id));
 
-export function updateRecurring(store: Store, id: string, patch: Partial<Omit<RecurringInput, 'kind' | 'currency' | 'debtId'>> & { active?: boolean }, today: string): Recurring {
+export function updateRecurring(store: Store, id: string, patch: Partial<Omit<RecurringInput, 'kind' | 'currency' | 'debtId' | 'holdingId'>> & { active?: boolean }, today: string): Recurring {
   const r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Recurring item');
   const hol = holidays(store);
@@ -708,7 +736,7 @@ export function updateRecurring(store: Store, id: string, patch: Partial<Omit<Re
     if (!(patch.amount > 0)) throw new Invalid('An amount above zero');
     next.amount = r2(patch.amount);
   }
-  if (patch.category !== undefined && !r.debt_id) next.category = cleanCategory(patch.category);
+  if (patch.category !== undefined && !r.debt_id && !r.holding_id) next.category = cleanCategory(patch.category);
   if (patch.weekend !== undefined) next.weekend = patch.weekend;
   if (patch.auto !== undefined) next.auto = Number(patch.auto);
   if (patch.endDate !== undefined) next.end_date = patch.endDate;
@@ -746,11 +774,17 @@ function settleReminder(store: Store, id: string, date: string | null): void {
 }
 
 /**
- * Log occurrence n: a transaction, or a payment on its debt. Returns false (and pauses the item)
- * when its debt is gone or paid off. Runs inside the caller's transaction.
+ * Log occurrence n: a transaction, a payment on its debt, or money into its holding. Returns false
+ * (and pauses the item) when its debt is gone or paid off, or its holding is gone. Runs inside the
+ * caller's transaction.
  */
 function post(store: Store, r: Row, n: number, date: string, amount: number, paid: boolean, hol: ReadonlySet<string>): boolean {
-  if (r.debt_id) {
+  if (r.holding_id) {
+    if (!payIntoHolding(store, r.holding_id, amount, r.name)) {
+      store.db.prepare('UPDATE fin_recurring SET active = 0 WHERE id = ?').run(r.id);
+      return false;
+    }
+  } else if (r.debt_id) {
     const debt = store.db.prepare('SELECT balance, closed_at FROM fin_debts WHERE id = ?').get(r.debt_id) as Row | undefined;
     if (!debt || debt.closed_at || debt.balance <= 0) {
       store.db.prepare('UPDATE fin_recurring SET active = 0 WHERE id = ?').run(r.id);
@@ -797,7 +831,7 @@ export function markPaid(store: Store, id: string, today: string, opts: { amount
     if (!r.active || !occurrence(r, r.done, hol)) throw new Invalid(`${r.name} has nothing left to pay`);
     const amount = opts.amount ?? r.amount;
     if (!(amount > 0)) throw new Invalid('An amount above zero');
-    if (!post(store, r, r.done, opts.date ?? today, amount, true, hol)) throw new Invalid(`${r.name}'s debt is already paid off`);
+    if (!post(store, r, r.done, opts.date ?? today, amount, true, hol)) throw new Invalid(r.holding_id ? `${r.name}'s holding is gone` : `${r.name}'s debt is already paid off`);
     return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row, hol);
   });
 }
@@ -827,7 +861,7 @@ function pending(store: Store, until: string, today: string): Upcoming[] {
     for (let n = r.done, i = 0; i < 60; n++, i++) {
       const date = occurrence(r, n, hol);
       if (!date || date > until) break;
-      out.push({ recurringId: r.id, name: r.name, kind: r.kind, amount: r.amount, currency: r.currency, date, auto: !!r.auto, debtId: r.debt_id, overdue: date < today });
+      out.push({ recurringId: r.id, name: r.name, kind: r.kind, amount: r.amount, currency: r.currency, date, auto: !!r.auto, debtId: r.debt_id, holdingId: r.holding_id ?? null, overdue: date < today });
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
@@ -918,13 +952,14 @@ export function financeState(store: Store, today: string): FinanceState {
   const coming = pending(store, horizon > monthEnd ? horizon : monthEnd, today);
   const expected = { income: 0, expense: 0 };
   for (const u of coming) {
-    if (u.date > monthEnd || u.debtId) continue;
+    // Money paid into a holding never passes through the bank account, so it isn't cash flow.
+    if (u.date > monthEnd || u.debtId || u.holdingId) continue;
     expected[u.kind] += toBase(u.amount, u.currency) ?? 0;
   }
   const hol = holidays(store);
   const recurring = (store.db.prepare('SELECT * FROM fin_recurring ORDER BY active DESC, kind DESC, amount DESC').all() as Row[]).map((r) => recurringFromRow(r, hol));
   const recurringMonthly = { income: 0, expense: 0 };
-  for (const r of recurring) if (r.active && !r.debtId) recurringMonthly[r.kind] += toBase(r.monthly, r.currency) ?? 0;
+  for (const r of recurring) if (r.active && !r.debtId && !r.holdingId) recurringMonthly[r.kind] += toBase(r.monthly, r.currency) ?? 0;
 
   // Portfolio.
   const holdings = (store.db.prepare('SELECT * FROM fin_holdings ORDER BY kind, name').all() as Row[]).map((r) => valueHolding(r, isLive(r.kind, r.symbol, r.price) ? feed.quote(r.symbol) : null, fx, base));
@@ -1081,10 +1116,11 @@ const recurringInput = z.object({
   auto: z.boolean().optional(),
   end_date: dateStr.nullable().optional(),
   debt_id: z.string().nullable().optional(),
+  holding_id: z.string().nullable().optional(),
   currency: currency.optional(),
 });
-const recurringPatch = recurringInput.omit({ kind: true, currency: true, debt_id: true }).partial().extend({ active: z.boolean().optional() });
-const toRecurring = (r: z.infer<typeof recurringInput>): RecurringInput => ({ kind: r.kind, name: r.name, amount: r.amount, category: r.category, cadence: r.cadence, next: r.next, day: r.day, weekend: r.weekend, auto: r.auto, endDate: r.end_date, debtId: r.debt_id, currency: r.currency });
+const recurringPatch = recurringInput.omit({ kind: true, currency: true, debt_id: true, holding_id: true }).partial().extend({ active: z.boolean().optional() });
+const toRecurring = (r: z.infer<typeof recurringInput>): RecurringInput => ({ kind: r.kind, name: r.name, amount: r.amount, category: r.category, cadence: r.cadence, next: r.next, day: r.day, weekend: r.weekend, auto: r.auto, endDate: r.end_date, debtId: r.debt_id, holdingId: r.holding_id, currency: r.currency });
 const toRecurringPatch = (r: z.infer<typeof recurringPatch>) => ({ name: r.name, amount: r.amount, category: r.category, cadence: r.cadence, next: r.next, day: r.day, weekend: r.weekend, auto: r.auto, endDate: r.end_date, active: r.active });
 
 function findRecurring(store: Store, nameOrId: string): Row {
@@ -1266,7 +1302,7 @@ registerFeature({
     ),
     tool(
       'add_recurring',
-      "Set up money that comes round on a schedule: salary or other regular income, rent, bills, subscriptions, insurance, a loan instalment. `next` is the next date it's due; month-based cadences keep that day of the month (day 31 = the month's last day). `weekend`: 'before' moves a date that falls on a weekend or public holiday to the working day before (common for salary), 'after' to the working day after. For pay on the last working day of the month: cadence monthly, day 31, weekend 'before', next = the last day of this month (or next month if that has passed). `auto` true logs it by itself on the day (fixed amounts: salary, rent, subscriptions); false waits for the user to mark it paid and reminds them a few days ahead (bills that vary, like electricity). For a loan or card instalment, pass debt_id (from get_finances) and each payment pays that debt down instead of logging spending. Past occurrences are not logged.",
+      "Set up money that comes round on a schedule: salary or other regular income, rent, bills, subscriptions, insurance, a loan instalment. `next` is the next date it's due; month-based cadences keep that day of the month (day 31 = the month's last day). `weekend`: 'before' moves a date that falls on a weekend or public holiday to the working day before (common for salary), 'after' to the working day after. For pay on the last working day of the month: cadence monthly, day 31, weekend 'before', next = the last day of this month (or next month if that has passed). `auto` true logs it by itself on the day (fixed amounts: salary, rent, subscriptions); false waits for the user to mark it paid and reminds them a few days ahead (bills that vary, like electricity). For a loan or card instalment, pass debt_id (from get_finances) and each payment pays that debt down instead of logging spending. For money paid straight into something the user owns (CPF contributions, CPF interest, a standing order into savings), pass holding_id (a cash, retirement, property or other holding from get_finances): each payment raises that holding's value and is not counted as income. Past occurrences are not logged.",
       recurringInput,
       (r, { store, today }) => {
         const saved = addRecurring(store, toRecurring(r), today);

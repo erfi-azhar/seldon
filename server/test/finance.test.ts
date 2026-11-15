@@ -323,6 +323,38 @@ test('a loan instalment pays its debt down, and stops once the debt is cleared',
   assert.equal(recurringRow(store, plan.id).active, 0, 'nothing left to pay: it stops');
 });
 
+test('money paid into a holding raises its value and is not counted as income', () => {
+  const store = fresh();
+  const oa = addHolding(store, { kind: 'retirement', name: 'CPF OA', quantity: 1, price: 1000, currency: 'SGD' });
+  const bank = addHolding(store, { kind: 'cash', name: 'DBS', quantity: 500, currency: 'SGD' });
+  const btc = addHolding(store, { kind: 'crypto', name: 'Bitcoin', symbol: 'BTC', quantity: 1, price: 1 });
+  const cpf = addRecurring(store, { kind: 'expense', name: 'CPF to OA', amount: 100, category: 'x', cadence: 'monthly', next: '2026-11-15', weekend: 'after', holdingId: oa.id }, '2026-11-14');
+  addRecurring(store, { kind: 'income', name: 'Savings plan', amount: 50, category: 'x', cadence: 'monthly', next: '2026-11-20', holdingId: bank.id }, TODAY);
+  assert.equal(cpf.kind, 'income');
+  assert.equal(cpf.holdingId, oa.id);
+  assert.throws(() => addRecurring(store, { kind: 'income', name: 'x', amount: 1, category: 'x', cadence: 'monthly', next: '2026-12-01', holdingId: btc.id }, TODAY), /cash, retirement/);
+  assert.throws(() => addRecurring(store, { kind: 'income', name: 'x', amount: 1, category: 'x', cadence: 'monthly', next: '2026-12-01', holdingId: 'nope' }, TODAY), /Holding/);
+
+  let f = financeState(store, TODAY);
+  assert.deepEqual(f.recurringMonthly, { income: 0, expense: 0 }, 'not cash flow');
+  assert.equal(f.month.expected.income, 0);
+  assert.equal(f.upcoming.find((u) => u.name === 'CPF to OA')!.holdingId, oa.id);
+
+  // 15 Nov 2026 is a Sunday: it lands on Monday the 16th, then the 15th of each month.
+  assert.equal(postDue(store, '2026-11-15'), 0);
+  assert.equal(postDue(store, '2027-01-20'), 3 + 3);
+  f = financeState(store, '2027-01-20');
+  assert.equal(f.holdings.find((h) => h.id === oa.id)!.value, 1300);
+  assert.equal(f.holdings.find((h) => h.id === bank.id)!.value, 650);
+  assert.equal(txs(store).length, 0, 'no income logged');
+
+  // A holding removed takes its payments with it, rather than turning them into income.
+  store.db.prepare('DELETE FROM fin_holdings WHERE id = ?').run(oa.id);
+  assert.equal(postDue(store, '2027-03-20'), 2, 'only the savings plan');
+  assert.equal(recurringRow(store, cpf.id).active, 0);
+  assert.equal(txs(store).length, 0);
+});
+
 test('the month ahead: what is still to come and what it leaves', () => {
   const store = fresh();
   addTransaction(store, { kind: 'expense', amount: 1000, category: 'Food', date: '2026-11-03' });

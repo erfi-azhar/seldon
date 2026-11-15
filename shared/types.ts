@@ -661,6 +661,8 @@ export interface Recurring {
   endDate: string | null;
   /** Paying it pays down this debt instead of logging spending. */
   debtId: string | null;
+  /** Paid into this holding (CPF, savings) instead of logged as income or spending. */
+  holdingId: string | null;
   active: boolean;
   next: string | null;
   /** What it comes to in an average month, in its own currency. */
@@ -676,6 +678,7 @@ export interface Upcoming {
   date: string;
   auto: boolean;
   debtId: string | null;
+  holdingId: string | null;
   overdue: boolean;
 }
 

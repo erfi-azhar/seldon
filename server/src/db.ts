@@ -607,6 +607,11 @@ const MIGRATIONS: string[] = [
     fetched_at TEXT NOT NULL
   );
   `,
+  // Recurring money paid into a holding (CPF contributions, a standing order into savings).
+  // Plain text, not a foreign key: a holding removed must pause the item, not turn it into income.
+  `
+  ALTER TABLE fin_recurring ADD COLUMN holding_id TEXT;
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
