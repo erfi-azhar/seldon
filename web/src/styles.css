@@ -11026,3 +11026,41 @@ button.fin-rec-main:disabled {
   font-weight: 450;
   color: var(--ink-3);
 }
+
+/* Trips side by side in one row, scrolled sideways, each card a fixed width that snaps into place. */
+.trip-list.is-row {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(320px, 400px);
+  align-items: stretch;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 14px;
+  padding: 4px 14px 14px;
+  scrollbar-width: thin;
+}
+.trip-list.is-row > .trip-summary {
+  scroll-snap-align: start;
+  align-content: start;
+}
+/* At card width the three columns stack: flights, stay, to-dos. */
+.trip-list.is-row .ts-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.trip-list.is-row .ts-cell {
+  padding: 0;
+}
+.trip-list.is-row .ts-cell + .ts-cell {
+  border-left: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.trip-row-wrap + .trip-past-toggle {
+  margin: 0 18px 14px;
+}
+@media (max-width: 520px) {
+  .trip-list.is-row {
+    grid-auto-columns: 86%;
+  }
+}
