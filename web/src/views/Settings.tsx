@@ -1,5 +1,5 @@
 import { Download, Plus, Upload, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { api, useAuth, useMemories, useSettings, useSpheres, useWrite, write } from '../api.ts';
 import { AccessTokens } from '../components/AccessTokens.tsx';
 import { BrainsSection } from '../components/Brains.tsx';
@@ -9,6 +9,7 @@ import { RouteRecording, TravelNotifications } from '../components/Journey.tsx';
 import { Field, Loading, Seg } from '../components/ui.tsx';
 import { useApp } from '../state.tsx';
 import { setThemePref, useSun, type Phase, type ThemePref } from '../sun.ts';
+import { onTempUnit, readTempUnit, setTempUnit, type TempUnit } from '../weather.ts';
 
 const PHASE_NAME: Record<Phase, string> = { dawn: 'Dawn', day: 'Day', dusk: 'Dusk', evening: 'Evening' };
 const clock = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -20,6 +21,7 @@ export function Settings() {
   const { data: auth } = useAuth();
   const { openSheet, toast } = useApp();
   const sun = useSun();
+  const tempUnit = useSyncExternalStore(onTempUnit, readTempUnit);
   const [memory, setMemory] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -190,6 +192,17 @@ export function Settings() {
             {sun.source === 'device' ? ', from this device’s location.' : sun.source === 'saved' ? ', from your prayer-times location.' : ', estimated from your time zone. Allow location, or set one for prayer times, to make it exact.'}
             {sun.source !== 'guess' && ' The sky also shows the weather there, from Open-Meteo.'}
           </p>
+          <Field label="Temperature" hint="For the weather on Today.">
+            <Seg<TempUnit>
+              label="Temperature"
+              value={tempUnit}
+              onChange={setTempUnit}
+              options={[
+                { value: 'c', label: '°C' },
+                { value: 'f', label: '°F' },
+              ]}
+            />
+          </Field>
         </div>
       </section>
 

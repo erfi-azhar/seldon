@@ -515,6 +515,19 @@ export interface PrayerDay {
 
 export type WeatherKind = 'clear' | 'cloudy' | 'overcast' | 'fog' | 'drizzle' | 'rain' | 'showers' | 'snow' | 'storm';
 
+/** One hour ahead, for the weather card. */
+export interface WeatherHour {
+  /** The start of the hour (ISO). */
+  at: string;
+  kind: WeatherKind;
+  code: number;
+  /** °C. */
+  temperature: number;
+  /** Chance of rain or snow, 0–100. */
+  rainChance: number;
+  isDay: boolean;
+}
+
 /** The weather now at a place, from Open-Meteo. */
 export interface Weather {
   kind: WeatherKind;
@@ -525,6 +538,14 @@ export interface Weather {
   /** Rain, showers and snow in the last hour, in mm. */
   precipitation: number;
   windKmh: number;
+  /** °C, and what it feels like with humidity and wind. */
+  temperature: number;
+  feelsLike: number;
+  /** Relative humidity, 0–100. */
+  humidity: number;
+  isDay: boolean;
+  /** The next few hours, after this one. */
+  hours: WeatherHour[];
   /** When Open-Meteo last updated it (ISO). */
   observedAt: string;
 }

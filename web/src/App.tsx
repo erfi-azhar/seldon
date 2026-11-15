@@ -8,6 +8,7 @@ import { SIGNED_OUT, useAuth, useSettings, useSpheres } from './api.ts';
 import { AgentPanel } from './components/AgentPanel.tsx';
 import { Palette } from './components/Palette.tsx';
 import { Sheets } from './components/sheets.tsx';
+import { WeatherChip } from './components/WeatherChip.tsx';
 import { AgentOrb, Orb } from './components/Orb.tsx';
 import { Loading } from './components/ui.tsx';
 import { cx } from './lib.ts';
@@ -167,6 +168,7 @@ function Shell({ settings }: { settings: SettingsData }) {
               )}
             </nav>
             <div className="topbar-right">
+              {location === '/' && <WeatherChip />}
               <button type="button" className="icon-btn only-mobile" onClick={() => setPaletteOpen(true)} aria-label="Search and commands">
                 <Search size={18} />
               </button>
