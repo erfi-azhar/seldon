@@ -1601,8 +1601,9 @@ p.lately {
 .todo-group summary:focus-within .todo-group-actions {
   display: flex;
 }
-.todo-group summary:hover .todo-fold-meta,
-.todo-group summary:focus-within .todo-fold-meta {
+/* Only a project's row has actions to make room for; a day's count stays put. */
+.todo-group summary:has(.todo-group-actions):hover .todo-fold-meta,
+.todo-group summary:has(.todo-group-actions):focus-within .todo-fold-meta {
   display: none;
 }
 @media (hover: none) {
@@ -1639,28 +1640,8 @@ p.lately {
 .todo-new-project-form {
   border-top: 1px solid var(--line);
 }
-.todo-day + .todo-day {
-  border-top: 1px solid var(--line);
-}
-.todo-days {
-  border-top: 1px solid var(--line);
-}
-.todo-day-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 12px 20px 2px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-2);
-}
-.todo-day-head.late {
+.todo-group.is-late .todo-group-name {
   color: var(--bad);
-}
-.todo-day ul {
-  padding-bottom: 6px;
 }
 .task-tag {
   max-width: 180px;

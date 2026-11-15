@@ -576,7 +576,10 @@ function NewProject({ sphereId, onDone }: { sphereId: string; onDone: (created?:
   );
 }
 
-/** Every open to-do by its due day: late ones together, then each day in turn, then undated. */
+/**
+ * Every open to-do by its due day: late ones together, then each day in turn, then undated.
+ * Each day folds like a project does, open to start with.
+ */
 function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; label: (t: Task) => string | undefined }) {
   const groups = new Map<string, Task[]>();
   for (const t of [...tasks].sort(byDue)) {
@@ -592,19 +595,20 @@ function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; labe
   };
   if (!tasks.length) return null;
   return (
-    <div className="todo-days">
+    <div className="todo-groups">
       {[...groups].map(([key, list]) => (
-        <div key={key} className="todo-day">
-          <div className={cx('todo-day-head', key === 'late' && 'late')}>
-            <span>{heading(key)}</span>
-            <span className="todo-fold-meta">{list.length}</span>
-          </div>
+        <details key={key} className={cx('todo-group', key === 'late' && 'is-late')} open>
+          <summary>
+            <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+            <span className="todo-group-name clamp-1">{heading(key)}</span>
+            <span className={cx('todo-fold-meta', key === 'late' && 'late')}>{plural(list.length, 'to-do')}</span>
+          </summary>
           <ul>
             {list.map((t) => (
               <TaskRow key={t.id} task={t} showSphere={false} showDue={key === 'late'} tag={label(t)} />
             ))}
           </ul>
-        </div>
+        </details>
       ))}
     </div>
   );
