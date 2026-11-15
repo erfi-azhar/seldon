@@ -2802,6 +2802,72 @@ code,
   }
 }
 
+/* A foldable opened flat (the iPhone Duo's inner screen is ~626pt wide): too narrow for the
+   desktop layout, wide enough that one stretched column wastes it. Today, the spheres and
+   goals go to two columns, a card on each side of the fold. A sphere's own page stays in one:
+   its cards (budgets, prayer times, trades) need more than half of this width. */
+@media (min-width: 600px) and (max-width: 860px) {
+  .today-grid,
+  .sphere-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+  }
+  .today-grid > .col {
+    gap: 14px;
+  }
+  .goal-groups {
+    columns: 2;
+    column-gap: 14px;
+  }
+  .goal-groups > section {
+    margin-bottom: 14px;
+  }
+  /* Half the fold is too narrow for a habit's name beside its week, so the week goes under it. */
+  .today-grid .habit {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'check name name' '. week streak';
+    column-gap: 12px;
+    row-gap: 6px;
+  }
+  .today-grid .habit > :first-child {
+    grid-area: check;
+  }
+  .today-grid .habit-name {
+    grid-area: name;
+  }
+  .today-grid .habit .week {
+    grid-area: week;
+  }
+  .today-grid .habit .streak {
+    grid-area: streak;
+  }
+  .today-grid .habit-week-head {
+    grid-template-areas: 'check week streak';
+  }
+  .today-grid .habit-week-head .habit-name {
+    display: none;
+  }
+  /* The flight's times stand over and under the plane, so both airports keep their size. */
+  .today-grid .tm-route {
+    gap: 8px;
+  }
+  .today-grid .tm-plane {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .today-grid .tm-plane i {
+    display: none;
+  }
+  /* Each coin row loses its own trade and alert buttons; the card's head has both. */
+  .today-grid .fin-ticker li {
+    grid-template-columns: minmax(48px, 0.8fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+  .today-grid .fin-row-acts {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -6525,6 +6591,7 @@ textarea.title-input {
 .travel-mode {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 18px 20px 16px;
   overflow: hidden;
@@ -6782,6 +6849,8 @@ textarea.title-input {
 /* The featured card and the notches that tuck beneath it. */
 .trip-feature {
   display: grid;
+  /* One column no wider than the card's place: an auto column grows to its widest line. */
+  grid-template-columns: minmax(0, 1fr);
 }
 .trip-notch {
   position: relative;
