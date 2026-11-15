@@ -9221,6 +9221,15 @@ button.layover-pill:hover .layover-lounge {
     padding-top: 8px;
   }
 }
+/* In the column on a travel day the card is narrow: Work and Everything else stack, as on a phone. */
+.col > .today-todos .todo-split {
+  grid-template-columns: minmax(0, 1fr);
+}
+.col > .today-todos .todo-split:not(.single) .todo-col + .todo-col {
+  border-left: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
 
 /* The lounges at a connection, opened from its layover pill. */
 .lx-route {
@@ -9837,6 +9846,29 @@ button.layover-pill:hover .layover-lounge {
 .td-steps li.is-now i {
   background: oklch(0.6 0.13 245);
   box-shadow: 0 0 0 4px oklch(0.6 0.13 245 / 0.22);
+}
+/* The step you're in pulses: a ring that swells out from the dot and fades. */
+.td-steps li.is-now i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 oklch(0.6 0.13 245 / 0.55);
+  animation: td-pulse 2s ease-out infinite;
+}
+@keyframes td-pulse {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.6 0.13 245 / 0.55);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 10px oklch(0.6 0.13 245 / 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .td-steps li.is-now i::after {
+    animation: none;
+  }
 }
 .td-step-time {
   font-size: 12.5px;

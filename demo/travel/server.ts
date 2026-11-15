@@ -51,6 +51,12 @@ async function handle(method: string, path: string, body: Json): Promise<Respons
     each(m[1]!, (o) => 'checkedInAt' in o && (o.checkedInAt = body.checkedIn ? new Date().toISOString() : null));
     return json(data['/travel']);
   }
+  if (method === 'PATCH' && (m = path.match(/^\/travel\/segments\/([^/]+)$/))) {
+    // Only the plain fields: times stay as recorded, since the real server works out their zones.
+    const { startLocal: _s, endLocal: _e, ...plain } = body;
+    each(m[1]!, (o) => 'kind' in o && 'tripId' in o && Object.assign(o, plain));
+    return json(data['/travel']);
+  }
   if (method === 'POST' && (m = path.match(/^\/travel\/segments\/([^/]+)\/delay$/))) {
     each(m[1]!, (o) => 'delayMin' in o && (o.delayMin = Number(body.minutes) || 0));
     return json(data['/travel']);

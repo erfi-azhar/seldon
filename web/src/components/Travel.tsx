@@ -340,6 +340,15 @@ function TripSheet({ trip, onClose }: { trip: Trip | null; onClose: () => void }
   );
 }
 
+/** A local wall time ("2026-11-16T08:05") moved later by some minutes, as "08:50", or "00:20 +1" past midnight. */
+function laterBy(local: string, minutes: number): string {
+  const t = Date.parse(`${local}:00Z`);
+  if (Number.isNaN(t)) return '—';
+  const moved = new Date(t + minutes * 60_000).toISOString();
+  const days = daysFrom(local.slice(0, 10), moved.slice(0, 10));
+  return `${moved.slice(11, 16)}${days > 0 ? ` +${days}` : ''}`;
+}
+
 function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment | null; onClose: () => void }) {
   const day = trip.startDate;
   // An existing booking keeps its own kind: a train or event edited here must not turn into a flight.
@@ -366,7 +375,16 @@ function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment
       : kind === 'stay'
         ? { kind, title: f.title, address: f.address, startLocal: f.startLocal, endLocal: f.endLocal, confirmation: f.confirmation }
         : { kind, title: f.title, address: f.address, startLocal: f.startLocal, endLocal: f.endLocal, seat: f.seat, confirmation: f.confirmation };
-  const save = useWrite(() => (segment ? travelWrite.patch(`/segments/${segment.id}`, body()) : travelWrite.post(`/trips/${trip.id}/segments`, body())));
+  // A booked flight can run late: minutes, kept apart from the booking's own times.
+  const [delay, setDelay] = useState(String(segment?.delayMin ?? 0));
+  const delayMin = /^\d{1,4}$/.test(delay.trim()) ? Number(delay.trim()) : NaN;
+  const delayBad = !(delayMin >= 0 && delayMin <= 1440);
+  const save = useWrite(async () => {
+    if (!segment) return travelWrite.post(`/trips/${trip.id}/segments`, body());
+    const saved = await travelWrite.patch(`/segments/${segment.id}`, body());
+    if (kind === 'flight' && delayMin !== (segment.delayMin ?? 0)) return travelWrite.post(`/segments/${segment.id}/delay`, { minutes: delayMin });
+    return saved;
+  });
   const remove = useWrite(() => travelWrite.del(`/segments/${segment!.id}`));
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   return (
@@ -382,7 +400,7 @@ function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment
           ) : (
             <span className="hint">Times are local to each airport or hotel.</span>
           )}
-          <button className="btn btn-primary btn-sm" onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+          <button className="btn btn-primary btn-sm" disabled={kind === 'flight' && !!segment && delayBad} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
             Save
           </button>
         </>
@@ -459,6 +477,11 @@ function BookingSheet({ trip, segment, onClose }: { trip: Trip; segment: Segment
               <input className="input" type="datetime-local" value={f.endLocal} onChange={set('endLocal')} />
             </Field>
           </div>
+          {segment && (
+            <Field label="Delay (minutes)" hint={delayBad ? 'Whole minutes, up to 1440 (a day).' : delayMin > 0 ? `Now leaves ${laterBy(f.startLocal, delayMin)} · lands ${laterBy(f.endLocal, delayMin)}` : 'On time. Enter how late it now leaves; arrival moves with it.'}>
+              <input className="input num" type="number" inputMode="numeric" min={0} max={1440} step={5} value={delay} onChange={(e) => setDelay(e.target.value)} placeholder="0" aria-invalid={delayBad || undefined} />
+            </Field>
+          )}
           <div className="field-row">
             <Field label="Seat">
               <input className="input num" value={f.seat} onChange={set('seat')} placeholder="14A" />
