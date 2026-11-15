@@ -94,6 +94,14 @@ suggested next steps — save a reply as a Gmail draft, add a task, open the pos
 - **Money in and out.** Income and spending by category, this month against monthly
   budgets (a bar per category, red when over), six months side by side, and what's left.
   Tell Seldon "spent $14 on lunch and $60 on Grab this week" and it logs both.
+- **Bills and pay that come round.** Salary, rent, subscriptions, insurance, instalments —
+  weekly, fortnightly, monthly, quarterly or yearly. Fixed amounts log themselves on the
+  day (a salary on the 25th can move to the Friday before when the 25th is a weekend;
+  day 31 means each month's last day). Bills that vary, like electricity, remind you under
+  *Needs you* three days ahead and wait for you to mark them paid at what they came to, or
+  skip them. An instalment can pay down one of your debts. The month's card shows what's
+  still to come and what it leaves you with by month end. Any transaction can be made to
+  repeat in one tap, and nothing before the start date is ever logged for you.
 - **Portfolio.** Bank balances, CPF or other retirement accounts, funds, stocks, property
   and coins, with an allocation bar and gain on what each cost. Everything adds up in your
   base currency (set on the card; guessed from your time zone, SGD in Singapore), with
@@ -220,7 +228,7 @@ named like `delete_*`) are never offered to Seldon.
 ## Seldon, concretely
 
 - **It works through the same rules you do.** Every tool is a validated wrapper over the
-  data layer the app itself uses. There are 53, from logging a habit to logging a crypto
+  data layer the app itself uses. There are 56, from logging a habit to logging a crypto
   trade or adding a flight to a trip, plus the read tools of any MCP server you connect.
 - **It cannot delete.** It can add, log, update and complete. What it adds or logs — tasks,
   goals, habits, check-ins, numbers, notes, food, workouts, trips — is attributed to it in
@@ -346,8 +354,8 @@ boards, an MCP server with its OAuth server, and model replies for triage and ex
   guided weekly review that ends with next week's three priorities.
 - *Calendar*, so the day's plan and travel mode reflect the day's meetings.
 - *Notifications* for prayers, flights and new signals, through the installed app.
-- *Finances, further:* recurring income and bills, importing bank statements, and syncing
-  trades from an exchange with a read-only key.
+- *Finances, further:* importing bank statements, and syncing trades from an exchange
+  with a read-only key.
 - *Family tools:* people and important dates.
 - *Native shells* (Capacitor, Tauri) wrapping this same web app, for widgets and
   lock-screen capture.

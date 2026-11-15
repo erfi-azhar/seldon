@@ -3,7 +3,7 @@ import { after, beforeEach, test } from 'node:test';
 import { createApp } from '../src/app.ts';
 import { openDb } from '../src/db.ts';
 import { Store } from '../src/store.ts';
-import { addAlert, addDebt, addHolding, addTransaction, checkAlerts, financeState, logTrade, payDebt, payoff, syncSymbols } from '../src/features/finance.ts';
+import { addAlert, addDebt, addHolding, addRecurring, addTransaction, checkAlerts, financeState, logTrade, markPaid, nthDate, payDebt, payoff, postDue, remindBills, skipNext, syncSymbols, updateRecurring } from '../src/features/finance.ts';
 import { marketFor, parseTick, setMarketTransport, type MarketTransport } from '../src/features/markets.ts';
 import '../src/features/index.ts';
 
@@ -241,4 +241,150 @@ test('the API: add, read and remove across the suite', async () => {
   assert.equal((del.json as unknown as { transactions: unknown[] }).transactions.length, 0);
   assert.equal((await call('DELETE', '/api/finance/transactions/nope')).status, 404);
   marketFor(new Store(db)).stop();
+});
+
+// ── Recurring ──────────────────────────────────────────────────────────────
+
+const recurringRow = (store: Store, id: string) => store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as { done: number; active: number };
+const txs = (store: Store) => store.db.prepare('SELECT date, kind, amount, description, source, recurring_id FROM fin_transactions ORDER BY date, created_at').all() as { date: string; kind: string; amount: number; description: string; source: string }[];
+
+test('schedules keep their day: month ends, quarters, years and weeks', () => {
+  assert.deepEqual([0, 1, 2, 3].map((n) => nthDate('2026-01-31', 'monthly', 31, n)), ['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30']);
+  assert.deepEqual([0, 1, 2].map((n) => nthDate('2026-11-30', 'monthly', 31, n)), ['2026-11-30', '2026-12-31', '2027-01-31'], 'day 31 starting in a 30-day month still lands on the 31st after');
+  assert.deepEqual([0, 1, 4].map((n) => nthDate('2026-11-15', 'quarterly', 15, n)), ['2026-11-15', '2027-02-15', '2027-11-15']);
+  assert.deepEqual([0, 1, 2].map((n) => nthDate('2028-02-29', 'yearly', 29, n)), ['2028-02-29', '2029-02-28', '2030-02-28']);
+  assert.deepEqual([0, 1].map((n) => nthDate('2026-12-28', 'biweekly', null, n)), ['2026-12-28', '2027-01-11']);
+});
+
+test('salary logs itself on pay day, a day early when that falls on a weekend', () => {
+  const store = fresh();
+  // 25 Dec 2026 is a Friday; 25 Apr 2027 is a Sunday, so that pay day moves to Friday the 23rd.
+  const pay = addRecurring(store, { kind: 'income', name: 'Salary', amount: 7200, category: 'Salary', cadence: 'monthly', next: '2026-11-25', weekend: 'before' }, TODAY);
+  assert.equal(pay.next, '2026-11-25');
+  assert.equal(postDue(store, '2026-11-24'), 0);
+  assert.equal(postDue(store, '2026-11-25'), 1);
+  assert.equal(postDue(store, '2026-11-25'), 0, 'once');
+  assert.deepEqual(txs(store).map((t) => [t.date, t.amount, t.source]), [['2026-11-25', 7200, 'recurring']]);
+  // The server was off for months: everything missed is caught up, each on its own date.
+  assert.equal(postDue(store, '2027-04-30'), 5);
+  assert.deepEqual(txs(store).map((t) => t.date), ['2026-11-25', '2026-12-25', '2027-01-25', '2027-02-25', '2027-03-25', '2027-04-23']);
+
+  // A deleted auto entry stays deleted: the schedule has moved past it.
+  store.db.prepare("DELETE FROM fin_transactions WHERE date = '2027-04-23'").run();
+  assert.equal(postDue(store, '2027-04-30'), 0);
+});
+
+test('starting from a date in the past logs nothing already gone by', () => {
+  const store = fresh();
+  const rent = addRecurring(store, { kind: 'expense', name: 'Rent', amount: 2400, category: 'Housing', cadence: 'monthly', next: '2026-01-01' }, TODAY);
+  assert.equal(rent.next, '2026-12-01');
+  assert.equal(postDue(store, TODAY), 0);
+  assert.equal(txs(store).length, 0);
+});
+
+test('a bill paid by hand: reminded ahead once, marked paid at what it came to, undo puts it back', () => {
+  const store = fresh();
+  const bill = addRecurring(store, { kind: 'expense', name: 'SP Group', amount: 170, category: 'Utilities', cadence: 'monthly', next: '2026-11-20', auto: false }, TODAY);
+  assert.equal(postDue(store, '2026-11-21'), 0, 'never logged by itself');
+  assert.equal(remindBills(store, '2026-11-16'), 0, 'too early');
+  assert.equal(remindBills(store, '2026-11-17'), 1);
+  assert.equal(remindBills(store, '2026-11-18'), 0, 'once per bill');
+  const sig = store.db.prepare("SELECT title, status, actions FROM signals WHERE source = 'finance'").get() as { title: string; status: string; actions: string };
+  assert.match(sig.title, /SP Group due Friday — SGD/);
+  assert.equal(JSON.parse(sig.actions)[0].dueDate, '2026-11-20');
+
+  let f = financeState(store, '2026-11-22');
+  assert.deepEqual(f.upcoming.filter((u) => u.overdue).map((u) => u.name), ['SP Group'], 'unpaid after its date: overdue');
+
+  markPaid(store, bill.id, '2026-11-22', { amount: 183.4 });
+  assert.deepEqual(txs(store).map((t) => [t.date, t.amount, t.description]), [['2026-11-22', 183.4, 'SP Group']]);
+  assert.equal((store.db.prepare("SELECT status FROM signals WHERE source = 'finance'").get() as { status: string }).status, 'done', 'paying it closes the reminder');
+  f = financeState(store, '2026-11-22');
+  assert.equal(f.recurring[0]!.next, '2026-12-20');
+
+  const act = store.listActivity({ limit: 5 }).find((a) => a.summary.startsWith('Spent'))!;
+  assert.ok(store.undo(act.id));
+  assert.equal(txs(store).length, 0);
+  assert.equal(financeState(store, '2026-11-22').recurring[0]!.next, '2026-11-20', 'undo leaves it waiting to be paid again');
+
+  skipNext(store, bill.id);
+  assert.equal(financeState(store, '2026-11-22').recurring[0]!.next, '2026-12-20');
+});
+
+test('a loan instalment pays its debt down, and stops once the debt is cleared', () => {
+  const store = fresh();
+  const loan = addDebt(store, { name: 'Laptop', kind: 'bnpl', balance: 600, minPayment: 300 });
+  const plan = addRecurring(store, { kind: 'expense', name: 'Laptop instalment', amount: 300, category: 'x', cadence: 'monthly', next: '2026-11-20', debtId: loan.id }, TODAY);
+  assert.equal(postDue(store, '2027-02-01'), 2);
+  const f = financeState(store, '2027-02-01');
+  assert.equal(f.debts[0]!.balance, 0);
+  assert.ok(f.debts[0]!.closedAt);
+  assert.equal(txs(store).length, 0, 'a debt payment, not spending');
+  assert.equal(recurringRow(store, plan.id).active, 0, 'nothing left to pay: it stops');
+});
+
+test('the month ahead: what is still to come and what it leaves', () => {
+  const store = fresh();
+  addTransaction(store, { kind: 'expense', amount: 1000, category: 'Food', date: '2026-11-03' });
+  addRecurring(store, { kind: 'income', name: 'Salary', amount: 7200, category: 'Salary', cadence: 'monthly', next: '2026-11-25' }, TODAY);
+  addRecurring(store, { kind: 'expense', name: 'Netflix', amount: 20, category: 'Subscriptions', cadence: 'monthly', next: '2026-11-28' }, TODAY);
+  addRecurring(store, { kind: 'expense', name: 'Gym', amount: 15, category: 'Health', cadence: 'weekly', next: '2026-11-17' }, TODAY);
+  addRecurring(store, { kind: 'expense', name: 'Insurance', amount: 1200, category: 'Health', cadence: 'yearly', next: '2027-03-01' }, TODAY);
+  const f = financeState(store, TODAY);
+  assert.deepEqual(f.month.expected, { income: 7200, expense: 20 + 15 * 2, net: -1000 + 7200 - 50 }, 'the gym comes round on the 17th and the 24th');
+  assert.equal(f.recurringMonthly.income, 7200);
+  assert.equal(f.recurringMonthly.expense, 20 + 65 + 100);
+  assert.ok(f.upcoming.every((u) => u.date <= '2026-12-20'), 'five weeks ahead');
+  assert.equal(f.upcoming[0]!.name, 'Gym');
+});
+
+test('a pause logs nothing while paused, and resuming picks up from today', () => {
+  const store = fresh();
+  const gym = addRecurring(store, { kind: 'expense', name: 'Gym', amount: 90, category: 'Health', cadence: 'monthly', next: '2026-11-20' }, TODAY);
+  updateRecurring(store, gym.id, { active: false }, TODAY);
+  assert.equal(postDue(store, '2027-01-25'), 0);
+  const back = updateRecurring(store, gym.id, { active: true }, '2027-01-25');
+  assert.equal(back.next, '2027-02-20');
+  const raised = updateRecurring(store, gym.id, { amount: 110 }, '2027-01-25');
+  assert.equal(raised.amount, 110);
+  assert.equal(postDue(store, '2027-02-20'), 1);
+  assert.equal(txs(store)[0]!.amount, 110);
+});
+
+test('the API: set up, mark paid, skip and remove recurring items', async () => {
+  const db = openDb(':memory:');
+  const app = createApp({ db });
+  const call = async (method: string, path: string, body?: unknown) => {
+    const res = await app.request(`http://localhost${path}`, { method, headers: body === undefined ? {} : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    return { status: res.status, json: (await res.json()) as { recurring: { id: string; next: string }[]; transactions: unknown[]; upcoming: unknown[] } };
+  };
+  await call('POST', '/api/onboarding', { userName: 'Sam', agentName: '', sphereKeys: ['finances'] });
+  const made = await call('POST', `/api/finance/recurring?date=${TODAY}`, { kind: 'expense', name: 'Rent', amount: 2400, category: 'Housing', cadence: 'monthly', next: TODAY });
+  assert.equal(made.status, 201);
+  assert.equal(made.json.transactions.length, 1, 'due today and automatic: logged straight away');
+  const id = made.json.recurring[0]!.id;
+  assert.equal(made.json.recurring[0]!.next, '2026-12-15');
+  assert.equal((await call('POST', `/api/finance/recurring/${id}/skip?date=${TODAY}`)).json.recurring[0]!.next, '2027-01-15');
+  assert.equal((await call('POST', `/api/finance/recurring/${id}/paid?date=${TODAY}`, { amount: 2450 })).json.transactions.length, 2);
+  assert.equal((await call('POST', '/api/finance/recurring', { kind: 'expense', name: 'X', amount: 1, category: 'Food', cadence: 'daily', next: TODAY })).status, 400);
+  assert.equal((await call('DELETE', `/api/finance/recurring/${id}`)).json.recurring.length, 0);
+  assert.equal((await call('GET', `/api/finance?date=${TODAY}`)).json.transactions.length, 2, 'what it logged stays');
+  marketFor(new Store(db)).stop();
+});
+
+test('editing a recurring item leaves its schedule alone unless the date or frequency changes', () => {
+  const store = fresh();
+  // 25 Apr 2027 is a Sunday: shown as Friday the 23rd.
+  const pay = addRecurring(store, { kind: 'income', name: 'Salary', amount: 7200, category: 'Salary', cadence: 'monthly', next: '2027-04-25', weekend: 'before' }, '2027-04-01');
+  assert.equal(pay.next, '2027-04-23');
+  updateRecurring(store, pay.id, { amount: 7500, next: '2027-04-23' }, '2027-04-01');
+  let r = financeState(store, '2027-04-01').recurring[0]!;
+  assert.deepEqual([r.next, r.day, r.amount], ['2027-04-23', 25, 7500], 'still the 25th underneath');
+  updateRecurring(store, pay.id, { cadence: 'quarterly' }, '2027-04-01');
+  r = financeState(store, '2027-04-01').recurring[0]!;
+  assert.deepEqual([r.anchor, r.day, r.cadence], ['2027-04-25', 25, 'quarterly']);
+
+  const bill = addRecurring(store, { kind: 'expense', name: 'Water', amount: 40, category: 'Utilities', cadence: 'monthly', next: '2027-04-10', auto: false }, '2027-04-01');
+  updateRecurring(store, bill.id, { amount: 45 }, '2027-04-20');
+  assert.equal(financeState(store, '2027-04-20').recurring.find((x) => x.id === bill.id)!.next, '2027-04-10', 'an overdue bill stays waiting after an edit');
 });

@@ -11,7 +11,7 @@ import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
-import { CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PortfolioCard } from '../components/Finance.tsx';
+import { BillsCard, CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PortfolioCard } from '../components/Finance.tsx';
 import { InlineEdit, Loading } from '../components/ui.tsx';
 import { cx, dueLabel, hueStyle, pct, plural, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -219,6 +219,7 @@ export function SphereDetail({ id }: { id: string }) {
         <div className="col">
           {s.key === 'faith' && <FaithVerse />}
           {s.key === 'work' ? <JobAlertsCard /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
+          {s.key === 'finances' && <BillsCard />}
           {hasDaily && s.key !== 'work' && (
             <section className="card">
               <div className="card-head">

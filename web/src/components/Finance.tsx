@@ -1,11 +1,11 @@
 // Finances sphere panels: net worth at a glance, this month's money in and out against
 // budgets, a live crypto desk (prices, positions, trades, alerts), the portfolio, and debts.
 
-import { ArrowDownLeft, ArrowUpRight, Bell, ChevronRight, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Bell, ChevronRight, Pencil, Plus, RefreshCw, Repeat, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Debt, DebtKind, FinanceState, Holding, HoldingKind, MarketState, Quote, TxKind } from '../../../shared/types.ts';
+import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, MarketState, Quote, Recurring, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { financeWrite, useFinance, useMarket, useWrite } from '../api.ts';
-import { cx, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
+import { addDays, cx, dueLabel, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { Field, Modal, ProgressBar, Seg, Spinner } from './ui.tsx';
 
@@ -210,6 +210,7 @@ export function CashflowCard() {
   const [adding, setAdding] = useState<TxKind | null>(null);
   const [budgets, setBudgets] = useState(false);
   const [all, setAll] = useState(false);
+  const [repeat, setRepeat] = useState<Transaction | null>(null);
   const remove = useWrite((id: string) => financeWrite.del(`/transactions/${id}`));
   if (!f) return null;
   const c = f.currency;
@@ -249,6 +250,17 @@ export function CashflowCard() {
           <b className={cx('num', f.month.net < 0 && 'is-down')}>{money(f.month.net, c)}</b>
         </div>
       </div>
+
+      {(f.month.expected.income > 0 || f.month.expected.expense > 0) && (
+        <p className="fin-expect">
+          <Repeat size={13} aria-hidden />
+          <span>
+            Still to come this month{f.month.expected.income > 0 && <> <b className="num is-up">+{money(f.month.expected.income, c)}</b></>}
+            {f.month.expected.expense > 0 && <> <b className="num">−{money(f.month.expected.expense, c)}</b></>}, leaving about{' '}
+            <b className={cx('num', f.month.expected.net < 0 && 'is-down')}>{money(f.month.expected.net, c)}</b>
+          </span>
+        </p>
+      )}
 
       {spend.length > 0 && (
         <ul className="fin-cats">
@@ -299,6 +311,15 @@ export function CashflowCard() {
                 {t.kind === 'income' ? '+' : '−'}
                 {money(t.amount, t.currency)}
               </span>
+              {t.recurringId ? (
+                <span className="fin-tx-rep" title="From a recurring item">
+                  <Repeat size={12} aria-label="Recurring" />
+                </span>
+              ) : (
+                <button type="button" className="icon-btn icon-btn-sm fin-tx-make" aria-label={`Make ${t.description || t.category} repeat`} title="Make it repeat" onClick={() => setRepeat(t)}>
+                  <Repeat size={13} />
+                </button>
+              )}
               <button type="button" className="icon-btn icon-btn-sm" aria-label={`Remove ${t.description || t.category}`} onClick={() => remove.mutate(t.id)}>
                 <Trash2 size={13} />
               </button>
@@ -315,6 +336,7 @@ export function CashflowCard() {
       )}
       {adding && <TxSheet kind={adding} currency={c} onClose={() => setAdding(null)} />}
       {budgets && <BudgetSheet f={f} onClose={() => setBudgets(false)} />}
+      {repeat && <RecurringSheet f={f} item={null} from={repeat} onClose={() => setRepeat(null)} />}
     </section>
   );
 }
@@ -402,6 +424,329 @@ function BudgetSheet({ f, onClose }: { f: FinanceState; onClose: () => void }) {
       </div>
       {wrong && <p className="error-text">{NOT_A_NUMBER}</p>}
       {save.error && <p className="error-text">{save.error.message}</p>}
+    </Modal>
+  );
+}
+
+// ── Bills and pay ───────────────────────────────────────────────────────────
+
+const FREQ: { value: Frequency; label: string }[] = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Every two weeks' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'yearly', label: 'Yearly' },
+];
+
+function ordinal(n: number): string {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
+  return `${n}${s}`;
+}
+
+/** "Monthly on the 25th", "Every two weeks", "Yearly on Mar 1". */
+export function scheduleText(r: Recurring): string {
+  const day = r.day === 31 ? 'the last day' : r.day ? `the ${ordinal(r.day)}` : '';
+  switch (r.cadence) {
+    case 'weekly':
+      return `Every ${new Date(`${r.anchor}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' })}`;
+    case 'biweekly':
+      return 'Every two weeks';
+    case 'monthly':
+      return `Monthly on ${day}`;
+    case 'quarterly':
+      return `Quarterly on ${day}`;
+    case 'yearly':
+      return `Yearly on ${shortDay(r.anchor)}`;
+  }
+}
+
+export function BillsCard() {
+  const f = useLiveFinance();
+  const { agentName } = useApp();
+  const [editing, setEditing] = useState<Recurring | 'new' | null>(null);
+  const [paying, setPaying] = useState<Upcoming | null>(null);
+  const skip = useWrite((id: string) => financeWrite.post(`/recurring/${id}/skip`));
+  if (!f) return null;
+  const c = f.currency;
+  const today = todayStr();
+  const soon = addDays(today, 3);
+  const byId = new Map(f.recurring.map((r) => [r.id, r]));
+  // One line per item: its next date, so a weekly gym doesn't fill the list.
+  const seen = new Set<string>();
+  const next = f.upcoming.filter((u) => !seen.has(u.recurringId) && (seen.add(u.recurringId), true));
+  const paused = f.recurring.filter((r) => !r.active);
+
+  return (
+    <section className="card fin-bills">
+      <div className="card-head">
+        <h2 className="card-title">Bills &amp; pay</h2>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing('new')}>
+          <Plus size={14} /> Add
+        </button>
+      </div>
+      {f.recurring.length === 0 ? (
+        <p className="empty">Salary, rent, bills, subscriptions, instalments — set them up once and they log themselves, or remind you to pay. Or tell {agentName}: “my salary is $7,200 on the 25th”.</p>
+      ) : (
+        <>
+          <div className="fin-total">
+            <b className="num is-up">+{money(f.recurringMonthly.income, c, true)}</b>
+            <b className="num">−{money(f.recurringMonthly.expense, c, true)}</b>
+            <span className="muted">in a typical month</span>
+          </div>
+          {next.length === 0 && <p className="empty">Nothing due in the next five weeks.</p>}
+          <ul className="fin-upcoming">
+            {next.map((u) => {
+              const r = byId.get(u.recurringId);
+              const due = dueLabel(u.date, today);
+              const waiting = !u.auto && u.date <= soon;
+              return (
+                <li key={`${u.recurringId}-${u.date}`} className={cx(u.overdue && 'is-late')}>
+                  <span className={cx('fin-due', due.late && 'late')}>{due.text}</span>
+                  <button type="button" className="fin-up-name" onClick={() => r && setEditing(r)}>
+                    <span className="clamp-1">{u.name}</span>
+                    <span className="faint">{u.debtId ? 'pays down a debt' : u.auto ? 'logs itself' : 'mark it paid'}</span>
+                  </button>
+                  <span className={cx('num', u.kind === 'income' && 'is-up')}>
+                    {u.kind === 'income' ? '+' : '−'}
+                    {money(u.amount, u.currency)}
+                  </span>
+                  {waiting ? (
+                    <span className="fin-up-acts">
+                      <button type="button" className="btn btn-tint btn-sm" aria-label={`Mark ${u.name} ${u.kind === 'income' ? 'received' : 'paid'}`} onClick={() => setPaying(u)}>
+                        {u.kind === 'income' ? 'Received' : 'Paid'}
+                      </button>
+                      <button type="button" className="icon-btn icon-btn-sm" aria-label={`Skip ${u.name} this time`} title="Skip this time" onClick={() => skip.mutate(u.recurringId)}>
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="fin-up-acts" />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <details className="todo-fold">
+            <summary>
+              <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+              <span className="grow">Everything recurring</span>
+              <span className="todo-fold-meta">
+                {plural(f.recurring.length - paused.length, 'item')}
+                {paused.length > 0 && ` · ${paused.length} paused`}
+              </span>
+            </summary>
+            <ul>
+              {f.recurring.map((r) => (
+                <li key={r.id}>
+                  <button type="button" className={cx('fin-rec', !r.active && 'is-paused')} onClick={() => setEditing(r)}>
+                    <span className="grow">
+                      <span className="clamp-1">{r.name}</span>
+                      <span className="faint">
+                        {r.active ? scheduleText(r) : 'Paused'}
+                        {r.active && r.next && ` · next ${shortDay(r.next)}`}
+                      </span>
+                    </span>
+                    <span className={cx('num', r.kind === 'income' && 'is-up')}>{money(r.amount, r.currency)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </>
+      )}
+      {editing && <RecurringSheet f={f} item={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+      {paying && <PaidSheet item={paying} onClose={() => setPaying(null)} />}
+    </section>
+  );
+}
+
+function PaidSheet({ item, onClose }: { item: Upcoming; onClose: () => void }) {
+  const [amount, setAmount] = useState(String(item.amount));
+  const [date, setDate] = useState(todayStr());
+  const save = useWrite(() => financeWrite.post(`/recurring/${item.recurringId}/paid`, { amount: parseNumber(amount), date }));
+  const a = parseNumber(amount);
+  return (
+    <Modal
+      title={`${item.name} — ${item.kind === 'income' ? 'received' : 'paid'}`}
+      onClose={onClose}
+      footer={
+        <>
+          <span className="hint">Due {shortDay(item.date)}, usually {money(item.amount, item.currency)}</span>
+          <button className="btn btn-primary btn-sm" disabled={!(a > 0) || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+            Record it
+          </button>
+        </>
+      }
+    >
+      <div className="field-row">
+        <Field label={`What it came to (${item.currency})`}>
+          <input className="input num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} data-autofocus />
+        </Field>
+        <Field label="Paid on">
+          <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+      </div>
+      {bad(amount) && <p className="error-text">{NOT_A_NUMBER}</p>}
+      {save.error && <p className="error-text">{save.error.message}</p>}
+    </Modal>
+  );
+}
+
+/** The next date a day of the month comes round, from today. */
+function nextDay(day: number, today: string): string {
+  const [y, m] = today.split('-').map(Number) as [number, number];
+  const at = (yy: number, mm: number) => `${yy}-${String(mm).padStart(2, '0')}-${String(Math.min(day, new Date(yy, mm, 0).getDate())).padStart(2, '0')}`;
+  const here = at(y, m);
+  return here >= today ? here : m === 12 ? at(y + 1, 1) : at(y, m + 1);
+}
+
+function RecurringSheet({ f, item, from, onClose }: { f: FinanceState; item: Recurring | null; from?: Transaction; onClose: () => void }) {
+  const today = todayStr();
+  const startKind: TxKind = item?.kind ?? from?.kind ?? 'expense';
+  const [kind, setKind] = useState<TxKind>(startKind);
+  const [r, setR] = useState({
+    name: item?.name ?? from?.description ?? '',
+    amount: item ? String(item.amount) : from ? String(from.amount) : '',
+    category: item?.category ?? from?.category ?? (startKind === 'income' ? 'Salary' : 'Housing'),
+    cadence: (item?.cadence ?? 'monthly') as Frequency,
+    next: item?.next ?? (from ? nextDay(Number(from.date.slice(8, 10)), addDays(today, 1)) : today),
+    auto: item?.auto ?? true,
+    weekend: item?.weekend ?? (startKind === 'income' ? 'before' : 'none'),
+    endDate: item?.endDate ?? '',
+    debtId: item?.debtId ?? '',
+  });
+  const body = () => ({
+    name: r.name,
+    amount: parseNumber(r.amount),
+    category: r.category,
+    cadence: r.cadence,
+    next: r.next,
+    day: r.cadence === 'monthly' || r.cadence === 'quarterly' || r.cadence === 'yearly' ? Number(r.next.slice(8, 10)) : null,
+    auto: r.auto,
+    weekend: r.weekend,
+    end_date: r.endDate || null,
+  });
+  // An edit sends the schedule only when it changed, so a weekend-shifted date never becomes the new day.
+  const save = useWrite(() => {
+    if (!item) return financeWrite.post('/recurring', { ...body(), kind, debt_id: r.debtId || null });
+    const { next, day, cadence, ...rest } = body();
+    return financeWrite.patch(`/recurring/${item.id}`, { ...rest, ...(r.next !== item.next ? { next, day } : {}), ...(r.cadence !== item.cadence ? { cadence } : {}) });
+  });
+  const pause = useWrite(() => financeWrite.patch(`/recurring/${item!.id}`, { active: !item!.active }));
+  const remove = useWrite(() => financeWrite.del(`/recurring/${item!.id}`));
+  const debts = f.debts.filter((d) => !d.closedAt);
+  const forDebt = !!(item?.debtId ?? r.debtId);
+  const cats = kind === 'income' ? INCOME : EXPENSE;
+  const a = parseNumber(r.amount);
+  const err = save.error ?? pause.error ?? remove.error;
+
+  return (
+    <Modal
+      title={item ? item.name : from ? 'Make it repeat' : 'Something that comes round'}
+      onClose={onClose}
+      footer={
+        <>
+          {item ? (
+            <span className="row" style={{ gap: 4 }}>
+              <button className="btn btn-ghost btn-sm" disabled={pause.isPending} onClick={() => pause.mutate(undefined, { onSuccess: onClose })}>
+                {item.active ? 'Pause' : 'Resume'}
+              </button>
+              <button className="btn btn-ghost btn-sm" disabled={remove.isPending} onClick={() => remove.mutate(undefined, { onSuccess: onClose })}>
+                <Trash2 size={13} /> Remove
+              </button>
+            </span>
+          ) : (
+            <span className="hint">From {shortDay(r.next)} on; nothing earlier is logged.</span>
+          )}
+          <button className="btn btn-primary btn-sm" disabled={!r.name.trim() || !(a > 0) || !r.next || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+            {item ? 'Save' : 'Add'}
+          </button>
+        </>
+      }
+    >
+      {!item && !forDebt && (
+        <Seg
+          label="Kind"
+          value={kind}
+          onChange={(k) => {
+            setKind(k);
+            setR({ ...r, category: k === 'income' ? 'Salary' : 'Housing', weekend: k === 'income' ? 'before' : 'none' });
+          }}
+          options={[
+            { value: 'expense', label: 'A bill or payment' },
+            { value: 'income', label: 'Pay or income' },
+          ]}
+        />
+      )}
+      <div className="field-row" style={{ marginTop: item || forDebt ? 0 : 14 }}>
+        <Field label="Name">
+          <input className="input" value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} placeholder={kind === 'income' ? 'Salary' : 'Rent, SP Group, Netflix…'} data-autofocus />
+        </Field>
+        <Field label={`Amount (${item?.currency ?? f.currency})`} hint={!r.auto ? 'What it usually comes to' : undefined}>
+          <input className="input num" inputMode="decimal" value={r.amount} onChange={(e) => setR({ ...r, amount: e.target.value })} />
+        </Field>
+      </div>
+      <div className="field-row">
+        <Field label="How often">
+          <select className="select" value={r.cadence} onChange={(e) => setR({ ...r, cadence: e.target.value as Frequency })}>
+            {FREQ.map((x) => (
+              <option key={x.value} value={x.value}>
+                {x.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Next on" hint={r.cadence === 'monthly' && Number(r.next.slice(8, 10)) >= 29 ? 'Shorter months use their last day' : undefined}>
+          <input className="input" type="date" value={r.next} onChange={(e) => setR({ ...r, next: e.target.value })} />
+        </Field>
+        <Field label="On a weekend">
+          <select className="select" value={r.weekend} onChange={(e) => setR({ ...r, weekend: e.target.value as Recurring['weekend'] })}>
+            <option value="none">Keep the date</option>
+            <option value="before">The Friday before</option>
+            <option value="after">The Monday after</option>
+          </select>
+        </Field>
+      </div>
+      <Seg
+        label="How it's recorded"
+        value={r.auto ? 'auto' : 'manual'}
+        onChange={(v) => setR({ ...r, auto: v === 'auto' })}
+        options={[
+          { value: 'auto', label: 'Log it by itself' },
+          { value: 'manual', label: kind === 'income' ? "I'll mark it received" : "I'll mark it paid" },
+        ]}
+      />
+      <p className="hint" style={{ marginTop: 6 }}>
+        {r.auto ? 'For fixed amounts: logged on the day, at this amount.' : `For amounts that change: a reminder ${kind === 'income' ? 'on the day' : 'three days before'}, then you record what it came to.`}
+      </p>
+      {!item && kind === 'expense' && debts.length > 0 && (
+        <Field label="Pays down a debt" hint="Each payment lowers that debt's balance instead of counting as spending">
+          <select className="select" value={r.debtId} onChange={(e) => setR({ ...r, debtId: e.target.value })}>
+            <option value="">No</option>
+            {debts.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {!forDebt && (
+        <div className="fin-chips" role="group" aria-label="Category">
+          {cats.map((x) => (
+            <button key={x} type="button" className={cx('chip', r.category === x ? 'chip-tint' : 'chip-outline')} aria-pressed={r.category === x} onClick={() => setR({ ...r, category: x })}>
+              {x}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="field-row" style={{ marginTop: 12 }}>
+        <Field label="Ends" hint="Optional: the last date it's due">
+          <input className="input" type="date" value={r.endDate} onChange={(e) => setR({ ...r, endDate: e.target.value })} />
+        </Field>
+      </div>
+      {bad(r.amount) && <p className="error-text">{NOT_A_NUMBER}</p>}
+      {err && <p className="error-text">{err.message}</p>}
     </Modal>
   );
 }

@@ -623,6 +623,47 @@ export interface Transaction {
   category: string;
   description: string;
   source: string;
+  /** The recurring item that logged it, if one did. */
+  recurringId: string | null;
+}
+
+export type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+
+export interface Recurring {
+  id: string;
+  kind: TxKind;
+  name: string;
+  amount: number;
+  currency: string;
+  category: string;
+  cadence: Frequency;
+  /** The first occurrence; later ones follow the cadence from it. */
+  anchor: string;
+  /** Day of the month for monthly, quarterly and yearly (31 means the month's last day). */
+  day: number | null;
+  /** When a date lands on a weekend: leave it, move it to the Friday before, or the Monday after. */
+  weekend: 'none' | 'before' | 'after';
+  /** Logged by itself when due; otherwise it waits to be marked paid. */
+  auto: boolean;
+  endDate: string | null;
+  /** Paying it pays down this debt instead of logging spending. */
+  debtId: string | null;
+  active: boolean;
+  next: string | null;
+  /** What it comes to in an average month, in its own currency. */
+  monthly: number;
+}
+
+export interface Upcoming {
+  recurringId: string;
+  name: string;
+  kind: TxKind;
+  amount: number;
+  currency: string;
+  date: string;
+  auto: boolean;
+  debtId: string | null;
+  overdue: boolean;
 }
 
 export type HoldingKind = 'cash' | 'crypto' | 'stock' | 'fund' | 'retirement' | 'property' | 'other';
@@ -737,10 +778,17 @@ export interface FinanceState {
     net: number;
     savingsRate: number | null;
     byCategory: { category: string; kind: TxKind; amount: number; budget: number | null }[];
+    /** Pay and bills still to come before the month ends (debt instalments left out, as payments are). */
+    expected: { income: number; expense: number; net: number };
   };
   /** The last six months, oldest first. */
   months: { key: string; income: number; expense: number }[];
   transactions: Transaction[];
+  recurring: Recurring[];
+  /** The next five weeks, and anything waiting to be marked paid. */
+  upcoming: Upcoming[];
+  /** Recurring income and outgoings in an average month, in the base currency. */
+  recurringMonthly: { income: number; expense: number };
   budgets: Record<string, number>;
   holdings: Holding[];
   allocation: { kind: HoldingKind; value: number }[];

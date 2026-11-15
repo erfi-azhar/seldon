@@ -533,6 +533,30 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  // Recurring money: pay, bills and instalments that come round on a schedule. `done` counts the
+  // occurrences already logged or skipped; the next one is worked out from the anchor and day.
+  `
+  CREATE TABLE fin_recurring (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL,
+    category TEXT NOT NULL,
+    cadence TEXT NOT NULL,
+    anchor TEXT NOT NULL,
+    day INTEGER,
+    done INTEGER NOT NULL DEFAULT 0,
+    weekend TEXT NOT NULL DEFAULT 'none',
+    auto INTEGER NOT NULL DEFAULT 1,
+    end_date TEXT,
+    debt_id TEXT REFERENCES fin_debts(id) ON DELETE SET NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  ALTER TABLE fin_transactions ADD COLUMN recurring_id TEXT REFERENCES fin_recurring(id) ON DELETE SET NULL;
+  ALTER TABLE fin_transactions ADD COLUMN recurring_n INTEGER;
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
