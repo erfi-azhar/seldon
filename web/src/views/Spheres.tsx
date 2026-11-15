@@ -391,6 +391,8 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
   const tripTitle = (tripId: string) => travel?.trips.find((x) => x.id === tripId)?.title ?? 'a trip';
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const lateCount = work.filter((t) => t.dueDate && t.dueDate < today).length;
+  // A trip's logistics start folded away; the ones you open stay open.
+  const tripFolds = useFolds('work-todos-open-trips', (k) => byTrip.has(k), false);
 
   return (
     <section className="card work-todos">
@@ -425,7 +427,7 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
           const next = list.find((t) => t.dueDate)?.dueDate;
           const due = next ? dueLabel(next, today) : null;
           return (
-            <details key={tripId} className="todo-fold">
+            <details key={tripId} className="todo-fold" open={tripFolds.isOpen(tripId)} onToggle={(e) => tripFolds.toggle(tripId, e.currentTarget.open)}>
               <summary>
                 <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
                 <Plane size={14} className="faint" aria-hidden />
@@ -448,11 +450,13 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
 }
 
 /**
- * Groups folded away, kept in this browser like the view choice. `keep` lets go of keys that no
- * longer mean anything (a day gone by, a project archived), so the list doesn't grow forever.
+ * Folds you opened or closed, kept in this browser like the view choice. What's saved is the
+ * groups you turned away from how they start (closed ones when they start open, and the other
+ * way round). `keep` lets go of keys that no longer mean anything (a day gone by, a project
+ * archived, a trip with nothing left to do), so the list doesn't grow forever.
  */
-function useFolds(storageKey: string, keep: (key: string) => boolean) {
-  const [folded, setFolded] = useState<Set<string>>(() => {
+function useFolds(storageKey: string, keep: (key: string) => boolean, startOpen = true) {
+  const [changed, setChanged] = useState<Set<string>>(() => {
     try {
       const saved: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]');
       return new Set(Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string' && keep(k)) : []);
@@ -460,11 +464,12 @@ function useFolds(storageKey: string, keep: (key: string) => boolean) {
       return new Set();
     }
   });
+  const isOpen = (key: string) => changed.has(key) !== startOpen;
   const toggle = (key: string, open: boolean) =>
-    setFolded((prev) => {
-      if (open !== prev.has(key)) return prev;
+    setChanged((prev) => {
+      if (open === (prev.has(key) !== startOpen)) return prev;
       const next = new Set(prev);
-      if (open) next.delete(key);
+      if (open === startOpen) next.delete(key);
       else next.add(key);
       try {
         localStorage.setItem(storageKey, JSON.stringify([...next]));
@@ -473,7 +478,7 @@ function useFolds(storageKey: string, keep: (key: string) => boolean) {
       }
       return next;
     });
-  return { folded, toggle };
+  return { isOpen, toggle };
 }
 
 /** To-dos under their projects, the project with the most pressing to-do first. */
@@ -481,7 +486,7 @@ function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; 
   const [adding, setAdding] = useState<string | null>(null);
   const [naming, setNaming] = useState(false);
   const known = new Set(projects.map((p) => p.id));
-  const { folded, toggle } = useFolds('work-todos-folded-projects', (k) => k === 'none' || known.has(k));
+  const { isOpen, toggle } = useFolds('work-todos-folded-projects', (k) => k === 'none' || known.has(k));
   const groups = [
     ...projects.map((p) => ({ id: p.id, project: p as Project | null, name: p.name, list: work.filter((t) => t.projectId === p.id).sort(byDue) })),
     { id: 'none', project: null, name: 'No project', list: work.filter((t) => !t.projectId || !known.has(t.projectId)).sort(byDue) },
@@ -507,7 +512,7 @@ function ProjectGroups({ sphereId, work, projects, today }: { sphereId: string; 
             key={g.id}
             className={cx('todo-group', !g.list.length && 'is-empty')}
             // Open while adding to it; otherwise open unless you folded it (an empty one stays shut).
-            open={adding === g.id || (g.list.length > 0 && !folded.has(g.id))}
+            open={adding === g.id || (g.list.length > 0 && isOpen(g.id))}
             onToggle={(e) => g.list.length > 0 && adding !== g.id && toggle(g.id, e.currentTarget.open)}
           >
             <summary>
@@ -620,7 +625,7 @@ function NewProject({ sphereId, onDone }: { sphereId: string; onDone: (created?:
  */
 function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; label: (t: Task) => string | undefined }) {
   // A day that has passed joins Late, so its fold is let go.
-  const { folded, toggle } = useFolds('work-todos-folded-days', (k) => k === 'late' || k === 'none' || k >= today);
+  const { isOpen, toggle } = useFolds('work-todos-folded-days', (k) => k === 'late' || k === 'none' || k >= today);
   const groups = new Map<string, Task[]>();
   for (const t of [...tasks].sort(byDue)) {
     const key = !t.dueDate ? 'none' : t.dueDate < today ? 'late' : t.dueDate;
@@ -637,7 +642,7 @@ function DayGroups({ tasks, today, label }: { tasks: Task[]; today: string; labe
   return (
     <div className="todo-groups">
       {[...groups].map(([key, list]) => (
-        <details key={key} className={cx('todo-group', key === 'late' && 'is-late')} open={!folded.has(key)} onToggle={(e) => toggle(key, e.currentTarget.open)}>
+        <details key={key} className={cx('todo-group', key === 'late' && 'is-late')} open={isOpen(key)} onToggle={(e) => toggle(key, e.currentTarget.open)}>
           <summary>
             <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
             <span className="todo-group-name clamp-1">{heading(key)}</span>
