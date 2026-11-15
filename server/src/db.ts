@@ -612,6 +612,31 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE fin_recurring ADD COLUMN holding_id TEXT;
   `,
+  // Where you went on a trip, as your phone reported it (OwnTracks), and the devices that get travel notifications.
+  `
+  CREATE TABLE trip_track (
+    trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    lat REAL NOT NULL,
+    lon REAL NOT NULL,
+    acc REAL,
+    alt REAL,
+    vel REAL,
+    PRIMARY KEY (trip_id, at)
+  );
+  CREATE TABLE push_subscriptions (
+    id TEXT PRIMARY KEY,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE push_sent (
+    key TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

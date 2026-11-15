@@ -5,6 +5,7 @@ import { AccessTokens } from '../components/AccessTokens.tsx';
 import { BrainsSection } from '../components/Brains.tsx';
 import { CalendarConnection, CaptureSetup, GmailConnection, GoogleCalendarConnection, McpConnections } from '../components/Connections.tsx';
 import { Orb } from '../components/Orb.tsx';
+import { RouteRecording, TravelNotifications } from '../components/Journey.tsx';
 import { Field, Loading, Seg } from '../components/ui.tsx';
 import { useApp } from '../state.tsx';
 import { setThemePref, useSun, type Phase, type ThemePref } from '../sun.ts';
@@ -91,6 +92,8 @@ export function Settings() {
           <GoogleCalendarConnection />
           <McpConnections />
           <CaptureSetup />
+          <TravelNotifications />
+          <RouteRecording />
         </div>
       </section>
 

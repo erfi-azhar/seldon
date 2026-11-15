@@ -1115,6 +1115,18 @@ export interface AccessToken {
   lastUsedAt: string | null;
 }
 
+/** A trip's route as the phone recorded it, day by day: [lat, lon, ms] points and ground covered. */
+export interface TripTrack {
+  days: { date: string; points: [number, number, number][]; km: number }[];
+  points: number;
+}
+
+/** Whether travel notifications reach a device, and whether the tracker app is set up. */
+export interface JourneyStatus {
+  push: { publicKey: string; devices: { label: string; since: string }[] };
+  tracking: { on: boolean; lastAt: string | null };
+}
+
 // ── Reading list ────────────────────────────────────────────────────────────
 
 export type BookStatus = 'want' | 'reading' | 'read';

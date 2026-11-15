@@ -13,6 +13,7 @@ import { useApp } from '../state.tsx';
 import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
+import { RouteCard } from './Journey.tsx';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
 
@@ -671,7 +672,7 @@ function StayRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
  * your ticket and status or a lounge card get you in; then the lounge to head for, which Seldon
  * looks up as the sheet opens (lounges you can reach airside first, ones you can't flagged).
  */
-function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip; from: Segment; to: Segment; loyalty: LoyaltyAccount[]; onClose: () => void }) {
+export function LayoverSheet({ trip, from, to, loyalty, onClose }: { trip: Trip; from: Segment; to: Segment; loyalty: LoyaltyAccount[]; onClose: () => void }) {
   const { agentName } = useApp();
   const find = useWrite(() => travelWrite.post(`/segments/${to.id}/companion`));
   const notes = trip.companion[to.id];
@@ -1138,6 +1139,8 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
             <div className="seg-list">{flights.map(row)}</div>
           )}
       </FoldCard>
+
+      <RouteCard trip={trip} />
 
       {trip.options.length > 0 && (
           <FlightOptions trip={trip} />

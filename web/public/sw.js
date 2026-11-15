@@ -1,7 +1,7 @@
 // Terminus service worker: makes the app installable and lets the shell open without a
 // network. Your data is never cached here — /api always goes to your server.
 
-const CACHE = 'terminus-shell-v3';
+const CACHE = 'terminus-shell-v4';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -62,4 +62,36 @@ self.addEventListener('fetch', (event) => {
       ),
     );
   }
+});
+
+// Travel notifications: time to leave, boarding, landing on the way, arrival. The server sends
+// {title, body, url, tag}; tapping one opens Terminus where it points.
+self.addEventListener('push', (event) => {
+  let msg = {};
+  try {
+    msg = event.data ? event.data.json() : {};
+  } catch {
+    msg = { body: event.data ? event.data.text() : '' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(msg.title || 'Terminus', {
+      body: msg.body || '',
+      tag: msg.tag,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: msg.url || '/' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      const open = wins.find((w) => w.url.startsWith(self.location.origin));
+      if (open) return open.focus().then(() => open.navigate(target));
+      return self.clients.openWindow(target);
+    }),
+  );
 });
