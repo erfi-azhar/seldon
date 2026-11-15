@@ -4,7 +4,8 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Plus, RefreshCw, Search, ShoppingBag, Trash2, X } from 'lucide-react';
-import { type CSSProperties, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Book, BookCandidate, BookStatus } from '../../../shared/types.ts';
 import { booksWrite, useBooks, useWrite } from '../api.ts';
 import { cx, plural, shortDay, todayStr } from '../lib.ts';
@@ -102,7 +103,7 @@ type Shelf = 'shelf' | 'read';
 export function ReadingList() {
   const { data: books } = useBooks();
   const [shelf, setShelf] = useState<Shelf>('shelf');
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<{ id: string; origin: Origin | null } | null>(null);
   const [adding, setAdding] = useState(false);
   const all = books ?? [];
   // Books being read lead the shelf; the rest keep the order they were added in, newest first.
@@ -110,7 +111,7 @@ export function ReadingList() {
   const done = all.filter((b) => b.status === 'read').sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''));
   const shown = shelf === 'shelf' ? onShelf : done;
   const scroll = useScrollEdges<HTMLDivElement>('x', [shown.length, shelf]);
-  const current = all.find((b) => b.id === open) ?? null;
+  const current = all.find((b) => b.id === open?.id) ?? null;
 
   return (
     <section className="card reading-card">
@@ -154,7 +155,7 @@ export function ReadingList() {
         <div className="blur-wrap shelf-wrap">
           <div className="shelf" ref={scroll.ref} onScroll={scroll.onScroll} role="list" aria-label={shelf === 'shelf' ? 'Books to read' : 'Books read'}>
             {shown.map((b) => (
-              <Spine key={b.id} book={b} onOpen={() => setOpen(b.id)} />
+              <Spine key={b.id} book={b} away={open?.id === b.id} onOpen={(origin) => setOpen({ id: b.id, origin })} />
             ))}
           </div>
           <ScrollBlur axis="x" edges={scroll.edges} />
@@ -167,22 +168,49 @@ export function ReadingList() {
           onAdded={(b) => {
             setAdding(false);
             setShelf(b.status === 'read' ? 'read' : 'shelf');
-            setOpen(b.id);
+            setOpen({ id: b.id, origin: null });
           }}
         />
       )}
-      {current && <BookModal book={current} onClose={() => setOpen(null)} />}
+      {current && <BookModal key={current.id} book={current} origin={open?.origin ?? null} onClose={() => setOpen(null)} />}
     </section>
   );
 }
 
-function Spine({ book, onOpen }: { book: Book; onOpen: () => void }) {
+/** Where a book left the shelf from: its place on screen, how it was turned, and its cover's shape. */
+interface Origin {
+  rect: Box;
+  /** The 3D book's turn that matches how it stood: 90° spine-out, 16° when pointed at (cover showing). */
+  angle: number;
+  aspect: number | null;
+}
+interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+const boxOf = (r: DOMRect): Box => ({ left: r.left, top: r.top, width: r.width, height: r.height });
+
+/** The shelf slot a book stands in, to fly it back to. */
+const slotOf = (id: string) => document.querySelector<HTMLElement>(`[data-book-slot="${CSS.escape(id)}"]`);
+
+function Spine({ book, away, onOpen }: { book: Book; away: boolean; onOpen: (origin: Origin) => void }) {
   const colour = useBinding(book);
   const { s, h, c } = spineSize(book);
   const style = { '--s': `${s}px`, '--c': `${c}px`, '--bh': `${h}px`, '--binding': colour, '--binding-ink': inkOn(colour) } as CSSProperties;
   return (
-    <div role="listitem" className="spine-slot" style={style}>
-      <button type="button" className="spine-btn" onClick={onOpen} aria-label={`${book.title}${book.author ? `, ${book.author}` : ''} — ${STATUS_LABEL[book.status]}`}>
+    <div role="listitem" className={cx('spine-slot', away && 'is-away')} style={style} data-book-slot={book.id}>
+      <button
+        type="button"
+        className="spine-btn"
+        onClick={(e) => {
+          const slot = e.currentTarget.parentElement!;
+          const img = slot.querySelector<HTMLImageElement>('.spine-cover img');
+          // Pointed at (or focused), the book has already turned to show its cover.
+          const turned = slot.matches(':hover') || e.currentTarget.matches(':focus-visible');
+          onOpen({ rect: boxOf(slot.getBoundingClientRect()), angle: turned ? 16 : 90, aspect: img?.naturalWidth ? img.naturalHeight / img.naturalWidth : null });
+        }} aria-label={`${book.title}${book.author ? `, ${book.author}` : ''} — ${STATUS_LABEL[book.status]}`}>
         <span className="spine-book" aria-hidden>
           <span className="spine-face">
             <span className="spine-title">{book.title}</span>
@@ -226,6 +254,35 @@ function Cover({ book, colour, onAspect }: { book: Book; colour: string; onAspec
 
 const reducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** The book in hand's size: a little smaller on phones, as tall as its cover's shape, as thick as its pages. */
+function bookSize(book: Book, aspect: number) {
+  const W = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 760px)').matches ? 180 : 230;
+  const H = Math.round(W * Math.min(1.7, Math.max(1.2, aspect)));
+  const D = book.pages ? Math.round(Math.min(46, Math.max(14, book.pages / 11))) : 26;
+  return { W, H, D };
+}
+
+/** The six faces of a book: cover, back, spine, and the page block at the fore-edge, head and tail. */
+function BookFaces({ book, colour, onAspect }: { book: Book; colour: string; onAspect?: (a: number) => void }) {
+  return (
+    <>
+      <div className="b3d-face b3d-front">
+        <Cover book={book} colour={colour} onAspect={onAspect} />
+        <span className="b3d-hinge" />
+        <span className="b3d-glare" />
+      </div>
+      <div className="b3d-face b3d-back" />
+      <div className="b3d-face b3d-spine">
+        <span className="spine-title">{book.title}</span>
+        {book.author && <span className="spine-author">{surname(book.author)}</span>}
+      </div>
+      <div className="b3d-face b3d-edge" />
+      <div className="b3d-face b3d-top" />
+      <div className="b3d-face b3d-bottom" />
+    </>
+  );
+}
+
 /** Where the book rests when nothing is moving it: turned a little, to show it has depth. */
 const REST = { x: 4, y: -12 };
 /** How far it may lean either way: always the front, with no more than a glimpse of spine or pages. */
@@ -236,18 +293,16 @@ const clamp = (v: number, max: number) => Math.max(-max, Math.min(max, v));
  * A book that leans toward the pointer as it moves over the stage (or under a finger as it
  * drags), and settles back when let go. It only ever tilts: the front always faces you.
  */
-function Book3D({ book, colour }: { book: Book; colour: string }) {
+function Book3D({ book, colour, aspect: known, hidden }: { book: Book; colour: string; aspect: number | null; hidden: boolean }) {
   const stage = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  const [aspect, setAspect] = useState(1.5);
+  const [aspect, setAspect] = useState(known ?? 1.5);
   const target = useRef({ ...REST });
   const angle = useRef({ ...REST });
   const drag = useRef<{ id: number; x: number; y: number; from: { x: number; y: number } } | null>(null);
   const frame = useRef(0);
 
-  const [W] = useState(() => (typeof matchMedia !== 'undefined' && matchMedia('(max-width: 760px)').matches ? 180 : 230));
-  const H = Math.round(W * Math.min(1.7, Math.max(1.2, aspect)));
-  const D = book.pages ? Math.round(Math.min(46, Math.max(14, book.pages / 11))) : 26;
+  const { W, H, D } = bookSize(book, aspect);
 
   const paint = () => {
     const el = body.current;
@@ -312,7 +367,7 @@ function Book3D({ book, colour }: { book: Book; colour: string }) {
   const style = { '--w': `${W}px`, '--h': `${H}px`, '--d': `${D}px`, '--binding': colour, '--binding-ink': inkOn(colour) } as CSSProperties;
   return (
     <div
-      className="book-stage"
+      className={cx('book-stage', hidden && 'is-hidden')}
       ref={stage}
       onPointerMove={onMove}
       onPointerDown={onDown}
@@ -329,23 +384,73 @@ function Book3D({ book, colour }: { book: Book; colour: string }) {
       aria-hidden
     >
       <div className="b3d" ref={body}>
-        <div className="b3d-face b3d-front">
-          <Cover book={book} colour={colour} onAspect={setAspect} />
-          <span className="b3d-hinge" />
-          <span className="b3d-glare" />
-        </div>
-        <div className="b3d-face b3d-back" />
-        <div className="b3d-face b3d-spine">
-          <span className="spine-title">{book.title}</span>
-          {book.author && <span className="spine-author">{book.author.split(',')[0]}</span>}
-        </div>
-        <div className="b3d-face b3d-edge" />
-        <div className="b3d-face b3d-top" />
-        <div className="b3d-face b3d-bottom" />
+        <BookFaces book={book} colour={colour} onAspect={setAspect} />
       </div>
       <div className="b3d-shadow" />
     </div>
   );
+}
+
+const IN_PLACE = `translate3d(0px, 0px, 0px) scale(1, 1) rotateX(${REST.x}deg) rotateY(${REST.y}deg)`;
+
+interface Flight {
+  /** Where the book in hand sits in the window, untransformed. */
+  box: Box;
+  frames: [string, string];
+  out: boolean;
+}
+
+/**
+ * A copy of the book that travels between the shelf and the window, above everything, turning
+ * as it goes: spine-out on the shelf, cover-on in the window. It sits on the window's book and
+ * is moved by its transform, so where it lands the real one takes over without a seam.
+ */
+function FlyingBook({ book, colour, aspect, flight, onDone }: { book: Book; colour: string; aspect: number | null; flight: Flight; onDone: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const done = useRef(onDone);
+  done.current = onDone;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const anim = el.animate(
+      flight.frames.map((transform) => ({ transform })),
+      flight.out ? { duration: 460, easing: 'cubic-bezier(0.5, 0, 0.25, 1)', fill: 'forwards' } : { duration: 620, easing: 'cubic-bezier(0.2, 0.75, 0.2, 1)', fill: 'forwards' },
+    );
+    anim.finished.then(() => done.current()).catch(() => undefined);
+    return () => anim.cancel();
+  }, [flight]);
+  const { W, H, D } = bookSize(book, aspect ?? 1.5);
+  const { box } = flight;
+  return createPortal(
+    <div className="book-flight" style={{ perspectiveOrigin: `${box.left + box.width / 2}px ${box.top + box.height / 2}px` }} aria-hidden>
+      <div className="b3d b3d-flying" ref={ref} style={{ left: box.left, top: box.top, transform: flight.frames[0], '--w': `${W}px`, '--h': `${H}px`, '--d': `${D}px`, '--binding': colour, '--binding-ink': inkOn(colour) } as CSSProperties}>
+        <BookFaces book={book} colour={colour} />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * The transform that puts a book laid out at `box` where `to` is, as tall, turned by `angle`.
+ * Spine-out (90°), its spine is also widened to the shelf's: shelf spines are drawn thicker
+ * than the book in hand, and the copy should land exactly on the one it becomes.
+ */
+function placeAt(box: Box, to: Box, angle: number, depth: number): string {
+  const dx = to.left + to.width / 2 - (box.left + box.width / 2);
+  const dy = to.top + to.height / 2 - (box.top + box.height / 2);
+  const sy = to.height / box.height;
+  const sx = angle === 90 ? to.width / depth : sy;
+  return `translate3d(${dx.toFixed(1)}px, ${dy.toFixed(1)}px, 0px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)}) rotateX(0deg) rotateY(${angle}deg)`;
+}
+
+/** The book in hand's own box, as laid out, without its tilt. */
+function untilted(el: HTMLElement): Box {
+  const t = el.style.transform;
+  el.style.transform = 'none';
+  const box = boxOf(el.getBoundingClientRect());
+  el.style.transform = t;
+  return box;
 }
 
 function Stars({ value }: { value: number }) {
@@ -382,8 +487,12 @@ function useArmed(): [boolean, () => void, () => void] {
 /** Synopses can carry Markdown emphasis and Windows line breaks; show them as plain prose. */
 const plainText = (s: string) => s.replace(/\r\n?/g, '\n').replace(/(\*\*|__)(.+?)\1/g, '$2').replace(/(^|\s)[*_](\S[^*_]*?)[*_](?=\s|[.,;:!?]|$)/g, '$1$2');
 
-function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
+function BookModal({ book, origin, onClose }: { book: Book; origin: Origin | null; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const flying = !!origin && !reducedMotion();
+  const [flight, setFlight] = useState<Flight | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const [waiting, setWaiting] = useState(flying);
   const colour = useBinding(book);
   const { agentName } = useApp();
   const [more, setMore] = useState(false);
@@ -393,21 +502,49 @@ function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
   const remove = useWrite(() => booksWrite.del(book.id));
   useDialogFocus(ref);
 
+  const bookEl = () => ref.current?.querySelector<HTMLElement>('.book-stage .b3d') ?? null;
+
+  // Before the first paint: hold the page still, then set the book off from the shelf.
+  useLayoutEffect(() => {
+    document.body.style.overflow = 'hidden';
+    const el = bookEl();
+    if (flying && origin && el) {
+      const box = untilted(el);
+      setFlight({ box, frames: [placeAt(box, origin.rect, origin.angle, bookSize(book, 1.5).D), IN_PLACE], out: false });
+    } else setWaiting(false);
+    return () => {
+      document.body.style.overflow = '';
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Close by putting the book back on the shelf, when its place there can be seen; else just close. */
+  const close = useRef(() => {});
+  close.current = () => {
+    if (leaving) return;
+    const el = bookEl();
+    const slot = slotOf(book.id);
+    const to = slot?.getBoundingClientRect();
+    if (reducedMotion() || !el || !to || to.width === 0 || to.bottom < 0 || to.top > innerHeight) return onClose();
+    const box = untilted(el);
+    // From however it is tilted right now.
+    const tilt = el.style.transform || `rotateX(${REST.x}deg) rotateY(${REST.y}deg)`;
+    setLeaving(true);
+    setWaiting(true);
+    setFlight({ box, frames: [`translate3d(0px, 0px, 0px) scale(1, 1) ${tilt}`, placeAt(box, boxOf(to), 90, bookSize(book, 1.5).D)], out: true });
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || !ref.current) return;
       const open = document.querySelectorAll('[aria-modal="true"]');
       if (open[open.length - 1] !== ref.current) return;
       e.stopPropagation();
-      onClose();
+      close.current();
     };
     document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, [onClose]);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const sourceName = book.infoUrl.includes('openlibrary') ? 'Open Library' : 'Google Books';
   const paragraphs = plainText(book.synopsis).split(/\n\s*\n/);
@@ -418,13 +555,26 @@ function BookModal({ book, onClose }: { book: Book; onClose: () => void }) {
     book.status === 'read' && book.finishedAt ? `Finished ${shortDay(todayStr(new Date(book.finishedAt)))}` : book.status === 'reading' && book.startedAt ? `Since ${shortDay(todayStr(new Date(book.startedAt)))}` : '';
 
   return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="book-modal" role="dialog" aria-modal="true" aria-label={book.title} ref={ref} tabIndex={-1} style={{ '--binding': colour } as CSSProperties}>
-        <button type="button" className="icon-btn book-close" onClick={onClose} aria-label="Close">
+    <div className={cx('scrim book-scrim', leaving && 'is-leaving')} onMouseDown={(e) => e.target === e.currentTarget && close.current()}>
+      {flight && (
+        <FlyingBook
+          book={book}
+          colour={colour}
+          aspect={origin?.aspect ?? null}
+          flight={flight}
+          onDone={() => {
+            if (flight.out) return onClose();
+            setFlight(null);
+            setWaiting(false);
+          }}
+        />
+      )}
+      <div className={cx('book-modal', flying && 'is-arriving', leaving && 'is-leaving')} role="dialog" aria-modal="true" aria-label={book.title} ref={ref} tabIndex={-1} style={{ '--binding': colour } as CSSProperties}>
+        <button type="button" className="icon-btn book-close" onClick={() => close.current()} aria-label="Close">
           <X size={18} />
         </button>
         <div className="book-modal-stage">
-          <Book3D book={book} colour={colour} />
+          <Book3D book={book} colour={colour} aspect={origin?.aspect ?? null} hidden={waiting} />
           <p className="book-stage-hint">
             <span className="for-pointer">Move to tilt</span>
             <span className="for-touch">Drag to tilt</span>

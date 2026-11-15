@@ -12085,6 +12085,7 @@ button.xw-coin:hover,
   }
 }
 
+<<<<<<< Updated upstream
 /* Flight options split by direction: a switch over the cards, labels among the folded chips. */
 .opt-dir {
   display: flex;
@@ -12886,5 +12887,53 @@ button.xw-coin:hover,
 @media (max-width: 860px) {
   .guide-cols {
     grid-template-columns: minmax(0, 1fr);
+=======
+/* From the shelf into the window and back: a copy of the book flies above everything while
+   the window fades in around it. The book in hand waits, unseen, until the copy lands on it. */
+.book-flight {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  perspective: 1400px;
+}
+.b3d.b3d-flying {
+  position: absolute;
+  will-change: transform;
+}
+.book-stage .b3d,
+.book-stage .b3d-shadow {
+  transition: opacity 0.2s ease;
+}
+.book-stage.is-hidden .b3d {
+  opacity: 0;
+  transition: none;
+}
+.book-stage.is-hidden .b3d-shadow {
+  opacity: 0;
+}
+.spine-slot.is-away .spine-btn {
+  visibility: hidden;
+}
+.book-modal.is-arriving {
+  animation: book-window-in 0.36s ease both;
+}
+.book-modal.is-leaving,
+.book-scrim.is-leaving {
+  animation: book-window-out 0.3s ease forwards;
+  pointer-events: none;
+}
+.book-scrim.is-leaving .book-modal {
+  animation: none;
+}
+@keyframes book-window-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes book-window-out {
+  to {
+    opacity: 0;
+>>>>>>> Stashed changes
   }
 }
