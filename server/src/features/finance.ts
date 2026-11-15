@@ -7,8 +7,8 @@ import { z } from 'zod';
 import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
-import { Invalid, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { Debt, DebtKind, FinanceState, Holding, HoldingKind, PriceAlert, Quote, Trade, Transaction, TxKind } from '../../../shared/types.ts';
+import { Invalid, localDate, newId, NotFound, nowIso, prettyDay, registerUndo, type Store } from '../store.ts';
+import type { Debt, DebtKind, FinanceState, Frequency, Holding, HoldingKind, PriceAlert, Quote, Recurring, Trade, Transaction, TxKind, Upcoming } from '../../../shared/types.ts';
 import { getIntegration, saveIntegration } from './integrations.ts';
 import { convert, marketFor, normSymbol, refreshFx, STABLE, storedFx, symbolOk, type FxRates } from './markets.ts';
 import { registerFeature } from './registry.ts';
@@ -124,7 +124,7 @@ function removeFromWatchlist(store: Store, raw: string): void {
 
 // ── Transactions ────────────────────────────────────────────────────────────
 
-const txFromRow = (r: Row): Transaction => ({ id: r.id, date: r.date, kind: r.kind, amount: r.amount, currency: r.currency, category: r.category, description: r.description, source: r.source });
+const txFromRow = (r: Row): Transaction => ({ id: r.id, date: r.date, kind: r.kind, amount: r.amount, currency: r.currency, category: r.category, description: r.description, source: r.source, recurringId: r.recurring_id ?? null });
 
 export interface TxInput {
   kind: TxKind;
@@ -135,17 +135,25 @@ export interface TxInput {
   currency?: string;
 }
 
-export function addTransaction(store: Store, t: TxInput, source = 'manual'): Transaction {
+/** Which recurring item (and which of its occurrences) a transaction came from. */
+interface TxLink {
+  id: string;
+  n: number;
+  /** Marked paid by hand: undo puts the occurrence back as unpaid. */
+  paid: boolean;
+}
+
+export function addTransaction(store: Store, t: TxInput, source = 'manual', link: TxLink | null = null): Transaction {
   if (!(t.amount > 0)) throw new Invalid('An amount above zero');
   const id = newId();
   const currency = (t.currency ?? getSettings(store).currency).toUpperCase();
   const category = cleanCategory(t.category);
   const description = (t.description ?? '').trim().slice(0, 200);
   store.db
-    .prepare('INSERT INTO fin_transactions (id, date, kind, amount, currency, category, description, source, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(id, t.date, t.kind, r2(t.amount), currency, category, description, source, nowIso());
+    .prepare('INSERT INTO fin_transactions (id, date, kind, amount, currency, category, description, source, recurring_id, recurring_n, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, t.date, t.kind, r2(t.amount), currency, category, description, source, link?.id ?? null, link?.n ?? null, nowIso());
   const what = description ? ` — ${description}` : '';
-  store.record('created', 'fin_tx', id, financeSphere(store)?.id ?? null, t.kind === 'income' ? `Income: ${money(t.amount, currency)} ${category}${what}` : `Spent ${money(t.amount, currency)} on ${category}${what}`);
+  store.record('created', link?.paid ? 'fin_rtx' : 'fin_tx', id, financeSphere(store)?.id ?? null, t.kind === 'income' ? `Income: ${money(t.amount, currency)} ${category}${what}` : `Spent ${money(t.amount, currency)} on ${category}${what}`);
   return txFromRow(store.db.prepare('SELECT * FROM fin_transactions WHERE id = ?').get(id) as Row);
 }
 
@@ -430,11 +438,16 @@ export function updateDebt(store: Store, id: string, patch: Partial<Omit<DebtInp
 }
 
 export function payDebt(store: Store, id: string, amount: number, date: string): Row {
+  return store.tx(() => applyPayment(store, id, amount, date));
+}
+
+/** payDebt without its own transaction, for callers already inside one. */
+function applyPayment(store: Store, id: string, amount: number, date: string): Row {
   const r = store.db.prepare('SELECT * FROM fin_debts WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Debt');
   if (!(amount > 0)) throw new Invalid('A payment above zero');
   const pid = newId();
-  return store.tx(() => {
+  {
     // Paying more than is owed clears it; only what was owed counts as paid, so undo returns that.
     const applied = r2(Math.min(amount, r.balance));
     const balance = r2(r.balance - applied);
@@ -442,7 +455,7 @@ export function payDebt(store: Store, id: string, amount: number, date: string):
     store.db.prepare('UPDATE fin_debts SET balance = ?, closed_at = ?, updated_at = ? WHERE id = ?').run(balance, balance <= 0 ? nowIso() : null, nowIso(), id);
     store.record('created', 'fin_payment', pid, financeSphere(store)?.id ?? null, balance <= 0 ? `Paid off ${r.name}` : `Paid ${money(applied, r.currency)} towards ${r.name} — ${money(balance, r.currency)} left`);
     return store.db.prepare('SELECT * FROM fin_debts WHERE id = ?').get(id) as Row;
-  });
+  }
 }
 
 /** Take a payment back: its amount returns to the balance. */
@@ -502,6 +515,293 @@ export function checkAlerts(store: Store, quotes: Quote[]): number {
   return fired;
 }
 
+// ── Recurring: pay, bills, instalments ──────────────────────────────────────
+
+const CADENCE_MONTHS: Partial<Record<Frequency, number>> = { monthly: 1, quarterly: 3, yearly: 12 };
+const PER_MONTH: Record<Frequency, number> = { weekly: 52 / 12, biweekly: 26 / 12, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12 };
+/** At most this many missed occurrences are caught up in one go (a server off for months). */
+const MAX_CATCH_UP = 24;
+/** Bills you pay by hand are flagged this many days ahead. */
+const REMIND_DAYS = 3;
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+function plusDays(date: string, n: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The nth occurrence, before any weekend move. Month-based cadences keep their day (31 → the month's last). */
+export function nthDate(anchor: string, cadence: Frequency, day: number | null, n: number): string {
+  const months = CADENCE_MONTHS[cadence];
+  if (!months) return plusDays(anchor, n * (cadence === 'weekly' ? 7 : 14));
+  const [y, m, d] = anchor.split('-').map(Number) as [number, number, number];
+  const total = m - 1 + n * months;
+  const yy = y + Math.floor(total / 12);
+  const mm = (total % 12) + 1;
+  const last = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+  return `${yy}-${pad2(mm)}-${pad2(Math.min(day ?? d, last))}`;
+}
+
+function offWeekend(date: string, rule: Recurring['weekend']): string {
+  if (rule === 'none') return date;
+  const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+  if (dow === 6) return plusDays(date, rule === 'before' ? -1 : 2);
+  if (dow === 0) return plusDays(date, rule === 'before' ? -2 : 1);
+  return date;
+}
+
+/** The date of occurrence n; null once past the end date. */
+function occurrence(r: Row, n: number): string | null {
+  const raw = nthDate(r.anchor, r.cadence, r.day, n);
+  if (r.end_date && raw > r.end_date) return null;
+  return offWeekend(raw, r.weekend);
+}
+
+const recurringFromRow = (r: Row): Recurring => ({
+  id: r.id,
+  kind: r.kind,
+  name: r.name,
+  amount: r.amount,
+  currency: r.currency,
+  category: r.category,
+  cadence: r.cadence,
+  anchor: r.anchor,
+  day: r.day,
+  weekend: r.weekend,
+  auto: !!r.auto,
+  endDate: r.end_date,
+  debtId: r.debt_id,
+  active: !!r.active,
+  next: r.active ? occurrence(r, r.done) : null,
+  monthly: r2(r.amount * PER_MONTH[r.cadence as Frequency]),
+});
+
+/** How many occurrences fall before today: they are history, not something to log now. */
+function pastCount(r: Row, today: string): number {
+  let n = 0;
+  for (; n < 2000; n++) {
+    const d = occurrence(r, n);
+    if (!d || d >= today) break;
+  }
+  return n;
+}
+
+export interface RecurringInput {
+  kind: TxKind;
+  name: string;
+  amount: number;
+  category: string;
+  cadence: Frequency;
+  /** The next date it's due. */
+  next: string;
+  day?: number | null;
+  weekend?: Recurring['weekend'];
+  auto?: boolean;
+  endDate?: string | null;
+  debtId?: string | null;
+  currency?: string;
+}
+
+export function addRecurring(store: Store, input: RecurringInput, today: string): Recurring {
+  if (!(input.amount > 0)) throw new Invalid('An amount above zero');
+  if (input.debtId && !store.db.prepare('SELECT 1 AS x FROM fin_debts WHERE id = ?').get(input.debtId)) throw new NotFound('Debt');
+  const monthBased = !!CADENCE_MONTHS[input.cadence];
+  const id = newId();
+  const row: Row = {
+    id,
+    kind: input.debtId ? 'expense' : input.kind,
+    name: input.name.trim().slice(0, 80) || input.category,
+    amount: r2(input.amount),
+    currency: (input.currency ?? getSettings(store).currency).toUpperCase(),
+    category: input.debtId ? 'Debt' : cleanCategory(input.category),
+    cadence: input.cadence,
+    anchor: input.next,
+    day: monthBased ? (input.day ?? Number(input.next.slice(8, 10))) : null,
+    weekend: input.weekend ?? 'none',
+    auto: input.auto ?? true,
+    end_date: input.endDate ?? null,
+    debt_id: input.debtId ?? null,
+  };
+  // It starts from the next date given, never by logging months gone by.
+  row.done = pastCount(row, today);
+  store.db
+    .prepare('INSERT INTO fin_recurring (id, kind, name, amount, currency, category, cadence, anchor, day, done, weekend, auto, end_date, debt_id, active, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)')
+    .run(id, row.kind, row.name, row.amount, row.currency, row.category, row.cadence, row.anchor, row.day, row.done, row.weekend, Number(row.auto), row.end_date, row.debt_id, nowIso());
+  const saved = recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row);
+  store.record('created', 'fin_recurring', id, financeSphere(store)?.id ?? null, `${saved.kind === 'income' ? 'Expecting' : 'Recurring'}: ${saved.name}, ${money(saved.amount, saved.currency)} ${saved.cadence}`);
+  return saved;
+}
+
+registerUndo('created:fin_recurring', (db, id) => void db.prepare('DELETE FROM fin_recurring WHERE id = ?').run(id));
+
+export function updateRecurring(store: Store, id: string, patch: Partial<Omit<RecurringInput, 'kind' | 'currency' | 'debtId'>> & { active?: boolean }, today: string): Recurring {
+  const r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Recurring item');
+  const next: Row = { ...r };
+  if (patch.name !== undefined) next.name = patch.name.trim().slice(0, 80) || r.name;
+  if (patch.amount !== undefined) {
+    if (!(patch.amount > 0)) throw new Invalid('An amount above zero');
+    next.amount = r2(patch.amount);
+  }
+  if (patch.category !== undefined && !r.debt_id) next.category = cleanCategory(patch.category);
+  if (patch.weekend !== undefined) next.weekend = patch.weekend;
+  if (patch.auto !== undefined) next.auto = Number(patch.auto);
+  if (patch.endDate !== undefined) next.end_date = patch.endDate;
+  if (patch.cadence !== undefined) next.cadence = patch.cadence;
+  // A new next date or cadence starts the schedule again from there. Without a new date it starts
+  // from the next occurrence as scheduled (before any weekend move), keeping its day of the month.
+  const moved = patch.next !== undefined && patch.next !== occurrence(r, r.done);
+  const recadenced = patch.cadence !== undefined && patch.cadence !== r.cadence;
+  const redayed = patch.day !== undefined && patch.day !== r.day;
+  if (moved || recadenced || redayed) {
+    next.anchor = moved ? patch.next : nthDate(r.anchor, r.cadence, r.day, r.done);
+    const day = patch.day ?? (moved ? Number(patch.next!.slice(8, 10)) : (r.day ?? Number(String(next.anchor).slice(8, 10))));
+    next.day = CADENCE_MONTHS[next.cadence as Frequency] ? day : null;
+    next.done = 0;
+    next.done = pastCount(next, today);
+  }
+  if (patch.active !== undefined) {
+    // Coming back from a pause picks up from today; the paused months aren't logged.
+    if (patch.active && !r.active) next.done = Math.max(next.done, pastCount(next, today));
+    next.active = Number(patch.active);
+  }
+  store.db
+    .prepare('UPDATE fin_recurring SET name = ?, amount = ?, category = ?, cadence = ?, anchor = ?, day = ?, done = ?, weekend = ?, auto = ?, end_date = ?, active = ? WHERE id = ?')
+    .run(next.name, next.amount, next.category, next.cadence, next.anchor, next.day, next.done, next.weekend, next.auto, next.end_date, next.active, id);
+  return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row);
+}
+
+function deleteRecurring(store: Store, id: string): void {
+  if (store.db.prepare('DELETE FROM fin_recurring WHERE id = ?').run(id).changes === 0) throw new NotFound('Recurring item');
+}
+
+/** Close the reminder for an occurrence once it's paid or skipped. */
+function settleReminder(store: Store, id: string, date: string | null): void {
+  if (date) store.db.prepare("UPDATE signals SET status = 'done' WHERE source = 'finance' AND external_id = ? AND status IN ('new', 'seen')").run(`bill:${id}:${date}`);
+}
+
+/**
+ * Log occurrence n: a transaction, or a payment on its debt. Returns false (and pauses the item)
+ * when its debt is gone or paid off. Runs inside the caller's transaction.
+ */
+function post(store: Store, r: Row, n: number, date: string, amount: number, paid: boolean): boolean {
+  if (r.debt_id) {
+    const debt = store.db.prepare('SELECT balance, closed_at FROM fin_debts WHERE id = ?').get(r.debt_id) as Row | undefined;
+    if (!debt || debt.closed_at || debt.balance <= 0) {
+      store.db.prepare('UPDATE fin_recurring SET active = 0 WHERE id = ?').run(r.id);
+      return false;
+    }
+    applyPayment(store, r.debt_id, amount, date);
+  } else {
+    addTransaction(store, { kind: r.kind, amount, category: r.category, description: r.name, date, currency: r.currency }, paid ? 'manual' : 'recurring', { id: r.id, n, paid });
+  }
+  store.db.prepare('UPDATE fin_recurring SET done = ? WHERE id = ?').run(n + 1, r.id);
+  settleReminder(store, r.id, occurrence(r, n));
+  return true;
+}
+
+/** Log every automatic occurrence that has come due. Safe to call as often as you like. */
+export function postDue(store: Store, today: string): number {
+  let posted = 0;
+  const rows = store.db.prepare('SELECT * FROM fin_recurring WHERE active = 1 AND auto = 1').all() as Row[];
+  for (const row of rows) {
+    store.tx(() => {
+      let r = row;
+      for (let i = 0; i < MAX_CATCH_UP; i++) {
+        const date = occurrence(r, r.done);
+        if (!date || date > today) break;
+        if (!post(store, r, r.done, date, r.amount, false)) break;
+        posted++;
+        r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(r.id) as Row;
+      }
+      // Still behind after catching up the most allowed: let the rest go rather than flood the log.
+      const behind = pastCount(r, today);
+      if (r.done < behind) store.db.prepare('UPDATE fin_recurring SET done = ? WHERE id = ?').run(behind, r.id);
+    });
+  }
+  return posted;
+}
+
+/** Mark the next occurrence paid (or received), at the amount it actually came to. */
+export function markPaid(store: Store, id: string, today: string, opts: { amount?: number; date?: string } = {}): Recurring {
+  return store.tx(() => {
+    const r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row | undefined;
+    if (!r) throw new NotFound('Recurring item');
+    if (!r.active || !occurrence(r, r.done)) throw new Invalid(`${r.name} has nothing left to pay`);
+    const amount = opts.amount ?? r.amount;
+    if (!(amount > 0)) throw new Invalid('An amount above zero');
+    if (!post(store, r, r.done, opts.date ?? today, amount, true)) throw new Invalid(`${r.name}'s debt is already paid off`);
+    return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row);
+  });
+}
+
+/** Let the next occurrence pass without logging it (a bill waived, a month off). */
+export function skipNext(store: Store, id: string): Recurring {
+  const r = store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row | undefined;
+  if (!r) throw new NotFound('Recurring item');
+  settleReminder(store, id, occurrence(r, r.done));
+  store.db.prepare('UPDATE fin_recurring SET done = done + 1 WHERE id = ?').run(id);
+  return recurringFromRow(store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(id) as Row);
+}
+
+// Undoing a "marked paid" takes the transaction back and leaves that occurrence waiting again.
+registerUndo('created:fin_rtx', (db, id) => {
+  const t = db.prepare('SELECT recurring_id, recurring_n FROM fin_transactions WHERE id = ?').get(id) as Row | undefined;
+  if (t?.recurring_id) db.prepare('UPDATE fin_recurring SET done = ? WHERE id = ? AND done = ?').run(t.recurring_n, t.recurring_id, t.recurring_n + 1);
+  db.prepare('DELETE FROM fin_transactions WHERE id = ?').run(id);
+});
+
+/** Occurrences still to come (or waiting to be paid) up to a date, oldest first. */
+function pending(store: Store, until: string, today: string): Upcoming[] {
+  const out: Upcoming[] = [];
+  for (const r of store.db.prepare('SELECT * FROM fin_recurring WHERE active = 1').all() as Row[]) {
+    for (let n = r.done, i = 0; i < 60; n++, i++) {
+      const date = occurrence(r, n);
+      if (!date || date > until) break;
+      out.push({ recurringId: r.id, name: r.name, kind: r.kind, amount: r.amount, currency: r.currency, date, auto: !!r.auto, debtId: r.debt_id, overdue: date < today });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+}
+
+const dueWords = (date: string, today: string) => (date < today ? `was due ${prettyDay(date)}` : date === today ? 'due today' : date === plusDays(today, 1) ? 'due tomorrow' : `due ${new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })}`);
+
+/** A signal for each bill you pay by hand, a few days before it's due. Once per occurrence. */
+export function remindBills(store: Store, today: string): number {
+  let raised = 0;
+  const sphereId = financeSphere(store)?.id ?? null;
+  for (const r of store.db.prepare("SELECT * FROM fin_recurring WHERE active = 1 AND auto = 0 AND kind = 'expense'").all() as Row[]) {
+    const date = occurrence(r, r.done);
+    if (!date || date > plusDays(today, REMIND_DAYS)) continue;
+    const sig = addSignal(store, {
+      source: 'finance',
+      kind: 'bill',
+      externalId: `bill:${r.id}:${date}`,
+      title: `${r.name} ${dueWords(date, today)} — ${money(r.amount, r.currency)}`,
+      body: `${r.name} comes round ${r.cadence}. Mark it paid on the Finances page once it's done, at what it actually came to.`,
+      sphereId,
+      priority: date <= today ? 2 : 1,
+      actions: [{ type: 'task', label: 'Add as a task', title: `Pay ${r.name}`, dueDate: date, sphereId }],
+      data: { recurringId: r.id, date, amount: r.amount },
+    });
+    if (sig) raised++;
+  }
+  return raised;
+}
+
+/** Today where the person is, for the background jobs. */
+function zoneToday(store: Store): string {
+  const zone = store.zone();
+  try {
+    if (zone) return new Intl.DateTimeFormat('en-CA', { timeZone: zone }).format(new Date());
+  } catch {
+    // An unknown zone falls back to the server's.
+  }
+  return localDate();
+}
+
 // ── The whole picture ───────────────────────────────────────────────────────
 
 const monthKey = (date: string) => date.slice(0, 7);
@@ -543,6 +843,20 @@ export function financeState(store: Store, today: string): FinanceState {
   const cur = series.get(thisMonth)!;
   const recent = (store.db.prepare('SELECT * FROM fin_transactions ORDER BY date DESC, created_at DESC LIMIT 60').all() as Row[]).map(txFromRow);
 
+  // Recurring: what's still to come this month, the next five weeks, and the monthly shape.
+  const [yy, mm] = today.split('-').map(Number) as [number, number];
+  const monthEnd = `${thisMonth}-${pad2(new Date(Date.UTC(yy, mm, 0)).getUTCDate())}`;
+  const horizon = plusDays(today, 35);
+  const coming = pending(store, horizon > monthEnd ? horizon : monthEnd, today);
+  const expected = { income: 0, expense: 0 };
+  for (const u of coming) {
+    if (u.date > monthEnd || u.debtId) continue;
+    expected[u.kind] += toBase(u.amount, u.currency) ?? 0;
+  }
+  const recurring = (store.db.prepare('SELECT * FROM fin_recurring ORDER BY active DESC, kind DESC, amount DESC').all() as Row[]).map(recurringFromRow);
+  const recurringMonthly = { income: 0, expense: 0 };
+  for (const r of recurring) if (r.active && !r.debtId) recurringMonthly[r.kind] += toBase(r.monthly, r.currency) ?? 0;
+
   // Portfolio.
   const holdings = (store.db.prepare('SELECT * FROM fin_holdings ORDER BY kind, name').all() as Row[]).map((r) => valueHolding(r, isLive(r.kind, r.symbol, r.price) ? feed.quote(r.symbol) : null, fx, base));
   holdings.sort((a, b) => (b.valueBase ?? -1) - (a.valueBase ?? -1));
@@ -582,9 +896,13 @@ export function financeState(store: Store, today: string): FinanceState {
       net: r2(cur.income - cur.expense),
       savingsRate: cur.income > 0 ? (cur.income - cur.expense) / cur.income : null,
       byCategory: [...cats.values()].map((c) => ({ ...c, amount: r2(c.amount), budget: c.kind === 'expense' ? (settings.budgets[c.category] ?? null) : null })).sort((a, b) => b.amount - a.amount),
+      expected: { income: r2(expected.income), expense: r2(expected.expense), net: r2(cur.income - cur.expense + expected.income - expected.expense) },
     },
     months: [...series.values()].map((m) => ({ key: m.key, income: r2(m.income), expense: r2(m.expense) })),
     transactions: recent,
+    recurring,
+    upcoming: coming.filter((u) => u.date <= horizon),
+    recurringMonthly: { income: r2(recurringMonthly.income), expense: r2(recurringMonthly.expense) },
     budgets: settings.budgets,
     holdings,
     allocation: [...alloc].map(([kind, value]) => ({ kind, value: r2(value) })).sort((a, b) => b.value - a.value),
@@ -623,6 +941,11 @@ registerSnapshotSection<Store>('Money', (store, today) => {
   if (over.length) lines.push(`Over budget: ${over.map((x) => `${x.category} ${money(x.amount, c)} of ${money(x.budget!, c)}`).join('; ')}.`);
   if (f.holdings.length || f.debts.length) lines.push(`Net worth ${money(f.netWorth.net, c)} (assets ${money(f.netWorth.assets, c)}, debts ${money(f.netWorth.debts, c)})${f.netWorth.unpriced.length ? `; unpriced: ${f.netWorth.unpriced.join(', ')}` : ''}.`);
   if (f.crypto) lines.push(`Crypto: ${usd(f.crypto.value)}, unrealized ${f.crypto.gain >= 0 ? '+' : '−'}${usd(Math.abs(f.crypto.gain))}, realized ${f.crypto.realized >= 0 ? '+' : '−'}${usd(Math.abs(f.crypto.realized))}. Positions: ${f.holdings.filter((h) => h.live && h.quantity > EPS).map((h) => `${h.quantity} ${h.symbol}${h.unitPrice ? ` @ ${usd(h.unitPrice)}` : ''}`).join(', ') || 'none'}.`);
+  if (f.recurring.some((r) => r.active)) {
+    lines.push(`Recurring, a month: in ${money(f.recurringMonthly.income, c)}, out ${money(f.recurringMonthly.expense, c)}. Still to come this month: in ${money(f.month.expected.income, c)}, out ${money(f.month.expected.expense, c)}, leaving about ${money(f.month.expected.net, c)}.`);
+    const soon = f.upcoming.filter((u) => u.date <= plusDays(today, 7));
+    if (soon.length) lines.push(`Next 7 days: ${soon.map((u) => `${u.name} ${money(u.amount, u.currency)} on ${u.date}${u.auto ? '' : u.overdue ? ' (overdue, not marked paid)' : ' (to mark paid)'}`).join('; ')}.`);
+  }
   const open = f.debts.filter((d) => !d.closedAt);
   if (open.length) lines.push(`Debts: ${open.map((d) => `${d.name} ${money(d.balance, d.currency)}${d.apr ? ` at ${d.apr}%` : ''}`).join('; ')}.`);
   return lines.join('\n');
@@ -675,6 +998,32 @@ const debtInput = z.object({
   notes: z.string().max(500).optional(),
 });
 const debtPatch = debtInput.partial().omit({ currency: true });
+const frequency = z.enum(['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']);
+const weekend = z.enum(['none', 'before', 'after']);
+const recurringInput = z.object({
+  kind: z.enum(['income', 'expense']),
+  name: z.string().min(1).max(80),
+  amount: z.number().positive().max(1e10),
+  category: z.string().min(1).max(40),
+  cadence: frequency,
+  next: dateStr,
+  day: z.number().int().min(1).max(31).nullable().optional(),
+  weekend: weekend.optional(),
+  auto: z.boolean().optional(),
+  end_date: dateStr.nullable().optional(),
+  debt_id: z.string().nullable().optional(),
+  currency: currency.optional(),
+});
+const recurringPatch = recurringInput.omit({ kind: true, currency: true, debt_id: true }).partial().extend({ active: z.boolean().optional() });
+const toRecurring = (r: z.infer<typeof recurringInput>): RecurringInput => ({ kind: r.kind, name: r.name, amount: r.amount, category: r.category, cadence: r.cadence, next: r.next, day: r.day, weekend: r.weekend, auto: r.auto, endDate: r.end_date, debtId: r.debt_id, currency: r.currency });
+const toRecurringPatch = (r: z.infer<typeof recurringPatch>) => ({ name: r.name, amount: r.amount, category: r.category, cadence: r.cadence, next: r.next, day: r.day, weekend: r.weekend, auto: r.auto, endDate: r.end_date, active: r.active });
+
+function findRecurring(store: Store, nameOrId: string): Row {
+  const r = (store.db.prepare('SELECT * FROM fin_recurring WHERE id = ?').get(nameOrId) ?? store.db.prepare('SELECT * FROM fin_recurring WHERE lower(name) LIKE ? ORDER BY active DESC, amount DESC LIMIT 1').get(`%${nameOrId.toLowerCase()}%`)) as Row | undefined;
+  if (!r) throw new NotFound('Recurring item');
+  return r;
+}
+
 const alertInput = z.object({ symbol, price: z.number().positive().max(1e9), direction: z.enum(['above', 'below']).optional(), note: z.string().max(200).optional() });
 
 const toHolding = (h: z.infer<typeof holdingInput>): HoldingInput => ({ kind: h.kind, name: h.name, symbol: h.symbol, quantity: h.quantity, costBasis: h.cost_basis, price: h.price, currency: h.currency, notes: h.notes });
@@ -714,9 +1063,24 @@ registerFeature({
           await feed.refresh();
           checkAlerts(store, feed.state().quotes);
         }
-        const zone = store.zone();
-        const today = zone ? new Intl.DateTimeFormat('en-CA', { timeZone: zone }).format(new Date()) : new Date().toISOString().slice(0, 10);
-        syncNetWorth(store, today);
+        syncNetWorth(store, zoneToday(store));
+      },
+    },
+  ],
+});
+
+const RECURRING = 'recurring';
+
+registerFeature({
+  id: RECURRING,
+  jobs: [
+    {
+      id: RECURRING,
+      everyMs: 15 * 60_000,
+      run: async (store) => {
+        const today = zoneToday(store);
+        postDue(store, today);
+        remindBills(store, today);
       },
     },
   ],
@@ -726,7 +1090,7 @@ const watched = new WeakSet<object>();
 
 registerFeature({
   id: 'finance',
-  tables: ['fin_transactions', 'fin_holdings', 'fin_trades', 'fin_debts', 'fin_debt_payments', 'fin_alerts'],
+  tables: ['fin_debts', 'fin_recurring', 'fin_transactions', 'fin_holdings', 'fin_trades', 'fin_debt_payments', 'fin_alerts'],
   tools: [
     tool(
       'log_transaction',
@@ -829,10 +1193,39 @@ registerFeature({
         return { data: { ok: true, balance: r.balance, paid_off: r.balance <= 0 }, summary: r.balance <= 0 ? `Paid off ${r.name}` : `Paid ${money(amount, r.currency)} towards ${r.name}` };
       },
     ),
+    tool(
+      'add_recurring',
+      "Set up money that comes round on a schedule: salary or other regular income, rent, bills, subscriptions, insurance, a loan instalment. `next` is the next date it's due; month-based cadences keep that day of the month (day 31 = the month's last day). `weekend`: 'before' moves a date on a weekend to the Friday before (common for salary), 'after' to the Monday after. `auto` true logs it by itself on the day (fixed amounts: salary, rent, subscriptions); false waits for the user to mark it paid and reminds them a few days ahead (bills that vary, like electricity). For a loan or card instalment, pass debt_id (from get_finances) and each payment pays that debt down instead of logging spending. Past occurrences are not logged.",
+      recurringInput,
+      (r, { store, today }) => {
+        const saved = addRecurring(store, toRecurring(r), today);
+        postDue(store, today);
+        return { data: { ok: true, recurring: saved }, summary: `${saved.kind === 'income' ? 'Expecting' : 'Recurring'}: ${saved.name}, ${money(saved.amount, saved.currency)} ${saved.cadence}` };
+      },
+    ),
+    tool(
+      'update_recurring',
+      'Change a recurring item (by id or name): a new amount (a pay rise, a price change), next date, cadence, whether it logs itself, or active false to pause it (true resumes from today).',
+      recurringPatch.extend({ item: z.string().min(1) }),
+      ({ item, ...p }, { store, today }) => {
+        const saved = updateRecurring(store, findRecurring(store, item).id, toRecurringPatch(p), today);
+        return { data: { ok: true, recurring: saved }, summary: `Updated ${saved.name}` };
+      },
+    ),
+    tool(
+      'mark_recurring_paid',
+      "Mark the next occurrence of a recurring bill paid (or income received), by id or name, at what it actually came to. Use when the user says they've paid a bill that waits to be marked paid.",
+      z.object({ item: z.string().min(1), amount: z.number().positive().max(1e10).optional(), date: dateStr.optional() }),
+      ({ item, amount, date }, { store, today }) => {
+        const r = findRecurring(store, item);
+        const saved = markPaid(store, r.id, today, { amount, date });
+        return { data: { ok: true, next: saved.next }, summary: `Marked ${saved.name} paid${amount ? ` — ${money(amount, saved.currency)}` : ''}` };
+      },
+    ),
   ],
   routes: (app, { store }) => {
     // The price job only runs while its integration is on; it is on from the start.
-    if (!store.db.prepare('SELECT 1 AS x FROM integrations WHERE id = ?').get(MARKETS)) saveIntegration(store, { ...getIntegration(store, MARKETS), enabled: true });
+    for (const job of [MARKETS, RECURRING]) if (!store.db.prepare('SELECT 1 AS x FROM integrations WHERE id = ?').get(job)) saveIntegration(store, { ...getIntegration(store, job), enabled: true });
     syncSymbols(store);
     const feed = marketFor(store);
     if (!watched.has(feed)) {
@@ -849,6 +1242,8 @@ registerFeature({
     const state = (c: Parameters<typeof todayOf>[0]) => financeState(store, todayOf(c));
 
     app.get('/api/finance', (c) => {
+      // Pay and bills that came due since the job last ran are logged before the page sees them.
+      postDue(store, todayOf(c));
       // Stale prices refresh in the background; the stream brings them in.
       if (feed.ageMs() > 60_000) void feed.refresh().catch(() => undefined);
       return c.json(state(c));
@@ -920,6 +1315,30 @@ registerFeature({
     });
     app.delete('/api/finance/payments/:id', (c) => {
       if (!store.tx(() => reversePayment(store.db, c.req.param('id')))) throw new NotFound('Payment');
+      return c.json(state(c));
+    });
+
+    app.post('/api/finance/recurring', async (c) => {
+      addRecurring(store, toRecurring(await read(c, recurringInput)), todayOf(c));
+      postDue(store, todayOf(c));
+      return c.json(state(c), 201);
+    });
+    app.patch('/api/finance/recurring/:id', async (c) => {
+      updateRecurring(store, c.req.param('id'), toRecurringPatch(await read(c, recurringPatch)), todayOf(c));
+      postDue(store, todayOf(c));
+      return c.json(state(c));
+    });
+    app.delete('/api/finance/recurring/:id', (c) => {
+      deleteRecurring(store, c.req.param('id'));
+      return c.json(state(c));
+    });
+    app.post('/api/finance/recurring/:id/paid', async (c) => {
+      const p = await read(c, z.object({ amount: z.number().positive().max(1e10).optional(), date: dateStr.optional() }));
+      markPaid(store, c.req.param('id'), todayOf(c), p);
+      return c.json(state(c), 201);
+    });
+    app.post('/api/finance/recurring/:id/skip', (c) => {
+      skipNext(store, c.req.param('id'));
       return c.json(state(c));
     });
 

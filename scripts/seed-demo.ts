@@ -20,7 +20,7 @@ import { logBody, logFood, logWorkout } from '../server/src/features/health.ts';
 import { addItems, addSegment, createTrip, upsertLoyalty } from '../server/src/features/travel.ts';
 import { setPreferences } from '../server/src/features/job-alerts.ts';
 import { updateIntegration } from '../server/src/features/integrations.ts';
-import { addAlert, addDebt, addHolding, addTransaction, logTrade, payDebt } from '../server/src/features/finance.ts';
+import { addAlert, addDebt, addHolding, addRecurring, addTransaction, logTrade, payDebt } from '../server/src/features/finance.ts';
 import { deflateSync } from 'node:zlib';
 
 const path = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 'data/demo.db');
@@ -173,8 +173,18 @@ addAlert(store, { symbol: 'BTC', price: 120_000, direction: 'above', note: 'Take
 addAlert(store, { symbol: 'ETH', price: 2_400, direction: 'below', note: 'Buy the dip with the bonus' });
 const card = addDebt(store, { name: 'Citi Rewards card', kind: 'credit_card', lender: 'Citibank', balance: 3_840, original: 6_000, apr: 26.9, minPayment: 250, dueDay: 25 });
 payDebt(store, card.id, 400, day(20));
-addDebt(store, { name: 'Car loan', kind: 'car', lender: 'Maybank', balance: 38_600, original: 62_000, apr: 2.78, minPayment: 980, dueDay: 8 });
+const car = addDebt(store, { name: 'Car loan', kind: 'car', lender: 'Maybank', balance: 38_600, original: 62_000, apr: 2.78, minPayment: 980, dueDay: 8 });
 addDebt(store, { name: 'Laptop instalments', kind: 'bnpl', lender: 'Atome', balance: 600, original: 1_800, apr: 0, minPayment: 300, dueDay: 15 });
+// What comes round: pay and fixed bills log themselves, the utility bill waits to be marked paid.
+const nextOn = (dom: number) => (firstOf(0, dom) >= today ? firstOf(0, dom) : firstOf(-1, dom));
+addRecurring(store, { kind: 'income', name: 'Salary', amount: 7200, category: 'Salary', cadence: 'monthly', next: nextOn(25), weekend: 'before' }, today);
+addRecurring(store, { kind: 'expense', name: 'Rent', amount: 2400, category: 'Housing', cadence: 'monthly', next: nextOn(1) }, today);
+addRecurring(store, { kind: 'expense', name: 'Phone plan', amount: 45.9, category: 'Subscriptions', cadence: 'monthly', next: nextOn(5) }, today);
+addRecurring(store, { kind: 'expense', name: 'Spotify + iCloud', amount: 22.98, category: 'Subscriptions', cadence: 'monthly', next: nextOn(6) }, today);
+addRecurring(store, { kind: 'expense', name: 'Monthly sadaqah', amount: 50, category: 'Giving', cadence: 'monthly', next: nextOn(20) }, today);
+addRecurring(store, { kind: 'expense', name: 'SP Group', amount: 170, category: 'Utilities', cadence: 'monthly', next: day(-2), auto: false }, today);
+addRecurring(store, { kind: 'expense', name: 'Car loan instalment', amount: 980, category: 'Debt', cadence: 'monthly', next: nextOn(8), debtId: car.id }, today);
+addRecurring(store, { kind: 'expense', name: 'Travel insurance', amount: 289, category: 'Travel', cadence: 'yearly', next: day(-24), auto: false }, today);
 db.prepare("UPDATE activity SET ts = ? WHERE entity_type LIKE 'fin_%'").run(new Date(`${day(3)}T10:00:00`).toISOString());
 
 // ── Work ────────────────────────────────────────────────────────────────────
