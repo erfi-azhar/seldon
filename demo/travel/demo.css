@@ -1,0 +1,42 @@
+.demo-bar {
+  position: fixed;
+  z-index: 1000;
+  left: 50%;
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(16, 18, 24, 0.86);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  font: 500 12.5px/1 'Geist Variable', system-ui, sans-serif;
+  white-space: nowrap;
+  max-width: calc(100vw - 24px);
+}
+.demo-tag {
+  padding: 0 8px 0 10px;
+  color: #f5b544;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 10.5px;
+}
+.demo-bar button {
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  padding: 8px 11px;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+}
+.demo-bar button:hover { color: #fff; }
+.demo-bar button.is-on { background: #fff; color: #111; }
+.demo-bar button:focus-visible { outline: 2px solid #f5b544; outline-offset: 1px; }
+@media (max-width: 380px) {
+  .demo-tag { display: none; }
+  .demo-bar button { padding: 8px 9px; }
+}

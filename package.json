@@ -16,7 +16,8 @@
     "seed:demo": "node --disable-warning=ExperimentalWarning scripts/seed-demo.ts",
     "test": "node --disable-warning=ExperimentalWarning --test \"server/test/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json",
-    "demo:welcome": "node demo/welcome/build.mjs"
+    "demo:welcome": "node demo/welcome/build.mjs",
+    "demo:travel": "node demo/travel/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
