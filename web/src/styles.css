@@ -10470,18 +10470,25 @@ button.fin-rec-main:disabled {
 .fin-relief-head .btn {
   margin-left: auto;
 }
-.fin-relief-row {
+/* The rows share one grid: the amount column fits the widest amount, so the bars line up and
+   give way instead of the amounts spilling out of the card. */
+.fin-relief-rows {
   display: grid;
-  /* A fixed amount column keeps the bars the same length from row to row. */
-  grid-template-columns: 84px minmax(0, 1fr) 9.5em;
+  grid-template-columns: auto minmax(40px, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
   font-size: 13px;
 }
-.fin-relief-row .num {
+.fin-relief-row {
+  display: contents;
+}
+.fin-relief-amt {
   font-size: 12.5px;
-  white-space: nowrap;
   text-align: right;
+}
+/* Each half keeps together; on a narrow card the cap drops under what's done. */
+.fin-relief-amt > span {
+  white-space: nowrap;
 }
 
 /* ── Crypto Twitter ─────────────────────────────────────────────────────── */
@@ -10749,6 +10756,18 @@ button.xw-coin:hover,
 .xw-steps a {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* Portfolio, liquid then illiquid, each with its subtotal. */
+.fin-holding-group-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 20px 2px;
+}
+.fin-holding-group-head .num {
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 @media (max-width: 720px) {

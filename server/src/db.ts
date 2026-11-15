@@ -702,6 +702,10 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (passage, tafsir)
   );
   `,
+  // Whether a holding can be turned into cash within days; null means decide by its kind.
+  `
+  ALTER TABLE fin_holdings ADD COLUMN liquid INTEGER;
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
