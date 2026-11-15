@@ -134,8 +134,8 @@ function LocationSheet({ faith, onClose }: { faith: FaithState; onClose: () => v
   );
 }
 
-/** Prayed, late or missed for one prayer. `auto` means its time passed unmarked, so it was counted missed. */
-function StatusButtons({ date, prayer, status, disabled, auto }: { date: string; prayer: PrayerName; status: PrayerStatus | undefined; disabled?: boolean; auto?: boolean }) {
+/** Prayed, late or missed for one prayer. */
+function StatusButtons({ date, prayer, status, disabled }: { date: string; prayer: PrayerName; status: PrayerStatus | undefined; disabled?: boolean }) {
   const log = useWrite(faithWrite.log);
   const set = (next: PrayerStatus) => log.mutate({ date, prayer, status: status === next ? null : next });
   const pending = log.isPending ? (log.variables as { status: PrayerStatus | null }).status : undefined;
@@ -150,14 +150,7 @@ function StatusButtons({ date, prayer, status, disabled, auto }: { date: string;
         <Clock size={13} strokeWidth={2.4} />
         <span className="sr-only">Prayed late</span>
       </button>
-      <button
-        type="button"
-        className={cx('pb pb-missed', auto && !log.isPending && 'is-auto')}
-        aria-pressed={shown === 'missed'}
-        disabled={disabled}
-        onClick={() => set('missed')}
-        title={auto ? 'Its time passed without a mark, so it counts as missed' : 'Missed — add to prayers to make up'}
-      >
+      <button type="button" className="pb pb-missed" aria-pressed={shown === 'missed'} disabled={disabled} onClick={() => set('missed')} title="Missed — add to prayers to make up">
         <X size={13} strokeWidth={2.8} />
         <span className="sr-only">Missed</span>
       </button>
@@ -171,13 +164,12 @@ const SAY: Record<PrayerStatus, string> = { prayed: 'prayed', late: 'prayed late
 const NEXT: Record<PrayerStatus, PrayerStatus> = { prayed: 'late', late: 'missed', missed: 'prayed' };
 const dayLabel = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
-function WeekDot({ day, prayer, auto, now }: { day: PrayerDay; prayer: PrayerName; auto: boolean; now: number }) {
+function WeekDot({ day, prayer, now }: { day: PrayerDay; prayer: PrayerName; now: number }) {
   const log = useWrite(faithWrite.log);
   const status = log.isPending ? (log.variables as { status: PrayerStatus }).status : day.log[prayer];
-  const isAuto = auto && !log.isPending;
   const started = Date.parse(day.times[prayer]) <= now;
   const next = status ? NEXT[status] : 'prayed';
-  const state = isAuto ? 'not marked, counted missed' : status ? SAY[status] : 'not marked';
+  const state = status ? SAY[status] : 'not marked';
   return (
     <button
       type="button"
@@ -186,7 +178,7 @@ function WeekDot({ day, prayer, auto, now }: { day: PrayerDay; prayer: PrayerNam
       onClick={() => log.mutate({ date: day.date, prayer, status: next })}
       title={`${NAME[prayer]}, ${dayLabel(day.date)}: ${state}${started ? ` — tap to mark ${SAY[next]}` : ''}`}
     >
-      <i className={cx('pw-dot', status && `pw-${status}`, isAuto && 'pw-auto')} />
+      <i className={cx('pw-dot', status && `pw-${status}`)} />
       <span className="sr-only">
         {NAME[prayer]}, {dayLabel(day.date)}: {state}
       </span>
@@ -197,7 +189,6 @@ function WeekDot({ day, prayer, auto, now }: { day: PrayerDay; prayer: PrayerNam
 /** The last seven days, one dot per prayer. Dots are buttons, so a past day is corrected here. */
 function WeekGrid({ faith, now }: { faith: FaithState; now: number }) {
   const today = todayStr();
-  const auto = new Set(faith.autoMissed.map((u) => `${u.date}|${u.prayer}`));
   return (
     <div className="prayer-week" role="group" aria-label="The last seven days">
       <span />
@@ -210,7 +201,7 @@ function WeekGrid({ faith, now }: { faith: FaithState; now: number }) {
         <div key={p} style={{ display: 'contents' }}>
           <span className="pw-name">{NAME[p]}</span>
           {faith.week.map((d) => (
-            <WeekDot key={d.date} day={d} prayer={p} auto={auto.has(`${d.date}|${p}`)} now={now} />
+            <WeekDot key={d.date} day={d} prayer={p} now={now} />
           ))}
         </div>
       ))}
@@ -224,17 +215,8 @@ function WeekGrid({ faith, now }: { faith: FaithState; now: number }) {
         <span>
           <i className="pw-dot pw-missed" /> Missed
         </span>
-        {auto.size > 0 && (
-          <span>
-            <i className="pw-dot pw-missed pw-auto" /> Not marked
-          </span>
-        )}
+        <span className="pw-hint">Tap a dot to change it</span>
       </div>
-      {auto.size > 0 && (
-        <p className="pw-note">
-          {plural(auto.size, 'prayer')} passed without a mark and {auto.size === 1 ? 'counts' : 'count'} as missed. Prayed after all? Tap its dot.
-        </p>
-      )}
     </div>
   );
 }
@@ -355,7 +337,6 @@ export function PrayerCard() {
   const travelling = faith.configured && tz !== deviceTz();
   const curDay = currentDay(faith);
   const lastNight = curDay && curDay !== faith.today ? curDay : undefined;
-  const autoToday = new Set(faith.autoMissed.filter((u) => u.date === faith.today?.date).map((u) => u.prayer));
 
   return (
     <>
@@ -407,15 +388,14 @@ export function PrayerCard() {
                 const isCurrent = faith.current?.prayer === p && curDay === faith.today;
                 const isNext = faith.next?.prayer === p && Date.parse(faith.next.at) > now && Date.parse(faith.next.at) - now < 18 * 3_600_000 && faith.next.at === faith.today!.times[p];
                 const started = Date.parse(faith.today!.times[p]) <= now;
-                const auto = autoToday.has(p);
                 return (
                   <li key={p} className={cx('prayer-row', isCurrent && 'is-current')}>
                     <span className="prayer-name">{NAME[p]}</span>
                     <span className="prayer-time num">{hhmm(faith.today!.times[p], tz)}</span>
                     <span className="prayer-when">
-                      {isCurrent && faith.current ? `ends in ${untilLabel(faith.current.endsAt, now)}` : isNext ? `in ${untilLabel(faith.next!.at, now)}` : auto ? 'not marked' : ''}
+                      {isCurrent && faith.current ? `ends in ${untilLabel(faith.current.endsAt, now)}` : isNext ? `in ${untilLabel(faith.next!.at, now)}` : ''}
                     </span>
-                    <StatusButtons date={faith.today!.date} prayer={p} status={faith.today!.log[p]} disabled={!started} auto={auto} />
+                    <StatusButtons date={faith.today!.date} prayer={p} status={faith.today!.log[p]} disabled={!started} />
                   </li>
                 );
               })}
