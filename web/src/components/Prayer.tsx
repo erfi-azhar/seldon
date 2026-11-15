@@ -2,7 +2,7 @@
 // up, and a countdown to Ramadan when it is near.
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, Clock, LocateFixed, MapPin, MoonStar, Pencil, X } from 'lucide-react';
+import { Check, Clock, LocateFixed, MapPin, MoonStar, Pencil, Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerStatus } from '../../../shared/types.ts';
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
@@ -134,7 +134,8 @@ function LocationSheet({ faith, onClose }: { faith: FaithState; onClose: () => v
   );
 }
 
-function StatusButtons({ date, prayer, status, disabled, offerMissed = true }: { date: string; prayer: PrayerName; status: PrayerStatus | undefined; disabled?: boolean; offerMissed?: boolean }) {
+/** Prayed, late or missed for one prayer. `auto` means its time passed unmarked, so it was counted missed. */
+function StatusButtons({ date, prayer, status, disabled, auto }: { date: string; prayer: PrayerName; status: PrayerStatus | undefined; disabled?: boolean; auto?: boolean }) {
   const log = useWrite(faithWrite.log);
   const set = (next: PrayerStatus) => log.mutate({ date, prayer, status: status === next ? null : next });
   const pending = log.isPending ? (log.variables as { status: PrayerStatus | null }).status : undefined;
@@ -149,12 +150,156 @@ function StatusButtons({ date, prayer, status, disabled, offerMissed = true }: {
         <Clock size={13} strokeWidth={2.4} />
         <span className="sr-only">Prayed late</span>
       </button>
-      {offerMissed && (
-        <button type="button" className="pb pb-missed" aria-pressed={shown === 'missed'} disabled={disabled} onClick={() => set('missed')} title="Missed — add to prayers to make up">
-          <X size={13} strokeWidth={2.8} />
-          <span className="sr-only">Missed</span>
-        </button>
+      <button
+        type="button"
+        className={cx('pb pb-missed', auto && !log.isPending && 'is-auto')}
+        aria-pressed={shown === 'missed'}
+        disabled={disabled}
+        onClick={() => set('missed')}
+        title={auto ? 'Its time passed without a mark, so it counts as missed' : 'Missed — add to prayers to make up'}
+      >
+        <X size={13} strokeWidth={2.8} />
+        <span className="sr-only">Missed</span>
+      </button>
+    </div>
+  );
+}
+
+const SAY: Record<PrayerStatus, string> = { prayed: 'prayed', late: 'prayed late', missed: 'missed' };
+/** Tapping a dot steps through the statuses. A past prayer never goes back to unmarked:
+ *  the server would only count it missed again. */
+const NEXT: Record<PrayerStatus, PrayerStatus> = { prayed: 'late', late: 'missed', missed: 'prayed' };
+const dayLabel = (d: string) => parseDay(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+function WeekDot({ day, prayer, auto, now }: { day: PrayerDay; prayer: PrayerName; auto: boolean; now: number }) {
+  const log = useWrite(faithWrite.log);
+  const status = log.isPending ? (log.variables as { status: PrayerStatus }).status : day.log[prayer];
+  const isAuto = auto && !log.isPending;
+  const started = Date.parse(day.times[prayer]) <= now;
+  const next = status ? NEXT[status] : 'prayed';
+  const state = isAuto ? 'not marked, counted missed' : status ? SAY[status] : 'not marked';
+  return (
+    <button
+      type="button"
+      className="pw-cell"
+      disabled={!started}
+      onClick={() => log.mutate({ date: day.date, prayer, status: next })}
+      title={`${NAME[prayer]}, ${dayLabel(day.date)}: ${state}${started ? ` — tap to mark ${SAY[next]}` : ''}`}
+    >
+      <i className={cx('pw-dot', status && `pw-${status}`, isAuto && 'pw-auto')} />
+      <span className="sr-only">
+        {NAME[prayer]}, {dayLabel(day.date)}: {state}
+      </span>
+    </button>
+  );
+}
+
+/** The last seven days, one dot per prayer. Dots are buttons, so a past day is corrected here. */
+function WeekGrid({ faith, now }: { faith: FaithState; now: number }) {
+  const today = todayStr();
+  const auto = new Set(faith.autoMissed.map((u) => `${u.date}|${u.prayer}`));
+  return (
+    <div className="prayer-week" role="group" aria-label="The last seven days">
+      <span />
+      {faith.week.map((d) => (
+        <span key={d.date} className={cx('pw-day', d.date === today && 'is-today')}>
+          {parseDay(d.date).toLocaleDateString(undefined, { weekday: 'narrow' })}
+        </span>
+      ))}
+      {PRAYERS.map((p) => (
+        <div key={p} style={{ display: 'contents' }}>
+          <span className="pw-name">{NAME[p]}</span>
+          {faith.week.map((d) => (
+            <WeekDot key={d.date} day={d} prayer={p} auto={auto.has(`${d.date}|${p}`)} now={now} />
+          ))}
+        </div>
+      ))}
+      <div className="pw-legend">
+        <span>
+          <i className="pw-dot pw-prayed" /> Prayed
+        </span>
+        <span>
+          <i className="pw-dot pw-late" /> Late
+        </span>
+        <span>
+          <i className="pw-dot pw-missed" /> Missed
+        </span>
+        {auto.size > 0 && (
+          <span>
+            <i className="pw-dot pw-missed pw-auto" /> Not marked
+          </span>
+        )}
+      </div>
+      {auto.size > 0 && (
+        <p className="pw-note">
+          {plural(auto.size, 'prayer')} passed without a mark and {auto.size === 1 ? 'counts' : 'count'} as missed. Prayed after all? Tap its dot.
+        </p>
       )}
+    </div>
+  );
+}
+
+/** Missed prayers still owed, by prayer. Folds to one line when nothing is owed. */
+function QadaPanel({ owed }: { owed: FaithState['owed'] }) {
+  const qada = useWrite(faithWrite.qada);
+  const [open, setOpen] = useState(false);
+  const [backlog, setBacklog] = useState<{ prayer: PrayerName; n: string } | null>(null);
+  const total = PRAYERS.reduce((n, p) => n + owed[p], 0);
+  const showGrid = total > 0 || open;
+  return (
+    <div className="prayer-qada">
+      <div className="qada-head">
+        <b>To make up</b>
+        {total ? (
+          <span className="hint">{plural(total, 'prayer')}</span>
+        ) : showGrid ? (
+          <span className="hint">Nothing owed</span>
+        ) : (
+          <span className="hint">
+            Nothing owed ·{' '}
+            <button type="button" className="link" onClick={() => setOpen(true)}>
+              Add earlier misses
+            </button>
+          </span>
+        )}
+      </div>
+      {showGrid && (
+        <div className="qada-grid">
+          {PRAYERS.map((p) => (
+            <div key={p} className={cx('qada', !owed[p] && 'is-zero')}>
+              <span className="qada-name">{NAME[p]}</span>
+              <b className="num">{owed[p]}</b>
+              <div className="qada-actions">
+                <button type="button" className="pb" disabled={!owed[p] || qada.isPending} onClick={() => qada.mutate({ prayer: p, delta: -1 })} title="Made one up">
+                  <Check size={13} strokeWidth={2.6} />
+                  <span className="sr-only">Made up one {NAME[p]}</span>
+                </button>
+                <button type="button" className="pb" aria-pressed={backlog?.prayer === p} onClick={() => setBacklog(backlog?.prayer === p ? null : { prayer: p, n: '' })} title="Add earlier missed prayers">
+                  <Plus size={13} strokeWidth={2.6} />
+                  <span className="sr-only">Add earlier missed {NAME[p]}</span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {backlog && (
+        <form
+          className="qada-add"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const n = Math.round(Number(backlog.n));
+            if (n > 0) qada.mutate({ prayer: backlog.prayer, delta: n }, { onSuccess: () => setBacklog(null) });
+          }}
+        >
+          <span className="hint grow">Missed {NAME[backlog.prayer]} from before you started tracking:</span>
+          <input className="input num" style={{ width: 80 }} type="number" min={1} autoFocus value={backlog.n} onChange={(e) => setBacklog({ ...backlog, n: e.target.value })} aria-label="How many" />
+          <button type="submit" className="btn btn-sm" disabled={qada.isPending}>
+            Add
+          </button>
+        </form>
+      )}
+      {qada.error && <p className="error-text">{qada.error.message}</p>}
     </div>
   );
 }
@@ -205,15 +350,12 @@ export function PrayerCard() {
   const { data: faith } = useFaith();
   const now = useNow();
   const [editing, setEditing] = useState(false);
-  const qada = useWrite(faithWrite.qada);
-  const [backlog, setBacklog] = useState<{ prayer: PrayerName; n: string } | null>(null);
   if (!faith) return null;
   const tz = faith.settings.timezone;
   const travelling = faith.configured && tz !== deviceTz();
-  const owedTotal = PRAYERS.reduce((n, p) => n + faith.owed[p], 0);
-  const today = todayStr();
   const curDay = currentDay(faith);
   const lastNight = curDay && curDay !== faith.today ? curDay : undefined;
+  const autoToday = new Set(faith.autoMissed.filter((u) => u.date === faith.today?.date).map((u) => u.prayer));
 
   return (
     <>
@@ -265,97 +407,25 @@ export function PrayerCard() {
                 const isCurrent = faith.current?.prayer === p && curDay === faith.today;
                 const isNext = faith.next?.prayer === p && Date.parse(faith.next.at) > now && Date.parse(faith.next.at) - now < 18 * 3_600_000 && faith.next.at === faith.today!.times[p];
                 const started = Date.parse(faith.today!.times[p]) <= now;
+                const auto = autoToday.has(p);
                 return (
                   <li key={p} className={cx('prayer-row', isCurrent && 'is-current')}>
                     <span className="prayer-name">{NAME[p]}</span>
                     <span className="prayer-time num">{hhmm(faith.today!.times[p], tz)}</span>
                     <span className="prayer-when">
-                      {isCurrent && faith.current ? `ends in ${untilLabel(faith.current.endsAt, now)}` : isNext ? `in ${untilLabel(faith.next!.at, now)}` : ''}
+                      {isCurrent && faith.current ? `ends in ${untilLabel(faith.current.endsAt, now)}` : isNext ? `in ${untilLabel(faith.next!.at, now)}` : auto ? 'not marked' : ''}
                     </span>
-                    <StatusButtons date={faith.today!.date} prayer={p} status={faith.today!.log[p]} disabled={!started} />
+                    <StatusButtons date={faith.today!.date} prayer={p} status={faith.today!.log[p]} disabled={!started} auto={auto} />
                   </li>
                 );
               })}
             </ul>
 
-            <div className="prayer-week" aria-label="The last seven days">
-              <span />
-              {faith.week.map((d) => (
-                <span key={d.date} className={cx('pw-day', d.date === today && 'is-today')}>
-                  {parseDay(d.date).toLocaleDateString(undefined, { weekday: 'narrow' })}
-                </span>
-              ))}
-              {PRAYERS.map((p) => (
-                <div key={p} style={{ display: 'contents' }}>
-                  <span className="pw-name">{NAME[p]}</span>
-                  {faith.week.map((d) => (
-                    <i key={d.date} className={cx('pw-dot', d.log[p] && `pw-${d.log[p]}`)} title={`${NAME[p]}, ${d.date}: ${d.log[p] ?? 'not marked'}`} />
-                  ))}
-                </div>
-              ))}
-            </div>
-
-            {faith.autoMissed.length > 0 && (
-              <div className="prayer-unmarked">
-                <div className="list-label" style={{ padding: '0 0 4px' }}>
-                  Missed — time passed
-                </div>
-                <ul>
-                  {faith.autoMissed.slice(0, 6).map((u) => (
-                    <li key={`${u.date}-${u.prayer}`} className="prayer-row">
-                      <span className="prayer-name">{NAME[u.prayer]}</span>
-                      <span className="prayer-when">{u.date === today ? 'today' : parseDay(u.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                      <span className="prayer-missed-tag">Missed</span>
-                      {/* Prayed after all? Mark it, and it comes off the make-up count. */}
-                      <StatusButtons date={u.date} prayer={u.prayer} status="missed" offerMissed={false} />
-                    </li>
-                  ))}
-                </ul>
-                {faith.autoMissed.length > 6 && <span className="hint">and {faith.autoMissed.length - 6} more earlier this week</span>}
-              </div>
-            )}
+            <WeekGrid faith={faith} now={now} />
           </>
         )}
 
-        <div className="prayer-qada">
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <b>To make up</b>
-            <span className="hint">{owedTotal ? plural(owedTotal, 'prayer') : 'Nothing owed'}</span>
-          </div>
-          <div className="qada-grid">
-            {PRAYERS.map((p) => (
-              <div key={p} className="qada">
-                <span className="hint">{NAME[p]}</span>
-                <b className="num">{faith.owed[p]}</b>
-                <div className="row" style={{ gap: 2 }}>
-                  <button type="button" className="icon-btn icon-btn-sm" disabled={!faith.owed[p] || qada.isPending} onClick={() => qada.mutate({ prayer: p, delta: -1 })} aria-label={`Made up one ${NAME[p]}`} title="Made one up">
-                    <Check size={13} />
-                  </button>
-                  <button type="button" className="icon-btn icon-btn-sm" onClick={() => setBacklog({ prayer: p, n: '' })} aria-label={`Add earlier missed ${NAME[p]}`} title="Add earlier missed prayers">
-                    +
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          {backlog && (
-            <form
-              className="row"
-              style={{ marginTop: 10 }}
-              onSubmit={(e) => {
-                e.preventDefault();
-                const n = Math.round(Number(backlog.n));
-                if (n > 0) qada.mutate({ prayer: backlog.prayer, delta: n }, { onSuccess: () => setBacklog(null) });
-              }}
-            >
-              <span className="hint grow">Missed {NAME[backlog.prayer]} prayers from before you started tracking:</span>
-              <input className="input num" style={{ width: 90 }} type="number" min={1} autoFocus value={backlog.n} onChange={(e) => setBacklog({ ...backlog, n: e.target.value })} aria-label="How many" />
-              <button type="submit" className="btn btn-sm">
-                Add
-              </button>
-            </form>
-          )}
-        </div>
+        <QadaPanel owed={faith.owed} />
       </section>
       {editing && <LocationSheet faith={faith} onClose={() => setEditing(false)} />}
     </>
