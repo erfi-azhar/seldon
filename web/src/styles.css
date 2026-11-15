@@ -7883,6 +7883,30 @@ button.layover-pill:hover .layover-lounge {
 .rg-stage {
   position: relative;
 }
+/* Back to the overhead view after turning or zooming a tracked flight. */
+.rg-follow {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: #fff;
+  background: oklch(0.5 0.12 245);
+  box-shadow: 0 4px 14px -6px rgb(10 30 60 / 0.45);
+  cursor: pointer;
+}
+.rg-follow:hover {
+  background: oklch(0.45 0.12 245);
+}
+.rg-follow:focus-visible {
+  outline: 2px solid oklch(0.6 0.13 245);
+  outline-offset: 2px;
+}
 .route-globe.is-fill {
   grid-template-rows: minmax(0, 1fr) auto;
 }
