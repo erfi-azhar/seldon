@@ -98,6 +98,7 @@ function ScreeningsEntry({ sphereId }: { sphereId: string }) {
 
 export function SphereDetail({ id }: { id: string }) {
   const { data, isError } = useSphere(id);
+  const { data: travel } = useTravel();
   const { openSheet, ask, agentName } = useApp();
   const [showClosed, setShowClosed] = useState(false);
   const saveVision = useWrite((vision: string) => write.patch(`/spheres/${id}`, { vision }));
@@ -129,6 +130,15 @@ export function SphereDetail({ id }: { id: string }) {
   const quiet = s.stats.quietDays;
   // Spheres with a card you use every day: food, prayers, work to-dos and job alerts, money and markets.
   const hasDaily = s.key === 'health' || s.key === 'faith' || s.key === 'work' || s.key === 'finances';
+  // Travels has no habits card, and its numbers only show once they matter: a number with a reading,
+  // or a trip under way or within the week.
+  const travels = s.key === 'travels';
+  const today = new Date().toISOString().slice(0, 10);
+  const soon = (d: string) => (Date.parse(d) - Date.parse(today)) / 86_400_000;
+  const numbersShown =
+    !travels ||
+    metrics.some((m) => m.latest !== null) ||
+    !!travel?.trips.some((t) => t.startDate <= today ? t.endDate >= today : soon(t.startDate) <= 7);
 
   const habitsCard = (
     <section className="card">
@@ -200,8 +210,9 @@ export function SphereDetail({ id }: { id: string }) {
       {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} projects={projects} />}
       {/* Learning's reading list is a shelf, and a shelf wants the full width. */}
       {s.key === 'learning' && <ReadingList />}
-      {/* With a daily card on the left, tasks join habits on the right so the columns even out. */}
-      <div className="detail-grid">
+      {/* With a daily card on the left, tasks join habits on the right so the columns even out. Travels
+          keeps only what needs you here: its to-dos live with each trip. */}
+      <div className={travels ? undefined : 'detail-grid'}>
         <div className="col">
           <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />
           {s.key === 'health' && <HealthToday />}
@@ -209,7 +220,7 @@ export function SphereDetail({ id }: { id: string }) {
           {s.key === 'finances' && <CashflowCard />}
           {s.key === 'finances' && <PlanCard />}
           {(s.key === 'work' || s.key === 'finances') && habitsCard}
-          {!hasDaily && (
+          {!hasDaily && !travels && (
             <section className="card">
               <div className="card-head">
                 <h2 className="card-title">Tasks</h2>
@@ -224,9 +235,9 @@ export function SphereDetail({ id }: { id: string }) {
             </section>
           )}
         </div>
-        <div className="col">
+        {!travels && <div className="col">
           {s.key === 'faith' && <FaithVerse />}
-          {s.key === 'work' ? <JobAlertsCard /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
+          {s.key === 'work' ? <JobAlertsCard /> : s.key === 'finances' ? <CryptoDesk /> : travels ? null : habitsCard}
           {s.key === 'finances' && <BillsCard />}
           {hasDaily && s.key !== 'work' && (
             <section className="card">
@@ -242,12 +253,12 @@ export function SphereDetail({ id }: { id: string }) {
               <AddTask sphereId={id} placeholder={`Add a task to ${s.name}…`} />
             </section>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Progress: what you update now and then, and read for the trend. */}
       <div className="band-label">Progress</div>
-      <div className="detail-grid">
+      <div className={numbersShown ? 'detail-grid' : undefined}>
         <div className="col">
           <section className="card">
             <div className="card-head">
@@ -279,7 +290,7 @@ export function SphereDetail({ id }: { id: string }) {
           {s.key === 'health' && <TrainingAndBody part="training" />}
           {s.key === 'finances' && <PortfolioCard />}
         </div>
-        <div className="col">
+        {numbersShown && <div className="col">
           <section className="card">
             <div className="card-head">
               <h2 className="card-title">Numbers</h2>
@@ -307,7 +318,7 @@ export function SphereDetail({ id }: { id: string }) {
           </section>
           {s.key === 'health' && <TrainingAndBody part="body" />}
           {s.key === 'finances' && <DebtsCard />}
-        </div>
+        </div>}
       </div>
 
       {/* Reference: what you look things up in, and rarely change. */}
