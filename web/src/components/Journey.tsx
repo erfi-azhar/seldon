@@ -27,18 +27,23 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
   const next = journey.legs[phase.leg + 1];
   const last = journey.legs[journey.legs.length - 1]!;
 
-  if (phase.kind === 'before')
+  if (phase.kind === 'before') {
+    const airport = leg.fromName || leg.fromCode;
     return (
       <div className="journey-now">
-        <b className="jn-title">Reach the airport by {clock(reachAirportBy(leg), leg.startTz)}</b>
+        <b className="jn-title">
+          Reach {leg.fromTerminal ? `Terminal ${leg.fromTerminal}` : airport} by {clock(reachAirportBy(leg), leg.startTz)}
+        </b>
         <span className="jn-sub">
-          Set off by {clock(leaveBy(leg), leg.startTz)} · {leg.fromName || leg.fromCode}
+          Set off by {clock(leaveBy(leg), leg.startTz)}
+          {leg.fromTerminal && ` · ${airport}`}
         </span>
-        <a className="jn-btn" href={mapsTo(`${leg.fromName || leg.fromCode} Airport, ${city(leg, 'from')}`)} target="_blank" rel="noreferrer">
+        <a className="jn-btn" href={mapsTo(`${airport} Airport${leg.fromTerminal ? ` Terminal ${leg.fromTerminal}` : ''}, ${city(leg, 'from')}`)} target="_blank" rel="noreferrer">
           <Navigation size={14} aria-hidden /> Directions
         </a>
       </div>
     );
+  }
 
   if (phase.kind === 'airport')
     return (

@@ -6953,7 +6953,6 @@ textarea.title-input {
   color: var(--ink-2);
   line-height: 1.45;
 }
-.lounge-list,
 .tm-plan,
 .tm-today {
   list-style: none;
@@ -6961,18 +6960,6 @@ textarea.title-input {
   padding: 0;
   display: grid;
   gap: 6px;
-}
-.lounge-list li {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  font-size: 13.5px;
-  line-height: 1.4;
-}
-.lounge-list li svg {
-  flex: none;
-  transform: translateY(2px);
-  color: oklch(0.6 0.11 75);
 }
 .lounge-none {
   margin: 0;
@@ -9656,16 +9643,17 @@ button.layover-pill:hover .layover-lounge {
   gap: 16px;
 }
 .td-steps {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+  display: flex;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .td-steps li {
   position: relative;
+  flex: 1 1 0;
+  min-width: 0;
   display: grid;
+  align-content: start;
   gap: 2px;
   padding-top: 16px;
   padding-right: 6px;
@@ -9682,8 +9670,27 @@ button.layover-pill:hover .layover-lounge {
   right: 6px;
   border-top: 1.5px solid var(--line-2);
 }
+/* The last stop hugs the right edge; the rail runs on into it. */
+.td-steps li:nth-last-child(2)::before {
+  right: 0;
+}
+.td-steps li:last-child {
+  flex: 0 0 auto;
+  justify-items: end;
+  padding-right: 0;
+  padding-left: 12px;
+  text-align: right;
+}
 .td-steps li:last-child::before {
-  display: none;
+  left: 0;
+  right: 15px;
+}
+.td-steps li:last-child i {
+  left: auto;
+  right: 0;
+}
+.td-steps li:last-child:is(.is-now, .is-done)::before {
+  border-color: oklch(0.55 0.12 245 / 0.6);
 }
 .td-steps li.is-done::before {
   border-color: oklch(0.55 0.12 245 / 0.6);
@@ -9719,81 +9726,13 @@ button.layover-pill:hover .layover-lounge {
 .td-steps li.is-done {
   color: var(--ink-4);
 }
-.td-flight {
-  display: grid;
-  gap: 10px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+/* The flight, as the trip page shows it, set into the travel card. */
+.flight-card.is-inline {
+  background: var(--surface-2, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--line);
 }
-.td-route {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-}
-.td-end {
-  display: grid;
-  line-height: 1.2;
-}
-.td-end.is-right {
-  text-align: right;
-}
-.td-code {
-  font-size: 26px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-.td-time {
-  font-size: 14px;
-  font-weight: 550;
-}
-.td-city {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--ink-3);
-}
-.td-mid {
-  display: grid;
-  justify-items: center;
-  gap: 3px;
-  font-size: 12px;
-  color: var(--ink-3);
-}
-.td-flightno {
-  font-weight: 600;
-  color: var(--ink-2);
-}
-.td-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-}
-.td-line i {
-  flex: 1;
-  border-top: 1.5px dashed var(--line-2);
-}
-.td-facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-.td-leaves {
-  color: var(--ink-2);
-}
-.td-leaves b {
-  color: var(--ink);
-  font-weight: 600;
-}
-.td-clocks {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  white-space: nowrap;
+.flight-card.is-inline:hover {
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .td-folds {
   display: grid;
@@ -9866,6 +9805,57 @@ button.layover-pill:hover .layover-lounge {
 .td-fold-body {
   padding: 0 0 12px 28px;
 }
+/* Open, the fold's own content says it; the gist would only repeat it. */
+.td-fold[open] > summary .td-fold-gist {
+  visibility: hidden;
+}
+/* A flight's lounges: each a name, how you get in, where it is and what to know. */
+.lounge-options {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lounge-options li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.lounge-options li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.lounge-options li:last-child {
+  padding-bottom: 0;
+}
+.lounge-option-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.lounge-option-head b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.lounge-option-via {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--ink-2);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.lounge-option-where {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lounge-option-note {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
 .td-foot {
   display: flex;
   justify-content: space-between;
@@ -9876,14 +9866,6 @@ button.layover-pill:hover .layover-lounge {
 @media (prefers-reduced-motion: reduce) {
   .td-fold-chev {
     transition: none;
-  }
-}
-@media (max-width: 420px) {
-  .td-code {
-    font-size: 22px;
-  }
-  .td-clocks {
-    margin-left: 0;
   }
 }
 

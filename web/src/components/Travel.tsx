@@ -16,7 +16,7 @@ import { AirlineTail } from './Tails.tsx';
 import { NowPanel, RouteCard } from './Journey.tsx';
 import { ItemModules } from './ItemModules.tsx';
 import { TripGuideBody } from './TripGuide.tsx';
-import { activeJourney, boardsAt, clock, journeys, leaveBy, reachAirportBy, span, type Journey } from '../../../shared/journey.ts';
+import { activeJourney, boardsAt, clock, journeys, leaveBy, reachAirportBy, type Journey } from '../../../shared/journey.ts';
 import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
@@ -549,30 +549,6 @@ function ItemSheet({ trip, item, date, onClose }: { trip: Trip; item: ItineraryI
   );
 }
 
-function LoungeList({ seg, notes }: { seg: Segment; notes?: string[] }) {
-  if (notes?.length)
-    return (
-      <ul className="lounge-list">
-        {notes.map((n) => (
-          <li key={n}>
-            <Sofa size={13} /> {n}
-          </li>
-        ))}
-      </ul>
-    );
-  if (!seg.lounges.length) return <p className="hint lounge-none">No lounge from this fare or your status.</p>;
-  return (
-    <ul className="lounge-list">
-      {seg.lounges.map((l) => (
-        <li key={l.access}>
-          <Sofa size={13} /> {l.access}
-          <span className="faint"> · {l.basis}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /** Flights whose airports are known, as legs for the route globe. */
 function globeLegs(flights: Segment[]): GlobeLeg[] {
   return flights
@@ -597,17 +573,31 @@ const AIRLINES: Record<string, string> = {
 
 /** A flight as a card: the airline, the two times with the journey between them, then seat and booking reference. */
 function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
+  const until = daysFrom(todayStr(), dayOf(s.startLocal));
+  const airline = AIRLINES[s.carrier.toUpperCase()] ?? (s.carrier || 'Flight');
+  return (
+    <button type="button" className={cx('flight-card', until < 0 && 'is-past')} onClick={onEdit} aria-label={`${airline} ${s.carrier} ${s.number}, ${s.fromCode} to ${s.toCode}, ${weekday(dayOf(s.startLocal))} at ${time(s.startLocal)}. Edit`}>
+      <FlightFace s={s} />
+    </button>
+  );
+}
+
+/**
+ * A flight as the trip page shows it: the airline and its tail, the times and places at each end,
+ * then check-in, boarding, cabin and booking reference. The badge says when it is, unless given.
+ */
+function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: 'soon' | 'past' | '' } }) {
   const today = todayStr();
   const day = dayOf(s.startLocal);
   const plus = daysFrom(day, dayOf(s.endLocal));
   const until = daysFrom(today, day);
-  const badge = until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day);
+  const when = badge ?? { label: until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day), tone: until < 0 ? 'past' : until <= 1 ? 'soon' : '' };
   const code = s.carrier.toUpperCase();
   const airline = AIRLINES[code] ?? (s.carrier || 'Flight');
   const place = (c: string, city: string | undefined, name: string) => [c, city || name].filter(Boolean).join(' · ') || '—';
   const details = [s.cabin, s.seat && `Seat ${s.seat}`].filter(Boolean).join(' · ');
   return (
-    <button type="button" className={cx('flight-card', until < 0 && 'is-past')} onClick={onEdit} aria-label={`${airline} ${s.carrier} ${s.number}, ${s.fromCode} to ${s.toCode}, ${weekday(day)} at ${time(s.startLocal)}. Edit`}>
+    <>
       <span className="fc-head">
         <span className="fc-logo" aria-hidden>
           <AirlineTail code={code} size={40} />
@@ -616,7 +606,7 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
           <b>{airline}</b>
           <span>{`${s.carrier} ${s.number}`.trim()}</span>
         </span>
-        <span className={cx('fc-badge', until < 0 ? 'is-past' : until <= 1 ? 'is-soon' : '')}>{badge}</span>
+        <span className={cx('fc-badge', when.tone === 'past' ? 'is-past' : when.tone === 'soon' ? 'is-soon' : '')}>{when.label}</span>
       </span>
       <span className="fc-route">
         <span className="fc-end">
@@ -668,7 +658,7 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
           </span>
         )}
       </span>
-    </button>
+    </>
   );
 }
 
@@ -2366,7 +2356,67 @@ function Fold({ id, icon, title, gist, open, onToggle, children }: { id: string;
 }
 
 /** A lounge note's name, without the directions and asides that follow it. */
-const loungeName = (note: string) => note.split(/ \(| — | - /)[0]!.trim();
+interface LoungeLine {
+  name: string;
+  /** How you get in, when it is not your own status: "Priority Pass". */
+  via: string;
+  /** Where it is: terminal, level, nearby gates. */
+  where: string;
+  /** One thing worth knowing. */
+  note: string;
+}
+
+const capital = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+
+/**
+ * A lounge as Seldon wrote it ("With Priority Pass: Plaza Premium Lounge in T3 if Gold is busy",
+ * "KrisFlyer Gold Lounge, Terminal 3 (level 3, above the transfer area) — showers") split into
+ * its name, how you get in, where it is and what to know. Anything it can't place stays in the note.
+ */
+function loungeLine(text: string): LoungeLine {
+  let rest = text.trim();
+  let via = '';
+  const v = rest.match(/^(?:with|via|using|on)\s+([^:]{2,40}):\s*/i);
+  if (v) {
+    via = v[1]!.trim();
+    rest = rest.slice(v[0].length);
+  }
+  const [head = '', ...tail] = rest.split(/\s+[—–]\s+|\s+-\s+/);
+  let note = tail.join(' — ');
+  const cut = head.search(/,\s|\s\(|\s(?:in|at|on|near|by)\s/);
+  const name = (cut > 0 ? head.slice(0, cut) : head).trim();
+  let where = cut > 0 ? head.slice(cut).replace(/^,\s*/, '').trim() : '';
+  // "Terminal 3 (level 3, above the transfer area)" reads as "Terminal 3 · level 3, above the transfer area".
+  where = where.replace(/\s*\(([^)]*)\)/g, ' · $1').trim();
+  // A trailing condition ("in T3 if Gold is busy") is a note, not a place.
+  const cond = where.match(/^(.*?)\s+(if|when|unless|for)\s+(.*)$/i);
+  if (cond) {
+    where = cond[1]!.trim();
+    note = [capital(`${cond[2]} ${cond[3]}`), note].filter(Boolean).join(' · ');
+  }
+  where = where.replace(/^(?:in|at|on)\s+/i, '').replace(/\bT(\d+[A-Z]?)\b/g, 'Terminal $1');
+  return { name: name || text, via, where: where && capital(where), note: note && capital(note) };
+}
+
+/** The lounges for a flight, one to a block: the name, how you get in, where it is, what to know. */
+function LoungeOptions({ seg, notes }: { seg: Segment; notes?: string[] }) {
+  const lines: LoungeLine[] = notes?.length ? notes.map(loungeLine) : seg.lounges.map((l) => ({ name: l.access, via: l.basis, where: '', note: '' }));
+  if (!lines.length) return <p className="hint lounge-none">No lounge from this fare or your status.</p>;
+  return (
+    <ul className="lounge-options">
+      {lines.map((l) => (
+        <li key={`${l.name}-${l.via}`}>
+          <div className="lounge-option-head">
+            <b>{l.name}</b>
+            {l.via && <span className="lounge-option-via">{l.via}</span>}
+          </div>
+          {l.where && <span className="lounge-option-where">{l.where}</span>}
+          {l.note && <span className="lounge-option-note">{l.note}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /** The day's phases as a row of stops, the one you're in lit. */
 function DaySteps({ journey }: { journey: Journey }) {
@@ -2408,7 +2458,6 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
   const loungeNotes = notes?.lounges?.length ? notes.lounges : f.lounges.map((l) => l.access);
   const openTodos = trip.todos.filter((x) => !x.done).length;
   const loungeTrip = lounges ? t.trips.find((x) => x.id === lounges.to.tripId) : undefined;
-  const facts = [f.cabin, f.seat && `Seat ${f.seat}`, f.confirmation].filter(Boolean) as string[];
 
   return (
     <section className="card travel-mode travel-day is-link" onClick={(e) => onCardItself(e) && openTrip(trip)}>
@@ -2428,60 +2477,25 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
               {f.carrier} {f.number} leaves {dayOf(f.startLocal) === todayStr() ? 'today' : weekday(dayOf(f.startLocal))} at {time(f.startLocal)}
             </b>
             <span className="jn-sub">
-              Be at {city(f.fromName, f.fromCode)} by {clock(reachAirportBy(f), f.startTz)} · set off by {clock(leaveBy(f), f.startTz)}
+              Be at {f.fromTerminal ? `Terminal ${f.fromTerminal}, ${city(f.fromName, f.fromCode)}` : city(f.fromName, f.fromCode)} by {clock(reachAirportBy(f), f.startTz)} · set off by {clock(leaveBy(f), f.startTz)}
             </span>
           </div>
         )}
         {journey && <DaySteps journey={journey} />}
       </div>
 
-      <div className="td-flight">
-        {/* In the air and after landing, the panel above already draws the route. */}
-        {!(phase && (phase.kind === 'flight' || phase.kind === 'arrived')) && (
-          <div className="td-route">
-            <div className="td-end">
-              <b className="td-code num">{f.fromCode}</b>
-              <span className="td-time num">{time(f.startLocal)}</span>
-              <span className="td-city">{city(f.fromName, f.fromCode)}</span>
-            </div>
-            <div className="td-mid">
-              <span className="td-flightno">
-                {f.carrier} {f.number}
-              </span>
-              <span className="td-line" aria-hidden>
-                <i />
-                <Plane size={14} />
-                <i />
-              </span>
-              <span className="td-dur">{span((Date.parse(f.endUtc) - takesOff) / 60_000)}</span>
-            </div>
-            <div className="td-end is-right">
-              <b className="td-code num">{f.toCode}</b>
-              <span className="td-time num">{time(f.endLocal)}</span>
-              <span className="td-city">{city(f.toName, f.toCode)}</span>
-            </div>
-          </div>
-        )}
-        <div className="td-facts">
-          {beforeTakeoff && (
-            <span className="td-leaves">
-              Leaves in <b className="num">{untilLabel(f.startUtc, now)}</b>
-            </span>
-          )}
-          {facts.map((x) => (
-            <span key={x}>{x}</span>
-          ))}
-          <span className="td-clocks" title="Local time at each end now">
-            <Clock size={11} aria-hidden /> <span className="num">{clockIn(f.startTz, now)}</span> {f.fromCode} · <span className="num">{clockIn(f.endTz, now)}</span> {f.toCode}
-          </span>
+      {/* In the air and after landing, the panel above already draws the flight. */}
+      {!(phase && (phase.kind === 'flight' || phase.kind === 'arrived')) && (
+        <div className="flight-card is-inline">
+          <FlightFace s={f} badge={beforeTakeoff ? { label: `Leaves in ${untilLabel(f.startUtc, now)}`, tone: 'soon' } : undefined} />
         </div>
-      </div>
+      )}
 
       {(beforeTakeoff || openTodos > 0) && (
         <div className="td-folds">
           {beforeTakeoff && (
-            <Fold id="lounge" icon={<Sofa size={14} />} title="Lounge" gist={loungeNotes.length ? `${loungeName(loungeNotes[0]!)}${loungeNotes.length > 1 ? ` · +${loungeNotes.length - 1}` : ''}` : 'None on this fare'} open={folds.has('lounge')} onToggle={setFold}>
-              <LoungeList seg={f} notes={notes?.lounges} />
+            <Fold id="lounge" icon={<Sofa size={14} />} title="Lounge" gist={loungeNotes.length ? `${loungeLine(loungeNotes[0]!).name}${loungeNotes.length > 1 ? ` · +${loungeNotes.length - 1}` : ''}` : 'None on this fare'} open={folds.has('lounge')} onToggle={setFold}>
+              <LoungeOptions seg={f} notes={notes?.lounges} />
             </Fold>
           )}
           {beforeTakeoff &&

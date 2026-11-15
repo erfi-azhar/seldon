@@ -436,9 +436,9 @@ upsertLoyalty(store, { program: 'KrisFlyer', tier: 'Elite Gold', points: 86420, 
 upsertLoyalty(store, { program: 'Marriott Bonvoy', tier: 'Platinum Elite', points: 212800, progress: 47, progressTarget: 75, progressLabel: 'nights to Titanium', memberSuffix: '0932' }, 'gmail', true);
 upsertLoyalty(store, { program: 'Priority Pass', kind: 'lounge', tier: 'Prestige' }, 'manual', true);
 const tokyo = createTrip(store, { title: 'Autumn in Tokyo', destination: 'Tokyo', purpose: 'leisure', startDate: addDays(today, 1), endDate: addDays(today, 6), notes: 'Momiji season. Want: good ramen (halal), a day trip to Nikko or Kamakura, coffee shops in Kiyosumi.' }, true);
-const out = addSegment(store, tokyo.id, { kind: 'flight', carrier: 'SQ', number: '636', fromCode: 'SIN', toCode: 'HND', startLocal: `${addDays(today, 1)}T08:05`, endLocal: `${addDays(today, 1)}T15:55`, cabin: 'Premium Economy', seat: '31A', confirmation: 'K7XQ2M' }, 'gmail', 'demo-sq-1', true).segment;
+const out = addSegment(store, tokyo.id, { kind: 'flight', carrier: 'SQ', number: '636', fromCode: 'SIN', toCode: 'HND', fromTerminal: '3', toTerminal: '3', startLocal: `${addDays(today, 1)}T08:05`, endLocal: `${addDays(today, 1)}T15:55`, cabin: 'Premium Economy', seat: '31A', confirmation: 'K7XQ2M' }, 'gmail', 'demo-sq-1', true).segment;
 addSegment(store, tokyo.id, { kind: 'stay', title: 'The Westin Tokyo', carrier: 'Marriott', toCode: 'HND', address: 'Yebisu Garden Place, Meguro', startLocal: `${addDays(today, 1)}T15:00`, endLocal: `${addDays(today, 6)}T12:00`, confirmation: '88213907' }, 'gmail', 'demo-mar-1', true);
-addSegment(store, tokyo.id, { kind: 'flight', carrier: 'SQ', number: '633', fromCode: 'HND', toCode: 'SIN', startLocal: `${addDays(today, 6)}T11:05`, endLocal: `${addDays(today, 6)}T17:35`, cabin: 'Premium Economy', seat: '31A', confirmation: 'K7XQ2M' }, 'gmail', 'demo-sq-2', true);
+addSegment(store, tokyo.id, { kind: 'flight', carrier: 'SQ', number: '633', fromCode: 'HND', toCode: 'SIN', fromTerminal: '3', toTerminal: '3', startLocal: `${addDays(today, 6)}T11:05`, endLocal: `${addDays(today, 6)}T17:35`, cabin: 'Premium Economy', seat: '31A', confirmation: 'K7XQ2M' }, 'gmail', 'demo-sq-2', true);
 db.prepare('UPDATE trips SET companion = ?, drafted = 1 WHERE id = ?').run(
   JSON.stringify({
     [out.id]: {
@@ -464,9 +464,9 @@ addItems(store, tokyo.id, [
 ], true);
 
 const london = createTrip(store, { title: 'London — design leadership summit', destination: 'London', purpose: 'work', startDate: addDays(today, 24), endDate: addDays(today, 29) }, true);
-addSegment(store, london.id, { kind: 'flight', carrier: 'SQ', number: '322', fromCode: 'SIN', toCode: 'LHR', startLocal: `${addDays(today, 24)}T23:35`, endLocal: `${addDays(today, 25)}T06:25`, cabin: 'Business', seat: '14A', confirmation: 'R2PL9V' }, 'gmail', 'demo-sq-3', true);
+addSegment(store, london.id, { kind: 'flight', carrier: 'SQ', number: '322', fromCode: 'SIN', toCode: 'LHR', fromTerminal: '3', toTerminal: '2', startLocal: `${addDays(today, 24)}T23:35`, endLocal: `${addDays(today, 25)}T06:25`, cabin: 'Business', seat: '14A', confirmation: 'R2PL9V' }, 'gmail', 'demo-sq-3', true);
 addSegment(store, london.id, { kind: 'stay', title: 'London Marriott Hotel County Hall', carrier: 'Marriott', toCode: 'LHR', address: 'Westminster Bridge Rd', startLocal: `${addDays(today, 25)}T15:00`, endLocal: `${addDays(today, 29)}T12:00` }, 'gmail', 'demo-mar-2', true);
-addSegment(store, london.id, { kind: 'flight', carrier: 'SQ', number: '317', fromCode: 'LHR', toCode: 'SIN', startLocal: `${addDays(today, 29)}T11:30`, endLocal: `${addDays(today, 30)}T07:50`, cabin: 'Business', confirmation: 'R2PL9V' }, 'gmail', 'demo-sq-4', true);
+addSegment(store, london.id, { kind: 'flight', carrier: 'SQ', number: '317', fromCode: 'LHR', toCode: 'SIN', fromTerminal: '2', toTerminal: '3', startLocal: `${addDays(today, 29)}T11:30`, endLocal: `${addDays(today, 30)}T07:50`, cabin: 'Business', confirmation: 'R2PL9V' }, 'gmail', 'demo-sq-4', true);
 addSignal(store, {
   source: 'travel', kind: 'flight', externalId: `flight:${out.id}`, priority: 2, sphereId: sphere.travels!,
   title: 'SQ 636 to Tokyo leaves 08:05 tomorrow',
