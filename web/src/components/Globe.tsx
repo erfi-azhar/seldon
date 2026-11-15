@@ -404,6 +404,15 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
         setLegIndex(tracked!.leg);
       }
       const t = Math.min(time, INTRO);
+      // Overhead of the plane: close in on it and the way it has left to go, the plane a little below
+      // the middle with the destination ahead. The view moves in small steps (a repaint each), so it
+      // follows the plane across the flight without redrawing the globe every frame.
+      const real = clamp01((Date.now() - tracked!.start) / Math.max(1, tracked!.end - tracked!.start));
+      const step = Math.round(real * 1500) / 1500;
+      const pos = slerp(p.a, p.b, step);
+      const rest = angle(pos, p.b);
+      const R = Math.max(R0 * 2.2, Math.min(w * 3, (Math.min(w, L * 1.6) * 0.36) / Math.max(0.06, Math.sin(Math.min(rest, 1.2)))));
+      const close = facing(norm(slerp(pos, p.b, 0.42)), R, L * 0.5);
       let view: View;
       let destIn = 1;
       if (t < T_FOCUS) {
@@ -411,9 +420,9 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
         destIn = 0;
       } else if (t < T_FOCUS + T_FRAME) {
         const k = easeInOut((t - T_FOCUS) / T_FRAME);
-        view = { centre: norm(slerp(p.focus.centre, p.frame.centre, k)), R: p.focus.R + (p.frame.R - p.focus.R) * k };
+        view = { centre: norm(slerp(p.focus.centre, close.centre, k)), R: p.focus.R + (close.R - p.focus.R) * k };
         destIn = clamp01((t - T_FOCUS - T_FRAME * 0.4) / (T_FRAME * 0.5));
-      } else view = p.frame;
+      } else view = close;
       if (!drawn || angle(drawn.centre, view.centre) > 1e-5 || Math.abs(drawn.R - view.R) > 0.01) paintGlobe(view);
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -423,7 +432,6 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
 
       // The share of the flight behind it, by the clock; on the way in it sweeps out to there.
       const drawK = easeOut(clamp01((t - T_FOCUS - T_FRAME) / T_DRAW));
-      const real = clamp01((Date.now() - tracked!.start) / Math.max(1, tracked!.end - tracked!.start));
       const k = real * drawK;
       const pts = routePoints(p.a, p.b, view);
       const at = k * (pts.length - 1);
@@ -466,8 +474,23 @@ export function RouteGlobe({ legs, fill = false, live = null }: { legs: GlobeLeg
       label(p.leg.from.code, A.x, A.y, 1);
       label(p.leg.to.code, B.x, B.y, destIn);
       if (drawK > 0) {
-        const size = Math.max(0.75, Math.min(1.15, view.R / 170));
-        plane(x, y, Math.atan2(q1.y - q0.y, q1.x - q0.x), size * 1.02, 0.7, planePaint(p.leg.carrier));
+        // In the air: rings pulse out from the plane, one after another, fading as they grow.
+        if (!reduced()) {
+          // The markers' blue, which reads on the globe in light and dark (the route itself is near white).
+          ctx.strokeStyle = 'rgb(47, 111, 208)';
+          ctx.lineWidth = 2;
+          for (const lag of [0, 0.5]) {
+            const ph = ((time / 2000 + lag) % 1 + 1) % 1;
+            ctx.globalAlpha = 0.55 * (1 - ph) * drawK;
+            ctx.beginPath();
+            ctx.arc(x, y, 12 + 30 * easeOut(ph), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+        }
+        // Close in, the plane is the subject: drawn larger than on the touring globe.
+        const size = Math.max(0.9, Math.min(1.7, view.R / 260));
+        plane(x, y, Math.atan2(q1.y - q0.y, q1.x - q0.x), size, 0.7, planePaint(p.leg.carrier));
       }
     };
 

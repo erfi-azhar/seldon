@@ -606,6 +606,31 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
   );
 }
 
+/** In the air, the flight card's route as a live timeline: the time left, and a small plane moving along it each second. */
+function LiveTrack({ start, end }: { start: number; end: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const k = Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)));
+  return (
+    <>
+      <span className="fc-dur">
+        <b className="num">{span((end - now) / 60_000)}</b> left
+      </span>
+      <span className="fc-track" role="img" aria-label={`${Math.round(k * 100)}% of the way`}>
+        <i className="fc-dot is-done" />
+        <span className="fc-live-rail">
+          <span className="fc-live-flown" style={{ width: `${k * 100}%` }} />
+          <Plane size={14} fill="currentColor" strokeWidth={1.25} className="fc-live-plane" style={{ left: `${k * 100}%` }} />
+        </span>
+        <i className="fc-dot" />
+      </span>
+    </>
+  );
+}
+
 /**
  * A flight as the trip page shows it: the airline and its tail, the times and places at each end,
  * then check-in, boarding, cabin and booking reference. The badge says when it is, unless given.
@@ -618,7 +643,7 @@ function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: '
   const late = until >= 0 ? delayOf(s) : 0;
   const now = Date.now();
   const flying = now >= departs(s) && now < lands(s);
-  const when = flying ? { label: `In flight · ${span((lands(s) - now) / 60_000)} to go`, tone: 'live' as const } : late > 0 ? { label: `Delayed ${span(late / 60_000)}`, tone: 'late' as const } : (badge ?? { label: until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day), tone: until < 0 ? 'past' : until <= 1 ? 'soon' : '' });
+  const when = flying ? { label: 'In flight', tone: 'live' as const } : late > 0 ? { label: `Delayed ${span(late / 60_000)}`, tone: 'late' as const } : (badge ?? { label: until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day), tone: until < 0 ? 'past' : until <= 1 ? 'soon' : '' });
   // A late flight shows its new times, the booked ones struck through beside them.
   const shown = (local: string, tz: string, utc: string) =>
     late > 0 ? (
@@ -651,14 +676,20 @@ function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: '
           {s.fromTerminal && <span className="fc-terminal">Terminal {s.fromTerminal}</span>}
         </span>
         <span className="fc-mid">
-          <span className="fc-dur">{duration(s)}</span>
-          <span className="fc-track" aria-hidden>
-            <i className="fc-dot" />
-            <i className="fc-rule" />
-            <Plane size={13} />
-            <i className="fc-rule" />
-            <i className="fc-dot" />
-          </span>
+          {flying ? (
+            <LiveTrack start={departs(s)} end={lands(s)} />
+          ) : (
+            <>
+              <span className="fc-dur">{duration(s)}</span>
+              <span className="fc-track" aria-hidden>
+                <i className="fc-dot" />
+                <i className="fc-rule" />
+                <Plane size={13} />
+                <i className="fc-rule" />
+                <i className="fc-dot" />
+              </span>
+            </>
+          )}
           <span className="fc-stops">Nonstop</span>
         </span>
         <span className="fc-end is-arrival">
@@ -1393,9 +1424,10 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
           {allFlights.length === 0 ? (
             <p className="empty">{trip.options.length ? 'Nothing booked yet. Compare the options below.' : 'No flights yet. Add them, paste a confirmation, or let Gmail bring them in.'}</p>
           ) : legs.length ? (
-            <div className="flight-pair">
-              <div className="flight-globe">
-                <RouteGlobe key={way} legs={legs} fill live={live} />
+            <div className={cx('flight-pair', live && 'is-live')}>
+              {/* Beside the flights, touring them; in the air, above them on the card, tracking the one flying. */}
+              <div className={live ? 'flight-globe' : 'globe-card'}>
+                <RouteGlobe key={`${way}${live ? '-live' : ''}`} legs={legs} fill live={live} />
               </div>
               <div className="flight-stack">{flights.map(row)}</div>
             </div>

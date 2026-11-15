@@ -6389,6 +6389,43 @@ textarea.title-input {
   font-weight: 550;
   color: oklch(0.52 0.12 245);
 }
+/* In the air the route is a live timeline: flown solid to a small plane, the time left above it. */
+.fc-dur b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.fc-live-rail {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  background: var(--line-2);
+}
+.fc-live-flown {
+  position: absolute;
+  inset: -0.5px auto -0.5px 0;
+  height: 2px;
+  border-radius: 1px;
+  background: oklch(0.6 0.13 245);
+  transition: width 1s linear;
+}
+.fc-live-plane {
+  position: absolute;
+  top: 50%;
+  translate: -50% -50%;
+  rotate: 45deg;
+  color: oklch(0.6 0.13 245);
+  transition: left 1s linear;
+}
+.fc-dot.is-done {
+  background: oklch(0.6 0.13 245);
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fc-live-flown,
+  .fc-live-plane {
+    transition: none;
+  }
+}
 :root[data-theme='dark'] .fc-badge {
   color: oklch(0.85 0.08 250);
   background: oklch(0.3 0.06 250);
@@ -7756,11 +7793,15 @@ form.stage-center.is-opening > :not(.vault-anchor) {
 }
 
 /* In the Travels sphere: the route globe beside the flight cards, as tall as they are together. */
-/* A trip's flights: the globe on the card itself, the flights beneath it. */
 .flight-pair {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   gap: 10px;
+  align-items: stretch;
+}
+/* In the air: the globe tracks the flight on the card itself, the flights beneath it. */
+.flight-pair.is-live {
+  grid-template-columns: minmax(0, 1fr);
 }
 .flight-globe {
   display: flex;
@@ -7827,6 +7868,17 @@ button.layover-pill:hover .layover-lounge {
 }
 .layover-gap.is-long .layover-pill {
   color: oklch(0.55 0.1 250);
+}
+.globe-card {
+  display: flex;
+  min-width: 0;
+  padding: 12px 6px 14px;
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(16 18 30 / 0.04), 0 10px 24px -18px rgb(16 18 30 / 0.25);
+}
+.globe-card .route-globe {
+  flex: 1;
 }
 .rg-stage {
   position: relative;
