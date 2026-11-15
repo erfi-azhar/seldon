@@ -304,3 +304,23 @@ test('flights carry each airport’s city and coordinates, for the flight cards 
   assert.equal(unknown.fromGeo, null, 'an airport not in the table has no coordinates');
   assert.equal(unknown.fromCity, '');
 });
+
+test('on a trip, the context knows where you are now and where home is', () => {
+  const store = travelStore();
+  const trip = createTrip(store, { destination: 'Tokyo', purpose: 'leisure', startDate: '2026-12-01', endDate: '2026-12-05' });
+  addSegment(store, trip.id, { kind: 'flight', carrier: 'SQ', number: '638', fromCode: 'SIN', toCode: 'HND', startLocal: '2026-12-01T09:40', endLocal: '2026-12-01T17:35' });
+  addSegment(store, trip.id, { kind: 'stay', title: 'The Westin Tokyo', toCode: 'HND', startLocal: '2026-12-01T20:00', endLocal: '2026-12-05T12:00' });
+  // Before take-off: nothing has happened yet, so no "here".
+  assert.equal(travelContext(store, '2026-12-01', new Date('2026-12-01T00:30:00Z')).here, null);
+  // In the air (left 01:40Z, lands 08:35Z): still not anywhere new.
+  assert.equal(travelContext(store, '2026-12-01', new Date('2026-12-01T05:00:00Z')).here, null);
+  // Landed: Tokyo.
+  const landed = travelContext(store, '2026-12-01', new Date('2026-12-01T09:00:00Z'));
+  assert.equal(landed.here?.tz, 'Asia/Tokyo');
+  assert.equal(landed.here?.city, 'Tokyo');
+  assert.equal(landed.home?.tz, 'Asia/Singapore');
+  // Days later, staying at the hotel: still Tokyo.
+  assert.equal(travelContext(store, '2026-12-03', new Date('2026-12-03T03:00:00Z')).here?.tz, 'Asia/Tokyo');
+  // No trip: no "here".
+  assert.equal(travelContext(store, '2026-12-20', new Date('2026-12-20T03:00:00Z')).here, null);
+});

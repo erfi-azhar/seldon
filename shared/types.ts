@@ -1097,6 +1097,10 @@ export interface TravelContext {
   layovers: { airport: string; city: string; hours: number; afterSegmentId: string; nextSegmentId: string }[];
   dayOfTrip: number | null;
   tripDays: number | null;
+  /** Where you are on an active trip, from the last flight that landed or the stay you are in. */
+  here: { tz: string; city: string } | null;
+  /** Home, from the home airport. */
+  home: { tz: string; city: string } | null;
 }
 
 export interface TravelSettings {

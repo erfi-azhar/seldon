@@ -826,6 +826,24 @@ export function travelContext(store: Store, today: string, now: Date = new Date(
       null)
     : null;
 
+  // Where you are right now on the trip: the place the last landed flight brought you,
+  // or the zone of whatever has started since (a stay, a train). In the air, it stays
+  // where you took off until you land.
+  let here: TravelContext['here'] = null;
+  if (active) {
+    for (const s of [...active.segments].sort((a, b) => Date.parse(a.startUtc) - Date.parse(b.startUtc))) {
+      if (Date.parse(s.startUtc) > t) break;
+      if (s.kind === 'flight') {
+        if (Date.parse(s.endUtc) <= t && validZone(s.endTz)) here = { tz: s.endTz, city: s.toCity || airport(s.toCode)?.city || s.toName || active.destination };
+      } else if (validZone(s.startTz)) {
+        const prev = here as TravelContext['here'];
+        here = { tz: s.startTz, city: prev?.tz === s.startTz ? prev.city : active.destination };
+      }
+    }
+  }
+  const homeAirport = airport(travelSettings(store).homeAirport);
+  const home = homeAirport ? { tz: homeAirport.tz, city: homeAirport.city } : null;
+
   return {
     mode,
     trip,
@@ -834,6 +852,8 @@ export function travelContext(store: Store, today: string, now: Date = new Date(
     layovers,
     dayOfTrip: active ? daysBetween(active.startDate, today) + 1 : null,
     tripDays: trip ? daysBetween(trip.startDate, trip.endDate) + 1 : null,
+    here,
+    home,
   };
 }
 

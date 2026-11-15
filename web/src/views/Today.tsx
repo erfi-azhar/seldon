@@ -312,10 +312,32 @@ function Clock() {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
+  const at = (tz?: string) => now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  const mine = at();
+  // On a trip, the other clock that matters: local time if this device is still on home
+  // time, or home time if it has already switched to local.
+  const { data: travel } = useTravel();
+  const ctx = travel?.context;
+  let other: { label: string; time: string } | null = null;
+  if (ctx?.here) {
+    const local = at(ctx.here.tz);
+    if (local !== mine) other = { label: ctx.here.city, time: local };
+    else if (ctx.home && at(ctx.home.tz) !== mine) other = { label: 'home', time: at(ctx.home.tz) };
+  }
   return (
-    <time className="hero-clock" dateTime={now.toISOString()}>
-      {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-    </time>
+    <>
+      <time className="hero-clock" dateTime={now.toISOString()}>
+        {mine}
+      </time>
+      {other && (
+        <span className="hero-clock-other">
+          <span className="hero-clock-sep" aria-hidden>
+            {' · '}
+          </span>
+          {other.label} <span className="hero-clock">{other.time}</span>
+        </span>
+      )}
+    </>
   );
 }
 
