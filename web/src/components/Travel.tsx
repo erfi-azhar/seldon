@@ -2399,8 +2399,8 @@ export function useTravelDay(): boolean {
 
 /**
  * Travel on Today features one trip: the one under way (a flight today, or away now), else the
- * next one ahead. Trips that follow on within a week tuck beneath it as notches that open them
- * in the Travels sphere. Trips further out wait there until their turn.
+ * next one ahead. The trip that follows on within a week tucks beneath it as a notch that
+ * opens it in the Travels sphere. Trips after that wait there until their turn.
  */
 export function TravelModeCard() {
   const { data: t } = useTravel();
@@ -2420,7 +2420,8 @@ export function TravelModeCard() {
   const ahead = t.trips.filter((x) => x.endDate >= today && x.id !== current?.id).sort((a, b) => a.startDate.localeCompare(b.startDate));
   const featured = current ?? ahead[0];
   if (!featured) return null;
-  const group = [featured, ...followingTrips(featured, ahead.filter((x) => x.id !== featured.id))];
+  // Only the next trip tucks beneath it; the rest wait in the Travels sphere.
+  const group = [featured, ...followingTrips(featured, ahead.filter((x) => x.id !== featured.id)).slice(0, 1)];
   const shown = group.find((x) => x.id === chosen) ?? featured;
   return (
     <div className="trip-feature">
