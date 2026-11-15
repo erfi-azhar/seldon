@@ -10861,3 +10861,139 @@ button.fin-rec-main:disabled {
 .hero-clock {
   font-variant-numeric: tabular-nums;
 }
+
+/* What a plan item needs, under it: a line of chips, opening to the route and the details. */
+.plan-item-main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.im {
+  padding-left: 50px;
+  margin-top: 4px;
+}
+.im-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  text-align: left;
+  cursor: pointer;
+}
+.im-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  text-decoration: none;
+}
+.im-chip b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.im-chip.is-route {
+  color: oklch(0.45 0.1 245);
+  background: oklch(0.62 0.1 245 / 0.1);
+  box-shadow: inset 0 0 0 1px oklch(0.6 0.1 245 / 0.28);
+}
+:root[data-theme='dark'] .im-chip.is-route {
+  color: oklch(0.82 0.08 245);
+}
+.im-chip.is-warn {
+  color: oklch(0.52 0.13 60);
+}
+.im-chip.is-more {
+  color: var(--ink-3);
+}
+.im-chip.is-link:hover {
+  color: var(--ink);
+}
+.im-chev {
+  color: var(--ink-3);
+  transition: transform 0.18s;
+}
+.im.is-open .im-chev {
+  transform: rotate(180deg);
+}
+.im-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.im-from {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.im-from b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.im-steps {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.im-map {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: oklch(0.5 0.12 245);
+  text-decoration: none;
+}
+.im-details {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.im-route + .im-details {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.im-details li {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.im-details b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.im-details li.is-warn .im-icon {
+  color: oklch(0.6 0.13 60);
+}
+.im-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+.im-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  font-size: 12px;
+  color: oklch(0.5 0.12 245);
+  text-decoration: none;
+}
+@media (max-width: 520px) {
+  .im {
+    padding-left: 0;
+  }
+}

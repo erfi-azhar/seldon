@@ -144,3 +144,23 @@ test('a long layover is about time outside: Frankfurt’s 11 hours is worth goin
   assert.equal(sin.atHome, true);
   assert.equal(sin.verdict, 'out', '8½ hours at home airport: time to go home');
 });
+
+test('plan items carry the way there: stored, kept through other edits, dropped when empty', async () => {
+  const { addItems, updateItem } = await import('../src/features/travel.ts');
+  const store = journeyStore();
+  const trip = brazil(store);
+  const route = { from: 'Frankfurt Airport, Terminal 1', mode: 'transit' as const, minutes: 20, steps: ['S8 or S9 towards Hanau or Offenbach from the regional station under Terminal 1', 'Get off at Konstablerwache (about 15 min)', 'Walk 3 min to Schwedenkronenplatz'] };
+  const [item] = addItems(store, trip.id, [{ date: '2026-12-12', time: '12:00', title: 'Metropol Sauna', place: 'Schwedenkronenplatz', route }]);
+  assert.deepEqual(item!.route, route);
+  assert.deepEqual(updateItem(store, item!.id, { notes: 'Check the hours' }).route, route, 'other edits keep the route');
+  assert.equal(updateItem(store, item!.id, { route: { ...route, minutes: 0 } }).route, null, 'a route of no minutes is no route');
+  assert.equal(getTrip(store, trip.id).itinerary[0]!.route, null);
+  const details = [
+    { kind: 'hours' as const, label: 'Hours unconfirmed', text: 'Check before going.' },
+    { kind: 'heads-up' as const, label: 'Bags', text: 'Left luggage in Terminal 1.', url: 'javascript:alert(1)' },
+    { kind: 'tip' as const, label: '', text: '' },
+  ];
+  const withDetails = updateItem(store, item!.id, { details });
+  assert.equal(withDetails.details.length, 2, 'empty modules are dropped');
+  assert.equal(withDetails.details[1]!.url, undefined, 'only https links are kept');
+});

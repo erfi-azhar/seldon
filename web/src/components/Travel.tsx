@@ -14,6 +14,7 @@ import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
 import { AirlineTail } from './Tails.tsx';
 import { RouteCard } from './Journey.tsx';
+import { ItemModules } from './ItemModules.tsx';
 import { journeys } from '../../../shared/journey.ts';
 import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
@@ -1340,16 +1341,19 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
                   {open && items.length === 0 && <p className="plan-empty">Free</p>}
                   {open && items.length > 0 && (
                     <ul>
-                      {items.map((i) => (
+                      {items.map((i, n) => (
                         <li key={i.id} className={cx('plan-item', `pk-${i.kind}`, i.done && 'is-done')}>
                           <Check checked={i.done} onChange={() => toggle.mutate(i)} label={`Done: ${i.title}`} />
-                          <button type="button" className="plan-item-body" onClick={() => setItem({ item: i, date: d })}>
-                            <span className="plan-time num">{i.time ?? '·'}</span>
-                            <span className="grow">
-                              <span className="plan-title">{i.title}</span>
-                              {(i.place || i.notes) && <span className="plan-place">{[i.place, i.notes].filter(Boolean).join(' — ')}</span>}
-                            </span>
-                          </button>
+                          <div className="plan-item-main">
+                            <button type="button" className="plan-item-body" onClick={() => setItem({ item: i, date: d })}>
+                              <span className="plan-time num">{i.time ?? '·'}</span>
+                              <span className="grow">
+                                <span className="plan-title">{i.title}</span>
+                                {(i.place || i.notes) && <span className="plan-place">{[i.place, i.notes].filter(Boolean).join(' — ')}</span>}
+                              </span>
+                            </button>
+                            <ItemModules item={i} before={items.slice(0, n).reverse().find((x) => x.place)?.place} />
+                          </div>
                         </li>
                       ))}
                     </ul>

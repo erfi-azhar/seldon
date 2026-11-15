@@ -15,7 +15,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
 import { addDays, daysBetween, Invalid, localDate, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { EliteNights, FlightOption, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { EliteNights, FlightOption, ItemDetail, ItemRoute, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { airport, validZone, zonedToUtc } from './airports.ts';
 import { getIntegration, updateIntegration } from './integrations.ts';
 import { BONVOY_TIERS, isMarriott, loungeAccess, stayPerks } from './lounges.ts';
@@ -159,7 +159,7 @@ export function eliteNights(stay: MarriottStay, all: MarriottStay[], accounts: L
   };
 }
 
-const itemFromRow = (r: Row): ItineraryItem => ({ id: r.id, tripId: r.trip_id, date: r.date, time: r.time, title: r.title, place: r.place, notes: r.notes, kind: r.kind, done: !!r.done });
+const itemFromRow = (r: Row): ItineraryItem => ({ id: r.id, tripId: r.trip_id, date: r.date, time: r.time, title: r.title, place: r.place, notes: r.notes, kind: r.kind, done: !!r.done, route: r.route ? JSON.parse(r.route) : null, details: JSON.parse(r.details ?? '[]') });
 
 function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store), stays = marriottStays(store)): Trip {
   return {
@@ -711,6 +711,24 @@ export interface ItemInput {
   place?: string;
   notes?: string;
   kind?: ItineraryItem['kind'];
+  route?: ItemRoute | null;
+  details?: ItemDetail[];
+}
+
+/** A route as stored: trimmed, and dropped when it says nothing. */
+function routeJson(r: ItemRoute | null | undefined): string | null {
+  if (!r || !r.minutes) return null;
+  return JSON.stringify({ from: clean(r.from, 120), mode: r.mode, minutes: Math.round(r.minutes), steps: r.steps.map((x) => clean(x, 200)).filter(Boolean).slice(0, 8) });
+}
+
+/** Details as stored: trimmed, the empty ones dropped. */
+function detailsJson(d: ItemDetail[] | undefined): string {
+  return JSON.stringify(
+    (d ?? [])
+      .map((x) => ({ kind: x.kind, label: clean(x.label, 60), text: clean(x.text, 400), ...(x.url && /^https:\/\//.test(x.url) ? { url: x.url.slice(0, 500) } : {}) }))
+      .filter((x) => x.label || x.text)
+      .slice(0, 10),
+  );
 }
 
 export function addItems(store: Store, tripId: string, items: ItemInput[], quiet = false): ItineraryItem[] {
@@ -719,8 +737,8 @@ export function addItems(store: Store, tripId: string, items: ItemInput[], quiet
   for (const it of items) {
     const id = newId();
     store.db
-      .prepare('INSERT INTO itinerary_items (id, trip_id, date, time, title, place, notes, kind, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-      .run(id, tripId, it.date, it.time ?? null, clean(it.title, 160), clean(it.place, 160), clean(it.notes, 600), it.kind ?? 'activity', nowIso());
+      .prepare('INSERT INTO itinerary_items (id, trip_id, date, time, title, place, notes, kind, route, details, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, tripId, it.date, it.time ?? null, clean(it.title, 160), clean(it.place, 160), clean(it.notes, 600), it.kind ?? 'activity', routeJson(it.route), detailsJson(it.details), nowIso());
     if (!quiet) store.record('created', 'itinerary', id, sphereFor(store, trip.purpose), `Planned “${clean(it.title, 80)}” for ${it.date} in ${trip.title}`);
     out.push(itemFromRow(store.db.prepare('SELECT * FROM itinerary_items WHERE id = ?').get(id) as Row));
   }
@@ -733,8 +751,8 @@ export function updateItem(store: Store, id: string, p: Partial<ItemInput> & { d
   const cur = itemFromRow(r);
   const n = { ...cur, ...p };
   store.db
-    .prepare('UPDATE itinerary_items SET date = ?, time = ?, title = ?, place = ?, notes = ?, kind = ?, done = ? WHERE id = ?')
-    .run(n.date, n.time ?? null, clean(n.title, 160), clean(n.place, 160), clean(n.notes, 600), n.kind, Number(n.done), id);
+    .prepare('UPDATE itinerary_items SET date = ?, time = ?, title = ?, place = ?, notes = ?, kind = ?, done = ?, route = ?, details = ? WHERE id = ?')
+    .run(n.date, n.time ?? null, clean(n.title, 160), clean(n.place, 160), clean(n.notes, 600), n.kind, Number(n.done), routeJson(n.route), detailsJson(n.details), id);
   return itemFromRow(store.db.prepare('SELECT * FROM itinerary_items WHERE id = ?').get(id) as Row);
 }
 
@@ -924,6 +942,21 @@ Be specific and brief. If you are unsure of a detail, such as which concourse a 
   return getTrip(store, trip.id);
 }
 
+/** What to know for a plan item, as the agent gives it. */
+const detailInput = z.object({
+  kind: z.enum(['hours', 'cost', 'booking', 'bring', 'dress', 'contact', 'food', 'prayer', 'heads-up', 'tip']),
+  label: z.string().max(60),
+  text: z.string().max(400),
+  url: z.string().url().max(500).optional(),
+});
+/** Getting to a plan item, as the agent gives it. */
+const routeInput = z.object({
+  from: z.string().max(120),
+  mode: z.enum(['walk', 'transit', 'taxi', 'drive']),
+  minutes: z.number().int().min(1).max(600),
+  steps: z.array(z.string().max(200)).max(8),
+});
+
 const Plan = z.object({
   items: z
     .array(
@@ -934,6 +967,8 @@ const Plan = z.object({
         place: z.string().max(160),
         notes: z.string().max(600),
         kind: z.enum(['activity', 'food', 'transit', 'work', 'rest']),
+        route: routeInput.nullable().optional(),
+        details: z.array(detailInput).max(10).optional(),
       }),
     )
     .max(60),
@@ -952,7 +987,9 @@ export async function draftItinerary(store: Store, tripId: string): Promise<Trip
 - ${trip.purpose === 'work' ? 'It is a work trip: keep working hours as "work" blocks (title "Work" unless the notes say what), and suggest a few things for evenings and any free day.' : 'It is a leisure trip: two or three anchors a day with room to breathe, mixing sights, local experiences and rest.'}
 - They are Muslim: suggest halal or Muslim-friendly places to eat, and on a Friday, Jumu'ah at a nearby mosque around midday.
 - Use real, specific places. Times are local, "HH:MM", or null for flexible items.
-Reply {"items": [{"date", "time", "title", "place", "notes", "kind": "activity"|"food"|"transit"|"work"|"rest"}]}.`,
+- Give each item at a place a "route" from where they will be just before (the previous item that day, else the hotel, else the airport): {"from", "mode": "walk"|"transit"|"taxi"|"drive", "minutes", "steps": [2–5 short steps naming lines, directions, changes and where to get off]}; null for items with no place.
+- And "details": what they would need for it, as modules {"kind": "hours"|"cost"|"booking"|"bring"|"dress"|"contact"|"food"|"prayer"|"heads-up"|"tip", "label": a few words, "text": a sentence}: hours that day, cost, booking, what to bring or wear, halal food or prayer nearby, heads-ups, tips. Say when unsure.
+Reply {"items": [{"date", "time", "title", "place", "notes", "kind": "activity"|"food"|"transit"|"work"|"rest", "route", "details"}]}.`,
     input: [
       `Trip dates: ${trip.startDate} to ${trip.endDate}, purpose ${trip.purpose}.`,
       wrapUntrusted('trip', `Name: ${trip.title}\nDestination: ${trip.destination || 'not given'}`, 400),
@@ -1294,7 +1331,16 @@ const stayOptionInput = z.object({
   notes: z.array(z.string().max(300)).max(8).optional(),
   recommended: z.boolean().optional(),
 });
-const itemInput = z.object({ date: dateStr, time: time.nullable().optional(), title: z.string().min(1).max(160), place: z.string().max(160).optional(), notes: z.string().max(600).optional(), kind: z.enum(['activity', 'food', 'transit', 'work', 'rest']).optional() });
+const itemInput = z.object({
+  date: dateStr,
+  time: time.nullable().optional(),
+  title: z.string().min(1).max(160),
+  place: z.string().max(160).optional(),
+  notes: z.string().max(600).optional(),
+  kind: z.enum(['activity', 'food', 'transit', 'work', 'rest']).optional(),
+  route: routeInput.nullable().optional(),
+  details: z.array(detailInput).max(10).optional(),
+});
 const loyaltyInput = z.object({
   program: z.string().min(1).max(60),
   kind: z.enum(['airline', 'hotel', 'lounge']).optional(),
@@ -1376,7 +1422,7 @@ registerFeature({
     ),
     tool(
       'add_itinerary_items',
-      'Add items to a trip\'s day-by-day plan (the user can edit them). For a fresh plan, use real places, fit around flights, suggest halal food, and Jumu\'ah on Fridays. Kinds: activity, food, transit, work, rest.',
+      'Add items to a trip\'s day-by-day plan (the user can edit them). For a fresh plan, use real places, fit around flights, suggest halal food, and Jumu\'ah on Fridays. Kinds: activity, food, transit, work, rest. Every item at a place gets a route: from where they will be just before (the previous stop that day, else the hotel, else the airport they land at), the mode (walk, transit, taxi, drive), the minutes it takes, and 2–5 steps to follow (the line or bus and its direction, where to change, where to get off, the walk at the end). And details: everything they would need for that stop, as short modules (kind, a few-word label, a sentence; a link where there is one): opening hours that day, cost and tickets, whether to book, what to bring or wear, address and contact, halal food or a prayer place nearby, heads-ups (closures, entry rules, safety, luggage) and tips. Say when a detail is unconfirmed.',
       z.object({ trip_id: z.string().min(1), items: z.array(itemInput).min(1).max(40) }),
       ({ trip_id, items }, { store }) => {
         const added = addItems(store, trip_id, items);
@@ -1385,7 +1431,7 @@ registerFeature({
     ),
     tool(
       'update_itinerary_item',
-      'Change or tick off an item in a trip plan.',
+      'Change or tick off an item in a trip plan. When the place, the time or the stop before it changes, give the route again.',
       itemInput.partial().extend({ id: z.string().min(1), done: z.boolean().optional() }),
       ({ id, ...p }, { store }) => {
         const it = updateItem(store, id, p);
