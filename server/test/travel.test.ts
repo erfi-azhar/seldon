@@ -9,7 +9,7 @@ import { updateIntegration } from '../src/features/integrations.ts';
 import { loungeAccess, stayPerks } from '../src/features/lounges.ts';
 import type { MailMessage } from '../src/features/mail-types.ts';
 import { listSignals } from '../src/features/signals.ts';
-import { addSegment, applyExtraction, createTrip, getTrip, listLoyalty, prepareTravel, travelContext, upsertLoyalty, type Extracted } from '../src/features/travel.ts';
+import { addSegment, applyExtraction, createTrip, getTrip, listLoyalty, prepareTravel, saveGuide, travelContext, upsertLoyalty, type Extracted } from '../src/features/travel.ts';
 import { Store } from '../src/store.ts';
 import type { LoyaltyAccount, Segment, TravelState } from '../../shared/types.ts';
 import { anthropicMessage, fakeModel } from './helpers.ts';
@@ -209,6 +209,7 @@ test('ahead of a trip Seldon drafts the plan and prepares the airport; without a
   const store = travelStore();
   upsertLoyalty(store, { program: 'KrisFlyer', tier: 'Elite Gold' });
   const trip = createTrip(store, { destination: 'Tokyo', startDate: '2026-11-15', endDate: '2026-11-16' });
+  saveGuide(store, trip.id, [{ name: 'Tokyo', emergency: [], sections: [] }]); // the guide has its own test
   const seg = addSegment(store, trip.id, { kind: 'flight', carrier: 'SQ', number: '638', fromCode: 'SIN', toCode: 'HND', startLocal: '2026-11-15T09:40', endLocal: '2026-11-15T17:35' }).segment;
   const now = new Date('2026-11-14T12:00:00Z');
 

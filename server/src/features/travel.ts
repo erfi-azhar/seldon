@@ -15,7 +15,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
 import { addDays, daysBetween, Invalid, localDate, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { EliteNights, FlightOption, ItemDetail, ItemRoute, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { EliteNights, FlightOption, GuideCity, ItemDetail, ItemRoute, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { airport, validZone, zonedToUtc } from './airports.ts';
 import { getIntegration, updateIntegration } from './integrations.ts';
 import { BONVOY_TIERS, isMarriott, loungeAccess, stayPerks } from './lounges.ts';
@@ -173,6 +173,7 @@ function tripFromRow(store: Store, r: Row, accounts = listLoyalty(store), stays 
     endDate: r.end_date,
     notes: r.notes,
     companion: JSON.parse(r.companion),
+    guide: r.guide ? JSON.parse(r.guide) : null,
     segments: (store.db.prepare('SELECT * FROM trip_segments WHERE trip_id = ? ORDER BY start_utc').all(r.id) as Row[]).map((x) => segmentFromRow(x, accounts, stays)),
     itinerary: (store.db.prepare("SELECT * FROM itinerary_items WHERE trip_id = ? ORDER BY date, COALESCE(time, '99:99'), created_at").all(r.id) as Row[]).map(itemFromRow),
     todos: store.listTasks({ tripId: r.id, status: 'all', limit: 100 }),
@@ -1064,6 +1065,14 @@ export async function prepareTravel(store: Store, now: Date = new Date()): Promi
         failed(`draft:${trip.id}`, err, now);
       }
     }
+    // Every trip gets its know-before-you-go guide a month ahead.
+    if (startsIn <= 30 && !trip.guide && due(`guide:${trip.id}`, now)) {
+      try {
+        await buildGuide(store, trip.id);
+      } catch (err) {
+        failed(`guide:${trip.id}`, err, now);
+      }
+    }
     // Every stop at a place gets its route and details, however it got onto the plan.
     if (startsIn <= 30 && due(`complete:${trip.id}`, now)) {
       try {
@@ -1073,6 +1082,52 @@ export async function prepareTravel(store: Store, now: Date = new Date()): Promi
       }
     }
   }
+}
+
+const guideSectionInput = z.object({
+  kind: z.enum(['safety', 'money', 'transport', 'apps', 'etiquette', 'food', 'health', 'weather', 'power', 'language', 'entry']),
+  title: z.string().max(60),
+  tips: z.array(z.string().max(300)).max(8),
+});
+const guideCityInput = z.object({ name: z.string().min(1).max(80), emergency: z.array(z.string().max(60)).max(6), sections: z.array(guideSectionInput).max(12) });
+const GuideReply = z.object({ cities: z.array(guideCityInput).min(1).max(4) });
+
+/** Save a trip's city guides, trimmed: safety first in each city, empty sections dropped. */
+export function saveGuide(store: Store, tripId: string, cities: GuideCity[]): Trip {
+  if (!store.db.prepare('SELECT 1 FROM trips WHERE id = ?').get(tripId)) throw new NotFound('Trip');
+  const order = (k: string) => (k === 'safety' ? 0 : k === 'entry' ? 2 : 1);
+  const tidy = cities.map((c) => ({
+    name: clean(c.name, 80),
+    emergency: c.emergency.map((e) => clean(e, 60)).filter(Boolean).slice(0, 6),
+    sections: c.sections
+      .map((x) => ({ kind: x.kind, title: clean(x.title, 60), tips: x.tips.map((t) => clean(t, 300)).filter(Boolean).slice(0, 8) }))
+      .filter((x) => x.tips.length)
+      .sort((a, b) => order(a.kind) - order(b.kind)),
+  }));
+  store.db.prepare('UPDATE trips SET guide = ? WHERE id = ?').run(JSON.stringify({ cities: tidy, updatedAt: nowIso() }), tripId);
+  return getTrip(store, tripId);
+}
+
+/** Know before you go, written by the agent for each city on the trip. */
+export async function buildGuide(store: Store, tripId: string): Promise<Trip> {
+  const trip = getTrip(store, tripId);
+  const places = [...new Set(trip.segments.filter((x) => x.kind === 'flight').map((f) => f.toCity).filter(Boolean))];
+  const res = await think({
+    store,
+    task: `Write a "know before you go" guide for this ${trip.purpose} trip, one entry per city they will spend time in (not airports they only change planes at). For each city: "name"; "emergency": the numbers to call ("Police 190"); and "sections", each {"kind", "title", "tips": 2–6 short, specific, practical tips}:
+- "safety" first: the real risks for a visitor (theft, scams, areas or hours to avoid, traffic), and how to avoid them.
+- then as useful: "money" (currency, how people pay, tipping), "transport" (getting around, apps, airport), "apps" (connectivity, what's blocked, eSIM), "etiquette", "food" (halal food and where to pray: they are Muslim), "health" (water, vaccines, mosquitoes), "weather" (for their dates), "power" (plugs, voltage), "language", "entry" (visa and immigration, phrased for "your passport" since nationality isn't given).
+Be concrete and current; say when something should be checked. Reply {"cities": [...]}.`,
+    input: [
+      `Dates: ${trip.startDate} to ${trip.endDate}. Purpose: ${trip.purpose}.`,
+      wrapUntrusted('trip', `Name: ${trip.title}\nDestination: ${trip.destination || 'not given'}\nCities flown to: ${places.join(', ') || 'unknown'}`, 600),
+      trip.notes ? wrapUntrusted('their notes for the trip', trip.notes, 1500) : '',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    schema: GuideReply,
+  });
+  return saveGuide(store, tripId, res.cities);
 }
 
 const Completion = z.object({
@@ -1512,6 +1567,15 @@ registerFeature({
       },
     ),
     tool(
+      'save_trip_guide',
+      'Save the know-before-you-go guide on a trip\'s page: one entry per city they spend time in, each with the emergency numbers and sections (safety first, then money, transport, apps, etiquette, food with halal and prayer, health, weather, power, language, entry), 2–6 short practical tips each. Replaces the trip\'s guide.',
+      z.object({ trip_id: z.string().min(1), cities: z.array(guideCityInput).min(1).max(4) }),
+      ({ trip_id, cities }, { store }) => {
+        const t = saveGuide(store, trip_id, cities);
+        return { data: { ok: true }, summary: `Saved the guide for ${t.title}` };
+      },
+    ),
+    tool(
       'save_airport_companion',
       'Save notes for a flight that show on Today as it approaches: the specific lounges to use at the departure airport (given their eligibility) and 3–6 suggestions for the time they have (layover ideas, halal food, prayer room, when to go to the gate).',
       z.object({ segment_id: z.string().min(1), lounges: z.array(z.string().max(200)).max(5), plan: z.array(z.string().max(300)).max(8) }),
@@ -1625,6 +1689,15 @@ registerFeature({
         throw err;
       }
     };
+    app.post('/api/travel/trips/:id/guide', async (c) => {
+      await needsBrain(() => buildGuide(store.as('agent'), c.req.param('id')), 'write the guide');
+      return c.json(state(c));
+    });
+    app.put('/api/travel/trips/:id/guide', async (c) => {
+      const { cities } = await read(c, GuideReply);
+      saveGuide(store, c.req.param('id'), cities);
+      return c.json(state(c));
+    });
     app.post('/api/travel/trips/:id/draft', async (c) => {
       await needsBrain(() => draftItinerary(store.as('agent'), c.req.param('id')), 'draft a plan');
       return c.json(state(c));

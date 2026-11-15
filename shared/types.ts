@@ -1014,6 +1014,8 @@ export interface Trip {
   stayOptions: StayOption[];
   /** Seldon's airport and layover notes, keyed by flight segment id. */
   companion: Record<string, { lounges: string[]; plan: string[]; generatedAt: string; picks?: LoungePick[] }>;
+  /** Know before you go: tips for each city on the trip, written ahead of it. */
+  guide: TripGuide | null;
 }
 
 /** One flight within a flight option, with local times at each end and the instants they make. */
@@ -1260,4 +1262,23 @@ export interface BookCandidate {
   year: number | null;
   /** A small cover to tell editions apart by. */
   thumb: string;
+}
+
+/** What to know before a trip, city by city: safety first, then money, getting around and the rest. */
+export interface TripGuide {
+  cities: GuideCity[];
+  updatedAt: string;
+}
+
+export interface GuideCity {
+  name: string;
+  /** Numbers to call: "Police 190", "Ambulance 192". */
+  emergency: string[];
+  sections: GuideSection[];
+}
+
+export interface GuideSection {
+  kind: 'safety' | 'money' | 'transport' | 'apps' | 'etiquette' | 'food' | 'health' | 'weather' | 'power' | 'language' | 'entry';
+  title: string;
+  tips: string[];
 }

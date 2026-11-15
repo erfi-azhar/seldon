@@ -647,6 +647,10 @@ const MIGRATIONS: string[] = [
   ALTER TABLE trip_segments ADD COLUMN from_terminal TEXT NOT NULL DEFAULT '';
   ALTER TABLE trip_segments ADD COLUMN to_terminal TEXT NOT NULL DEFAULT '';
   `,
+  // Know before you go: each trip's city guides.
+  `
+  ALTER TABLE trips ADD COLUMN guide TEXT;
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
