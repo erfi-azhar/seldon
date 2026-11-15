@@ -302,8 +302,6 @@ interface Frame {
   /** Half the canvas width, in scene units. */
   half: number;
   sun: { x: number; y: number; altitude: number };
-  /** How far into the night it is: 0 with the sun up, 1 once it is well down. */
-  dark: number;
   moon: { x: number; y: number; shows: boolean; fraction: number; litX: number; litY: number };
   light: V3;
   shard: Shard;
@@ -395,12 +393,6 @@ function world(f: Frame, x: number, v: number, i: number, j: number): RGB {
 
   const pose = f.st.pose;
   const size = f.view.shardSize;
-  if (f.dark > 0.01 && !onGround) {
-    // A faint cool haze around the shard at night, so its outline shows against the dark.
-    const hx = x / (size * 0.42);
-    const hy = (v - (f.shardY - size * 0.19)) / (size * 0.95);
-    c = add(c, MOON_GLOW, Math.exp(-(hx * hx + hy * hy)) * 0.16 * f.dark);
-  }
   if (pose.light > 0.01) {
     // A bright lens of light between the halves, inside a wide, soft glow.
     const dx = x;
@@ -438,12 +430,11 @@ function shardColor(f: Frame, tri: Tri, p: V3, half: Half): RGB {
   // Obsidian: near black, the edge toward the sun or moon catching its light.
   const n = tri.n;
   const lit = Math.max(0, dot3(n, f.light));
-  const dark = f.dark;
+  const night = f.sun.altitude < -0.1;
   let c = mix([10, 12, 16], pal.top, 0.08);
-  c = add(c, pal.glow, lit ** 4 * 0.55 * (1 - dark));
-  // After dark: cool moonlit faces, brightest toward the moon and the sky above, and a rim
-  // of light along the edges that turn away, so the shard stands clear of the night sky.
-  c = add(c, MOON_GLOW, dark * (0.36 + 0.14 * Math.max(0, n[1] + 0.3) + lit ** 3 * 0.7 + (1 - n[2]) ** 2 * 0.8));
+  c = add(c, night ? MOON_GLOW : pal.glow, lit ** 4 * (night ? 0.7 : 0.55));
+  // After dark its faces hold a little sky light, so it still reads against the stars.
+  if (night) c = add(c, MOON_GLOW, 0.1 + 0.1 * Math.max(0, n[1] + 0.3));
   c = add(c, pal.low, Math.max(0, n[0] * Math.sign(f.sun.x || 1)) ** 6 * 0.12);
   // The seam: where the split meets the outside, a thin line of light.
   const local: V3 = [p[0] - half.off[0], p[1] - half.off[1], p[2] - half.off[2]];
@@ -451,7 +442,7 @@ function shardColor(f: Frame, tri: Tri, p: V3, half: Half): RGB {
   const w = Math.max(0.012, f.seamW) * (1 + pose.gap * 6);
   if (dist < w) {
     const breathe = st.still ? 0 : 0.2 * Math.sin(st.t * 0.9);
-    c = mix(c, SEAM, clamp((0.55 + 0.25 * f.dark + breathe + st.pulse + pose.light) * (1 - dist / w) * 1.3));
+    c = mix(c, SEAM, clamp((0.55 + breathe + st.pulse + pose.light) * (1 - dist / w) * 1.3));
   }
   return c;
 }
@@ -494,8 +485,7 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
   const lit = moonPhase(now);
   const toSun = Math.hypot(sun.x - moonAt.x, sun.y - moonAt.y) || 1;
   const night = sun.altitude < -0.1;
-  // By night the moon lights the shard; with the moon down too, the sky above does.
-  const from = !night ? sun : moonAt.altitude > 0.05 ? moonAt : { x: -0.25, altitude: 1.1 };
+  const from = night ? moonAt : sun;
   const lx = clamp(from.x / 0.6, -1.2, 1.2);
   const ly = 0.2 + Math.max(0, Math.sin(from.altitude)) * 1.2;
   const ll = Math.hypot(lx, ly, 0.8);
@@ -528,7 +518,6 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
     st,
     half,
     sun,
-    dark: 1 - smooth(-0.2, 0, sun.altitude),
     moon: { x: moonAt.x, y: moonAt.y, shows: mp.altitude > -0.02 && lit.fraction > 0.02, fraction: lit.fraction, litX: (sun.x - moonAt.x) / toSun, litY: (sun.y - moonAt.y) / toSun },
     light: [lx / ll, ly / ll, 0.8 / ll],
     shard: shardGeometry(spin, -0.1, pose.gap),
