@@ -626,6 +626,10 @@ ul {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-1);
+  /* Rows that fill to the edge (a hovered or highlighted last row) follow the rounded
+     corners instead of poking out square. clip, not hidden, so nothing inside becomes
+     a scroll container. */
+  overflow: clip;
 }
 .card-pad {
   padding: 18px 20px;
