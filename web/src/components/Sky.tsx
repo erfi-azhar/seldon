@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import type { Weather } from '../../../shared/types.ts';
 import { useWeather } from '../api.ts';
+import { closeIn, discShows, fallColor, fallStrength, FLASH, flashLevel, hazeOf, lookOf, moving, nextFlashIn, precipitation, weatherSky, type Look } from '../weather.ts';
 import { moonPhase, moonPosition, sunPosition, useSun, type Blend, type Phase, type SunState } from '../sun.ts';
 
 type RGB = [number, number, number];
@@ -220,114 +221,12 @@ function effectSegments(effects: Effect[], now: number): Segment[] {
   return out;
 }
 
-// ── Weather ───────────────────────────────────────────────────────────────────
+// ── Weather (see ../weather.ts) ─────────────────────────────────────────────
 
-interface Look {
-  /** Share of the sky under cloud, 0–1; below 0 when the weather isn't known. */
-  cover: number;
-  /** How grey the sky has turned: overcast, wet, foggy or snowy. */
-  grey: number;
-  fog: number;
-  rain: number;
-  snow: number;
-  storm: boolean;
-  /** Cloud speed, as a share of a calm day's. */
-  wind: number;
-}
-
-const UNKNOWN: Look = { cover: -1, grey: 0, fog: 0, rain: 0, snow: 0, storm: false, wind: 1 };
-
-function lookOf(w: Weather | null): Look {
-  if (!w) return UNKNOWN;
-  const cover = w.cloudCover / 100;
-  const wet = w.kind === 'drizzle' || w.kind === 'rain' || w.kind === 'showers' || w.kind === 'storm';
-  const heavy = clamp(0.3 + w.precipitation / 3);
-  return {
-    cover,
-    grey: Math.max(smooth(0.6, 1, cover), wet ? 0.65 : 0, w.kind === 'fog' || w.kind === 'snow' ? 0.5 : 0),
-    fog: w.kind === 'fog' ? 1 : 0,
-    rain: w.kind === 'drizzle' ? 0.3 : w.kind === 'rain' || w.kind === 'showers' ? 0.45 + 0.55 * heavy : w.kind === 'storm' ? 1 : 0,
-    snow: w.kind === 'snow' ? 0.4 + 0.6 * heavy : 0,
-    storm: w.kind === 'storm',
-    wind: clamp(0.6 + w.windKmh / 20, 0.5, 3),
-  };
-}
-
-const greyed = (c: RGB, t: number): RGB => {
-  const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  return mix(c, [l * 0.96, l * 0.98, l * 1.04], t);
-};
-
-/** The phase's colours under the weather: greyer and dimmer as it closes in, cloud as reported. */
+/** The phase's colours under the weather, with the wind on its clouds. */
 function weathered(p: Palette, w: Look): Palette {
-  if (w.cover < 0) return p;
-  const g = w.grey;
-  return {
-    ...p,
-    top: mul(greyed(p.top, g * 0.6), 1 - 0.12 * g),
-    mid: mul(greyed(p.mid, g * 0.6), 1 - 0.12 * g),
-    low: greyed(p.low, g * 0.5),
-    cloud: mul(greyed(p.cloud, g * 0.75), 1 - 0.2 * g),
-    // As it closes in, the clouds lose their shading and run together into one grey layer.
-    cloudShade: mix(mul(greyed(p.cloudShade, g * 0.7), 1 - 0.1 * g), mul(greyed(p.cloud, g * 0.75), 1 - 0.2 * g), 0.5 * g),
-    clouds: w.cover < 0.5 ? 0.12 + 0.48 * (w.cover / 0.5) : 0.6 + 0.4 * ((w.cover - 0.5) / 0.5),
-    stars: p.stars * (1 - smooth(0.3, 0.95, w.cover)) * (1 - w.fog),
-    glowStrength: p.glowStrength * (1 - 0.75 * g),
-    moon: p.moon * (1 - 0.7 * g),
-    wind: p.wind * w.wind,
-  };
+  return { ...weatherSky(p, w), wind: p.wind * w.wind };
 }
-
-/**
- * Rain streaks or snowflakes for this frame, laid onto the dot grid: how strongly each
- * cell is covered, 0–1. Null when nothing is falling.
- */
-function precipitation(w: Look, seconds: number, cols: number, rows: number, aspect: number): Float32Array | null {
-  if (w.rain <= 0 && w.snow <= 0) return null;
-  const grid = new Float32Array(cols * rows);
-  const put = (x: number, y: number, a: number) => {
-    const ci = Math.floor((x / aspect) * cols);
-    const cj = Math.floor(y * rows);
-    if (ci < 0 || ci >= cols || cj < 0 || cj >= rows) return;
-    const at = cj * cols + ci;
-    if (a > grid[at]!) grid[at] = a;
-  };
-  if (w.rain > 0) {
-    const slant = 0.1 + 0.05 * w.wind;
-    const drops = Math.round(w.rain * 0.9 * cols);
-    for (let d = 0; d < drops; d++) {
-      const speed = 1.5 + 0.8 * hash(d, 3);
-      const len = 0.05 + 0.07 * hash(d, 4) * w.rain;
-      const y = ((hash(d, 2) * 1.4 + seconds * speed) % 1.4) - 0.2;
-      const x = hash(d, 1) * (aspect + 0.5) - 0.3 + slant * y;
-      const steps = Math.ceil(len * rows) + 1;
-      for (let n = 0; n <= steps; n++) {
-        const t = n / steps;
-        put(x - slant * len * t, y - len * t, 1 - 0.6 * t);
-      }
-    }
-  }
-  if (w.snow > 0) {
-    const flakes = Math.round(w.snow * 0.45 * cols);
-    for (let d = 0; d < flakes; d++) {
-      const speed = 0.08 + 0.08 * hash(d, 13);
-      const y = ((hash(d, 12) * 1.3 + seconds * speed) % 1.3) - 0.15;
-      const x = hash(d, 11) * (aspect + 0.2) - 0.1 + 0.04 * Math.sin(seconds * (0.5 + 0.4 * hash(d, 14)) + d) + 0.02 * w.wind * y;
-      put(x, y, 0.7 + 0.3 * hash(d, 15));
-    }
-  }
-  return grid;
-}
-
-/** A soft lightning glow, never a strobe: a quick rise and a slow fade, seconds apart. */
-function flashLevel(scene: Scene, seconds: number): number {
-  const age = seconds - scene.flashAt;
-  if (age < 0 || age > 1.6) return 0;
-  return 0.3 * (age < 0.12 ? age / 0.12 : Math.exp(-(age - 0.12) / 0.35));
-}
-
-const SNOW: RGB = [244, 247, 252];
-const FLASH: RGB = [236, 240, 255];
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
@@ -406,12 +305,12 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   const drift = scene.drift;
   const falling = precipitation(look, seconds, cols, rows, aspect);
   // Rain shows as darker streaks against a pale sky and lighter ones against a dark sky.
-  const fallColor = look.snow > 0 ? SNOW : lum(pal.cloud) > 0.55 ? mix(pal.cloud, [84, 100, 128], 0.6) : mix(pal.cloud, [235, 240, 250], 0.35);
-  const flash = look.storm ? flashLevel(scene, seconds) : 0;
+  const fall = fallColor(look, pal);
+  const fallBy = fallStrength(look);
+  const flash = look.storm ? flashLevel(seconds - scene.flashAt) : 0;
   // Under heavy cloud the sun's disc is only a pale shape behind it.
-  const discShows = 1 - 0.65 * look.grey;
-  // Fog is a pale haze by day and a dim grey one at night, lighter than the dark sky behind it.
-  const haze = add(greyed(mix(pal.low, pal.cloud, 0.5), 0.85), [14, 15, 18], 1);
+  const veil = discShows(look);
+  const haze = hazeOf(pal);
   for (let j = 0; j < rows; j++) {
     const v = (j + 0.5) / rows;
     const k = v / HZ;
@@ -457,7 +356,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       let clouded = 0;
       if (pal.clouds > 0.01 && band > 0) {
         const n = fbm(x * 2.1 + drift, v * 6.5 + drift * 0.15);
-        const cover = smooth(0.52, 0.74, n * band + 0.16 + 0.42 * look.grey) * pal.clouds;
+        const cover = smooth(0.52, 0.74, n * band + 0.16 + closeIn(look)) * pal.clouds;
         clouded = cover;
         if (cover > 0.01) {
           let cloud = mix(pal.cloudShade, pal.cloud, smooth(0.45, 0.85, n));
@@ -473,7 +372,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
       if (sun.y < HZ + SUN_R) {
         const d = Math.sqrt(d2);
         if (d < SUN_R * 1.05) {
-          disc = smooth(SUN_R * 1.05, SUN_R * 0.8, d) * discShows;
+          disc = smooth(SUN_R * 1.05, SUN_R * 0.8, d) * veil;
           c = mix(c, pal.core, disc);
         }
       }
@@ -489,8 +388,8 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
         c = mix(c, on ? MOON_LIT : mix(c, MOON_LIT, 0.08), pal.moon);
       }
 
-      const fall = falling ? falling[j * cols + i]! : 0;
-      if (fall > 0) c = mix(c, fallColor, fall * (look.snow > 0 ? 0.85 : 0.5));
+      const fell = falling ? falling[j * cols + i]! : 0;
+      if (fell > 0) c = mix(c, fall, fell * fallBy);
 
       for (const sg of segments) {
         const minX = Math.min(sg.x1, sg.x2) - sg.width;
@@ -578,12 +477,11 @@ export function Sky({ trip }: { trip: SkyTrip | null }) {
       const look = lookOf(sc.weather);
       if (look.storm && sec >= sc.nextFlash) {
         sc.flashAt = sec;
-        sc.nextFlash = sec + 7 + Math.random() * 12;
+        sc.nextFlash = sec + nextFlashIn();
       }
       // Smooth while something is flying, steady while rain or snow falls; otherwise a slow drift is enough.
       const busy = sc.effects.length > 0 || p !== null;
-      const falling = look.rain > 0 || look.snow > 0 || look.storm;
-      if (t - last < (busy ? 33 : falling ? 50 : 90)) return;
+      if (t - last < (busy ? 33 : moving(look) ? 50 : 90)) return;
       last = t;
       // Step the clouds on by the time since the last frame (capped, so a tab coming back
       // from the background doesn't jump them), at the wind of the moment.

@@ -7,9 +7,11 @@
 // horizon at HZ. A caller says where that notional screen sits on its canvas (the unit
 // in pixels, and where v = 0 and the centre line fall) and which part of it fades into the
 // page. The sky's colours follow the phase of the day, and the sun and moon sit where
-// they really are, as on Today.
+// they really are, as on Today, and the weather where you are shows too (weather.ts).
 
+import type { Weather } from '../../shared/types.ts';
 import { moonPhase, moonPosition, sunPosition, type Blend, type Phase, type SunState } from './sun.ts';
+import { closeIn, discShows, fallColor, fallStrength, FLASH as LIGHTNING, flashLevel, greyed, hazeOf, lookOf, precipitation, weatherSky, type Look } from './weather.ts';
 
 export type RGB = [number, number, number];
 type V3 = [number, number, number];
@@ -106,6 +108,14 @@ const B4 = [
   [3, 11, 1, 9],
   [15, 7, 13, 5],
 ].map((r) => r.map((x) => (x + 0.5) / 16));
+
+/** The phase's colours under the weather: the sky as on Today, and the land greyer and dimmer with it. */
+function weathered(p: Palette, w: Look): Palette {
+  if (w.cover < 0) return p;
+  const g = w.grey;
+  const land = (c: RGB): RGB => mul(greyed(c, g * 0.5), 1 - 0.1 * g);
+  return { ...weatherSky(p, w), far: land(p.far), crest: land(p.crest), ground: land(p.ground), frost: land(p.frost) };
+}
 
 function blendPalette({ from, to, t }: Blend): Palette {
   const a = PALETTES[from];
@@ -290,6 +300,10 @@ export interface HillState {
   streaks: Streak[];
   /** Where to put the sun and moon: this moment instead of now (for demos). */
   clock?: number;
+  /** The weather where you are, when known. */
+  weather?: Weather | null;
+  /** When the last lightning flash began, in the same seconds as t. */
+  flashAt?: number;
 }
 
 const STREAK_LIFE = 1.3;
@@ -297,6 +311,11 @@ export const streakAlive = (s: Streak, t: number) => t - s.born < STREAK_LIFE;
 
 interface Frame {
   pal: Palette;
+  look: Look;
+  haze: RGB;
+  /** How plainly the sun's disc shows through the cloud, and the lightning glow now. */
+  veil: number;
+  lightning: number;
   view: HillView;
   st: HillState;
   /** Half the canvas width, in scene units. */
@@ -345,16 +364,21 @@ function skyAt(f: Frame, x: number, v: number, i: number, j: number): RGB {
       c = mix(c, STAR, (0.45 + 0.55 * hash(i, j + 99)) * (1 - k) * Math.min(1, pal.stars + 0.3) * twinkle);
     }
   }
+  let clouded = 0;
   if (pal.clouds > 0.01) {
-    const band = Math.max(0, 1 - Math.abs(k - 0.38) * 1.8);
+    // Clouds keep to the middle of the sky, unless it has closed in.
+    const band = Math.max(0, 1 - Math.abs(k - 0.38) * 1.8, f.look.grey);
     if (band > 0) {
       const n = fbm(x * 2.1 + st.drift, v * 6.5 + st.drift * 0.15);
-      const cover = smooth(0.52, 0.74, n * band + 0.16) * pal.clouds;
+      const cover = smooth(0.52, 0.74, n * band + 0.16 + closeIn(f.look)) * pal.clouds;
+      clouded = cover;
       if (cover > 0.01) c = mix(c, mix(pal.cloudShade, pal.cloud, smooth(0.45, 0.85, n)), cover);
     }
   }
+  if (f.look.fog > 0) c = mix(c, f.haze, f.look.fog * (0.35 + 0.45 * Math.min(1, k)));
+  if (f.lightning > 0) c = mix(c, LIGHTNING, f.lightning * (0.05 + 0.4 * clouded));
   const d = Math.sqrt(d2);
-  if (d < SUN_R * 1.05) c = mix(c, pal.core, smooth(SUN_R * 1.05, SUN_R * 0.8, d));
+  if (d < SUN_R * 1.05) c = mix(c, pal.core, smooth(SUN_R * 1.05, SUN_R * 0.8, d) * f.veil);
   if (f.moon.shows && m2 < MOON_R * MOON_R) {
     const ax = mdx / MOON_R;
     const ay = mdy / MOON_R;
@@ -386,9 +410,12 @@ function world(f: Frame, x: number, v: number, i: number, j: number): RGB {
     c = mix(pal.ground, pal.frost, frost * (0.75 - 0.3 * depth));
     c = mix(c, pal.crest, Math.exp(-(v - crest) * 60) * 0.7);
     c = mul(c, 1 - 0.2 * depth);
+    // In fog the slope fades into the haze, the far side of it most.
+    if (f.look.fog > 0) c = mix(c, f.haze, f.look.fog * 0.4 * (1 - depth));
   } else if (v > far) {
-    // Distant ranges, paler with the haze of distance.
+    // Distant ranges, paler with the haze of distance, and all but gone in fog.
     c = mix(pal.far, pal.low, 0.22 * (1 - clamp((v - far) * 10)));
+    if (f.look.fog > 0) c = mix(c, f.haze, f.look.fog * 0.8);
   } else c = skyAt(f, x, v, i, j);
 
   const pose = f.st.pose;
@@ -475,7 +502,8 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
   if (!ctx) return;
 
   const { sun: s } = st;
-  const pal = blendPalette(s.blend);
+  const look = lookOf(st.weather);
+  const pal = weathered(blendPalette(s.blend), look);
   const half = W / 2 / view.unit;
   const now = st.clock ?? Date.now();
   const sp = sunPosition(now, s.place.lat, s.place.lng);
@@ -514,6 +542,10 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
 
   const f: Frame = {
     pal,
+    look,
+    haze: hazeOf(pal),
+    veil: discShows(look),
+    lightning: look.storm && !st.still && st.flashAt !== undefined ? flashLevel(st.t - st.flashAt) : 0,
     view,
     st,
     half,
@@ -544,6 +576,10 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
   const rows = Math.ceil(H / cell);
   const bg = mul(pal.top, 0.4);
   const flash = pose.flash;
+  // Rain or snow over the whole scene, in front of the land.
+  const falling = precipitation(look, st.t, cols, rows, W / H);
+  const fall = fallColor(look, pal);
+  const fallBy = fallStrength(look);
   for (let j = 0; j < rows; j++) {
     const v = (j * cell + cell / 2 - view.top) / view.unit;
     // How far into a fade this row is: 0 is all scene, 1 all page. Into the page below
@@ -570,6 +606,8 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
     for (let i = 0; i < cols; i++) {
       const x = (i * cell + cell / 2 - view.cx) / view.unit;
       let c = colorAt(f, x, v, i, j);
+      const fell = falling ? falling[j * cols + i]! : 0;
+      if (fell > 0) c = mix(c, fall, fell * fallBy);
       if (flash > 0) c = mix(c, FLASH, flash);
       const b = B4[j & 3][i & 3];
       const r = pc * 0.5 * clamp(0.16 + 0.92 * Math.sqrt(lum(c)) + (b - 0.5) * 0.22);
@@ -610,9 +648,9 @@ export function pageColor(): RGB {
   return m && m.length >= 3 ? [Number(m[0]), Number(m[1]), Number(m[2])] : [238, 240, 244];
 }
 
-/** Whether stars are out, for shooting stars. */
-export function starsOut(sun: SunState): boolean {
-  return blendPalette(sun.blend).stars > 0.3;
+/** Whether stars are out (and not behind cloud or fog), for shooting stars. */
+export function starsOut(sun: SunState, weather?: Weather | null): boolean {
+  return weatherSky(blendPalette(sun.blend), lookOf(weather)).stars > 0.3;
 }
 
 /** A new shooting star at (x, y) in scene units, heading away from the centre. */
