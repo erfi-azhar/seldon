@@ -16,6 +16,11 @@
   font: 500 12.5px/1 'Geist Variable', system-ui, sans-serif;
   white-space: nowrap;
   max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.demo-bar::-webkit-scrollbar {
+  display: none;
 }
 .demo-tag {
   padding: 0 8px 0 10px;
@@ -36,7 +41,7 @@
 .demo-bar button:hover { color: #fff; }
 .demo-bar button.is-on { background: #fff; color: #111; }
 .demo-bar button:focus-visible { outline: 2px solid #f5b544; outline-offset: 1px; }
-@media (max-width: 380px) {
+@media (max-width: 460px) {
   .demo-tag { display: none; }
   .demo-bar button { padding: 8px 9px; }
 }

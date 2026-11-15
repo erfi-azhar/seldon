@@ -37,6 +37,9 @@ export const reachAirportBy = (f: Segment): number => ms(f.startUtc) - (domestic
 /** When to set off: an hour before you need to be there. */
 export const leaveBy = (f: Segment): number => reachAirportBy(f) - HOUR;
 
+/** Check-in (bag drop) closes an hour before departure. */
+export const checkInCloses = (f: Segment): number => ms(f.startUtc) - HOUR;
+
 /** Boarding: about 45 minutes before a long flight, 30 before a short one. */
 export const boardsAt = (f: Segment): number => ms(f.startUtc) - (ms(f.endUtc) - ms(f.startUtc) > 6 * HOUR ? 45 : 30) * MIN;
 

@@ -16,7 +16,7 @@ import { AirlineTail } from './Tails.tsx';
 import { NowPanel, RouteCard } from './Journey.tsx';
 import { ItemModules } from './ItemModules.tsx';
 import { TripGuideBody } from './TripGuide.tsx';
-import { activeJourney, boardsAt, clock, journeys, leaveBy, reachAirportBy, type Journey } from '../../../shared/journey.ts';
+import { activeJourney, boardsAt, checkInCloses, clock, journeys, leaveBy, reachAirportBy, type Journey } from '../../../shared/journey.ts';
 import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
@@ -639,7 +639,7 @@ function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: '
           <>
             <span className="fc-fact">
               <small>Check-in closes</small>
-              <b className="num">{clock(Date.parse(s.startUtc) - 60 * 60_000, s.startTz)}</b>
+              <b className="num">{clock(checkInCloses(s), s.startTz)}</b>
             </span>
             <span className="fc-fact">
               <small>Boards</small>

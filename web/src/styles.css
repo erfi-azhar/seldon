@@ -9582,6 +9582,22 @@ button.layover-pill:hover .layover-lounge {
 .jn-btn:hover {
   background: oklch(0.45 0.12 245);
 }
+.jn-btn.is-done {
+  color: oklch(0.45 0.11 155);
+  background: oklch(0.6 0.13 155 / 0.14);
+  box-shadow: inset 0 0 0 1px oklch(0.6 0.13 155 / 0.35);
+}
+.jn-btn.is-done:hover {
+  background: oklch(0.6 0.13 155 / 0.2);
+}
+:root[data-theme='dark'] .jn-btn.is-done {
+  color: oklch(0.82 0.12 155);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .jn-btn.is-done {
+    color: oklch(0.82 0.12 155);
+  }
+}
 .jn-btn:focus-visible {
   outline: 2px solid oklch(0.6 0.13 245);
   outline-offset: 2px;

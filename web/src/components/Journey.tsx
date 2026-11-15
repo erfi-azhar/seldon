@@ -5,9 +5,9 @@
 //   and the OwnTracks app that reports your location while a trip is on.
 
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BellOff, Clock, KeyRound, MapPin, Navigation, Route as RouteIcon, Send, Sofa } from 'lucide-react';
+import { Bell, BellOff, Check, Clock, KeyRound, MapPin, Navigation, Route as RouteIcon, Send, Sofa } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { boardsAt, clock, leaveBy, reachAirportBy, span, type Journey as JourneyT } from '../../../shared/journey.ts';
+import { boardsAt, checkInCloses, clock, leaveBy, reachAirportBy, span, type Journey as JourneyT } from '../../../shared/journey.ts';
 import type { JourneyStatus, Segment, Trip, TripTrack } from '../../../shared/types.ts';
 import { api, useWrite, write } from '../api.ts';
 import { cx, plural } from '../lib.ts';
@@ -26,6 +26,7 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
   const leg = journey.legs[phase.leg]!;
   const next = journey.legs[phase.leg + 1];
   const last = journey.legs[journey.legs.length - 1]!;
+  const [checkedIn, setCheckedIn] = useCheckedIn(leg.id);
 
   if (phase.kind === 'before') {
     const airport = leg.fromName || leg.fromCode;
@@ -53,26 +54,37 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
     );
   }
 
-  if (phase.kind === 'airport')
+  // At the airport: check in before it closes, then get to the gate before boarding.
+  if (phase.kind === 'airport') {
+    const terminal = leg.fromTerminal ? `Terminal ${leg.fromTerminal}` : leg.fromName || leg.fromCode;
+    if (!checkedIn) {
+      const closes = checkInCloses(leg);
+      return (
+        <div className="journey-now">
+          <b className="jn-title">{now < closes ? `Check in within ${span((closes - now) / MIN)}` : `Check-in closed at ${clock(closes, leg.startTz)}`}</b>
+          <span className="jn-sub">
+            {now < closes ? `Check-in closes ${clock(closes, leg.startTz)}` : 'Ask at the counter; some airlines still take you'} · {terminal}
+          </span>
+          <button type="button" className="jn-btn" onClick={() => setCheckedIn(true)}>
+            <Check size={14} aria-hidden /> Check in
+          </button>
+        </div>
+      );
+    }
+    const boards = boardsAt(leg);
     return (
       <div className="journey-now">
-        <b className="jn-title">
-          {flightName(leg)} boards around {clock(boardsAt(leg), leg.startTz)}
-        </b>
+        <b className="jn-title">{now < boards ? `Be at the gate in ${span((boards - now) / MIN)}` : `${flightName(leg)} is boarding`}</b>
         <span className="jn-sub">
-          To {city(leg, 'to')}, leaving {clock(Date.parse(leg.startUtc), leg.startTz)}
+          Boards around {clock(boards, leg.startTz)} · leaves {clock(Date.parse(leg.startUtc), leg.startTz)}
           {leg.seat && ` · seat ${leg.seat}`}
         </span>
-        {leg.lounges[0] && (
-          <span className="jn-line">
-            <Sofa size={13} aria-hidden /> {leg.lounges[0].access}
-          </span>
-        )}
-        <span className="jn-line">
-          <Clock size={13} aria-hidden /> It’s {clock(now, leg.startTz)} at {leg.fromCode}
-        </span>
+        <button type="button" className="jn-btn is-done" aria-pressed="true" title="Not checked in after all? Tap to undo" onClick={() => setCheckedIn(false)}>
+          <Check size={14} aria-hidden /> Checked in
+        </button>
       </div>
     );
+  }
 
   if (phase.kind === 'flight') {
     const total = Date.parse(leg.endUtc) - Date.parse(leg.startUtc);
@@ -143,6 +155,32 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
       )}
     </div>
   );
+}
+
+/** Whether you've checked in for a flight: kept on this device, a week at most per flight. */
+function useCheckedIn(segmentId: string): [boolean, (v: boolean) => void] {
+  const KEY = 'terminus.checkedIn';
+  const read = (): Record<string, number> => {
+    try {
+      return JSON.parse(localStorage.getItem(KEY) ?? '{}') as Record<string, number>;
+    } catch {
+      return {};
+    }
+  };
+  const [on, setOn] = useState(() => segmentId in read());
+  useEffect(() => setOn(segmentId in read()), [segmentId]);
+  const set = (v: boolean) => {
+    setOn(v);
+    const week = Date.now() - 7 * 86_400_000;
+    const all = Object.fromEntries(Object.entries(read()).filter(([id, at]) => at > week && id !== segmentId));
+    if (v) all[segmentId] = Date.now();
+    try {
+      localStorage.setItem(KEY, JSON.stringify(all));
+    } catch {
+      /* private mode: remembered for this visit only */
+    }
+  };
+  return [on, set];
 }
 
 /** The flight as an arc over the horizon, a light where the plane is now. */

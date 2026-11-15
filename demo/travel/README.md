@@ -1,10 +1,11 @@
 # Travel-mode demo
 
-The real web app, showing travel mode for the demo data's Tokyo trip at four moments, with a
+The real web app, showing travel mode for the demo data's Tokyo trip at five moments, with a
 switcher above the bottom nav:
 
 - **4 days before**: the countdown card on Today.
 - **Flight morning**: 03:50 in Singapore, 45 minutes before it's time to leave for SQ 636.
+- **At airport**: 05:50, at Terminal 3 with check-in still open; tap Check in.
 - **In the air**: 11:30 Singapore time, halfway to Tokyo.
 - **Day 2 in Tokyo**: away mode, with the stay, today's plan and the trip to-dos.
 
@@ -27,7 +28,7 @@ That writes `dist/demo/travel/`; serve it with any static server (for example
 | `main.tsx` | The entry: the app's own `App` under hash routing, and the moment switcher |
 | `server.ts` | The stand-in server that replays the recording |
 | `clock.ts` | Runs `Date` from the chosen moment |
-| `scenarios.json` | The four moments |
+| `scenarios.json` | The five moments |
 | `record.mjs` | Records the real server at each moment (with `fake-now.mjs` preloaded) |
 | `todos.ts` | Adds trip to-dos to the demo database |
 | `build.mjs`, `vite.config.ts`, `index.html`, `demo.css` | The build |

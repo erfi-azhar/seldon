@@ -12,6 +12,12 @@
     "now": "2026-11-16T03:50:00+08:00"
   },
   {
+    "id": "airport",
+    "label": "At airport",
+    "detail": "Mon 05:50, Singapore",
+    "now": "2026-11-16T05:50:00+08:00"
+  },
+  {
     "id": "flight",
     "label": "In the air",
     "detail": "Mon 11:30, Singapore",
