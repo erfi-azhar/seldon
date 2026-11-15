@@ -13,6 +13,7 @@ import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { ReadingList } from '../components/Reading.tsx';
+import { CryptoTwitterCard } from '../components/CryptoTwitter.tsx';
 import { BillsCard, CashflowCard, CryptoDesk, DebtsCard, MoneyHero, PlanCard, PortfolioCard } from '../components/Finance.tsx';
 import { InlineEdit, Loading, Seg } from '../components/ui.tsx';
 import { addDays, cx, dueLabel, hueStyle, parseDay, pct, plural, shortDay, todayStr } from '../lib.ts';
@@ -229,6 +230,7 @@ export function SphereDetail({ id }: { id: string }) {
           {s.key === 'faith' && <FaithVerse />}
           {s.key === 'faith' && <QuranStudyCard />}
           {s.key === 'work' ? <JobAlertsCard /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
+          {s.key === 'finances' && <CryptoTwitterCard />}
           {s.key === 'finances' && <BillsCard />}
           {hasDaily && s.key !== 'work' && (
             <section className="card">

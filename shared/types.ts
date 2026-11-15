@@ -1344,3 +1344,73 @@ export interface QuranStudy {
   /** Days in a row with at least one ayah studied, up to today or yesterday. */
   streak: number;
 }
+
+// ── Crypto Twitter ──────────────────────────────────────────────────────────
+
+export type XPostKind = 'trade_idea' | 'news' | 'warning' | 'launch' | 'airdrop' | 'macro' | 'analysis' | 'opinion' | 'other';
+
+export interface XAccount {
+  id: string;
+  username: string;
+  name: string;
+  bio: string;
+  followers: number;
+  /** null until classified. */
+  crypto: boolean | null;
+  tags: string[];
+  why: string;
+  monitored: boolean;
+}
+
+export interface XPost {
+  id: string;
+  url: string;
+  text: string;
+  createdAt: string;
+  likes: number;
+  reposts: number;
+  author: { id: string; username: string; name: string };
+  /** The background brain's read of it; null until triaged. */
+  triage: {
+    relevant: boolean;
+    kind: XPostKind;
+    coins: string[];
+    sentiment: 'bullish' | 'bearish' | 'neutral';
+    summary: string;
+    importance: number;
+  } | null;
+  /** Coins it mentions that you hold or watch. */
+  mine: string[];
+}
+
+export interface XCoinBuzz {
+  symbol: string;
+  mentions: number;
+  bullish: number;
+  bearish: number;
+  /** Held or watched. */
+  mine: boolean;
+  lastAt: string;
+}
+
+export interface XWatchState {
+  configured: boolean;
+  username: string;
+  budgetUsd: number;
+  pollMinutes: number;
+  spentUsd: number;
+  /** What today may still spend, pacing the budget over the month. */
+  todayLeftUsd: number;
+  followingCount: number | null;
+  followingSyncedAt: string | null;
+  /** What reading the whole following list once would cost. */
+  followingCostUsd: number | null;
+  lastPollAt: string | null;
+  lastError: string | null;
+  running: boolean;
+  accounts: XAccount[];
+  counts: { following: number; crypto: number; monitored: number; unclassified: number };
+  posts: XPost[];
+  /** Coins mentioned in the last day, most-mentioned first. */
+  buzz: XCoinBuzz[];
+}

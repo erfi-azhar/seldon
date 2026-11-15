@@ -661,6 +661,37 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX quran_study_by_date ON quran_study_log(date);
   `,
+  // Crypto Twitter: accounts from the owner's X following (classified crypto or not), and the posts
+  // read from the ones being watched, with the background brain's triage.
+  `
+  CREATE TABLE x_accounts (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    bio TEXT NOT NULL DEFAULT '',
+    followers INTEGER NOT NULL DEFAULT 0,
+    following INTEGER NOT NULL DEFAULT 1,
+    crypto INTEGER,
+    tags TEXT NOT NULL DEFAULT '[]',
+    why TEXT NOT NULL DEFAULT '',
+    monitored INTEGER NOT NULL DEFAULT 0,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    added_at TEXT NOT NULL
+  );
+  CREATE INDEX x_accounts_by_crypto ON x_accounts(crypto, monitored);
+
+  CREATE TABLE x_posts (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    likes INTEGER NOT NULL DEFAULT 0,
+    reposts INTEGER NOT NULL DEFAULT 0,
+    triage TEXT,
+    fetched_at TEXT NOT NULL
+  );
+  CREATE INDEX x_posts_by_time ON x_posts(created_at);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

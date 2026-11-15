@@ -20,6 +20,7 @@ import './job-alerts.ts';
 import './followups.ts';
 import './weather.ts';
 import './finance.ts';
+import './xwatch.ts';
 import './reading.ts';
 import './quran.ts';
 
