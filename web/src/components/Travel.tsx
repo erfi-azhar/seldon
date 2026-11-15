@@ -1215,12 +1215,65 @@ function FoldCard({ id, icon, title, peek, extra, className, children }: { id: s
   );
 }
 
+type TripSection = 'flights' | 'route' | 'options' | 'guide' | 'stay' | 'todos' | 'plan';
+type TripStageName = 'planning' | 'soon' | 'out-day' | 'away' | 'return-day' | 'past';
+
+/** What a trip's page leads with at each stage: what you need now first, what's done with last. */
+const SECTION_ORDER: Record<TripStageName, TripSection[]> = {
+  // Weeks out: getting it booked.
+  planning: ['flights', 'options', 'stay', 'todos', 'guide', 'plan', 'route'],
+  // The last two weeks: getting ready.
+  soon: ['todos', 'guide', 'flights', 'options', 'stay', 'plan', 'route'],
+  // Flying out: the flight, then where you're headed.
+  'out-day': ['flights', 'stay', 'todos', 'guide', 'plan', 'options', 'route'],
+  // Landed: the days themselves; the flights are behind you.
+  away: ['plan', 'stay', 'guide', 'todos', 'route', 'flights', 'options'],
+  // Flying home: the flight back, and checking out.
+  'return-day': ['flights', 'stay', 'todos', 'plan', 'route', 'guide', 'options'],
+  // Afterwards: what you did and where you went.
+  past: ['plan', 'route', 'stay', 'flights', 'todos', 'guide', 'options'],
+};
+
+/**
+ * Where a trip is now. A journey under way decides it (flying out, or home), until you land: landing
+ * out turns the trip to its days, landing home to what's past. Otherwise the dates and Today's context.
+ * `live` is whether Today shows this trip's card, which the page then mirrors at its top.
+ */
+function tripStage(trip: Trip, state: TravelState, homeward: Set<string>, now: number): { stage: TripStageName; journey: Journey | null; live: boolean } {
+  const today = todayStr();
+  const all = activeJourney(state.trips.flatMap((t) => t.segments), now);
+  const journey = all && all.legs.some((f) => f.tripId === trip.id) ? all : null;
+  const c = state.context;
+  const ours = c.trip?.id === trip.id;
+  const live = !!journey || (ours && (c.mode === 'departing' || c.mode === 'away'));
+  if (journey) {
+    const landed = journey.phases[Math.max(journey.current, 0)]!.kind === 'arrived';
+    const home = journey.legs.some((f) => homeward.has(f.id));
+    return { stage: home ? (landed ? 'past' : 'return-day') : landed ? 'away' : 'out-day', journey, live };
+  }
+  if (trip.endDate < today) return { stage: 'past', journey: null, live };
+  if (ours && c.mode === 'departing') return { stage: c.flight && homeward.has(c.flight.id) ? 'return-day' : 'out-day', journey: null, live };
+  if (trip.startDate <= today) return { stage: 'away', journey: null, live };
+  return { stage: daysFrom(today, trip.startDate) <= 14 ? 'soon' : 'planning', journey: null, live };
+}
+
+/** The trip's card from Today, in the same state, at the top of its page. */
+function TripNow({ trip, journey }: { trip: Trip; journey: Journey | null }) {
+  const { data: t } = useTravel();
+  if (!t) return null;
+  const c = t.context;
+  if (journey || (c.mode === 'departing' && c.trip?.id === trip.id)) return <TravelDayCard trip={trip} journey={journey} inPage />;
+  if (c.mode === 'away' && c.trip?.id === trip.id) return <TravelNowCard inPage />;
+  return null;
+}
+
 /**
  * Everything about a trip, as separate cards: flights (the globe beside them), flight options, the stay,
  * to-dos and the day-by-day plan. The page's head, with the trip's actions, comes first.
  */
 function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; head: ReactNode }) {
   const { agentName, ask } = useApp();
+  const now = useNow();
   const today = todayStr();
   const [editing, setEditing] = useState(false);
   const [booking, setBooking] = useState<Segment | 'new' | null>(null);
@@ -1302,23 +1355,9 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
     );
   };
 
-  return (
-    <div className="trip-detail">
-      <header className="page-head trip-page-head">
-        {head}
-        <div className="trip-actions">
-          <button type="button" className="btn btn-sm" onClick={() => setBooking('new')}>
-            <Plus size={13} /> Flight or hotel
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
-            <Pencil size={12} /> Edit
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask(`Help me with my ${trip.purpose} trip "${trip.title}" (${trip.startDate} to ${trip.endDate}). Look at the bookings and the plan, then tell me what is missing or could be better.`)}>
-            <Sparkles size={13} /> Ask {agentName}
-          </button>
-        </div>
-      </header>
-
+  // Each section, then the order the trip's stage calls for (see tripStage).
+  const sections: Record<TripSection, ReactNode> = {
+    flights: (
       <FoldCard
         id={`${trip.id}.flights`}
         icon={<Plane size={15} />}
@@ -1351,13 +1390,10 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
             <div className="seg-list">{flights.map(row)}</div>
           )}
       </FoldCard>
-
-      <RouteCard trip={trip} />
-
-      {trip.options.length > 0 && (
-          <FlightOptions trip={trip} />
-      )}
-
+    ),
+    route: <RouteCard trip={trip} />,
+    options: trip.options.length > 0 ? <FlightOptions trip={trip} /> : null,
+    guide: (
       <FoldCard
         id={`${trip.id}.guide`}
         icon={<ShieldCheck size={15} />}
@@ -1366,34 +1402,35 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
       >
         <TripGuideBody trip={trip} />
       </FoldCard>
-
-      <div className="trip-section-pair">
-        <FoldCard
-          id={`${trip.id}.stay`}
-          icon={<BedDouble size={15} />}
-          title="Stay"
-          peek={others.length ? others.map((o) => shortStay(o.title || 'Hotel')).join(', ') : trip.stayOptions.length ? plural(trip.stayOptions.length, 'hotel option') : 'No hotel yet'}
-        >
-            {others.length > 0 && <div className="seg-list">{others.map(row)}</div>}
-            {trip.stayOptions.length > 0 ? (
-              <StayOptions trip={trip} booked={others.some((s) => s.kind === 'stay')} />
-            ) : (
-              !others.length && (
-                <p className="empty">
-                  No hotel yet.{' '}
-                  <button type="button" className="link" onClick={() => setBooking('new')}>
-                    Add one
-                  </button>
-                </p>
-              )
-            )}
-        </FoldCard>
-
-        <FoldCard id={`${trip.id}.todos`} icon={<ListChecks size={15} />} title="To-dos" peek={openTodos > 0 ? plural(openTodos, 'open', 'open') : trip.todos.length ? 'All done' : 'None yet'}>
-            <TripTodos trip={trip} past={past} />
-        </FoldCard>
-      </div>
-
+    ),
+    stay: (
+      <FoldCard
+        id={`${trip.id}.stay`}
+        icon={<BedDouble size={15} />}
+        title="Stay"
+        peek={others.length ? others.map((o) => shortStay(o.title || 'Hotel')).join(', ') : trip.stayOptions.length ? plural(trip.stayOptions.length, 'hotel option') : 'No hotel yet'}
+      >
+          {others.length > 0 && <div className="seg-list">{others.map(row)}</div>}
+          {trip.stayOptions.length > 0 ? (
+            <StayOptions trip={trip} booked={others.some((s) => s.kind === 'stay')} />
+          ) : (
+            !others.length && (
+              <p className="empty">
+                No hotel yet.{' '}
+                <button type="button" className="link" onClick={() => setBooking('new')}>
+                  Add one
+                </button>
+              </p>
+            )
+          )}
+      </FoldCard>
+    ),
+    todos: (
+      <FoldCard id={`${trip.id}.todos`} icon={<ListChecks size={15} />} title="To-dos" peek={openTodos > 0 ? plural(openTodos, 'open', 'open') : trip.todos.length ? 'All done' : 'None yet'}>
+          <TripTodos trip={trip} past={past} />
+      </FoldCard>
+    ),
+    plan: (
       <FoldCard
         id={`${trip.id}.plan`}
         icon={<CalendarDays size={15} />}
@@ -1461,6 +1498,45 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
             })}
           </div>
       </FoldCard>
+    ),
+  };
+  const stage = tripStage(trip, state, homeward, now);
+  const order = SECTION_ORDER[stage.stage];
+  // Stay and to-dos side by side when they come together; apart when the stage puts them apart.
+  const placed: ReactNode[] = [];
+  for (let i = 0; i < order.length; i++) {
+    const k = order[i]!;
+    const n = order[i + 1];
+    if ((k === 'stay' && n === 'todos') || (k === 'todos' && n === 'stay')) {
+      placed.push(
+        <div key="pair" className="trip-section-pair">
+          <Fragment key={k}>{sections[k]}</Fragment>
+          <Fragment key={n}>{sections[n]}</Fragment>
+        </div>,
+      );
+      i++;
+    } else placed.push(<Fragment key={k}>{sections[k]}</Fragment>);
+  }
+
+  return (
+    <div className="trip-detail">
+      <header className="page-head trip-page-head">
+        {head}
+        <div className="trip-actions">
+          <button type="button" className="btn btn-sm" onClick={() => setBooking('new')}>
+            <Plus size={13} /> Flight or hotel
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
+            <Pencil size={12} /> Edit
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => ask(`Help me with my ${trip.purpose} trip "${trip.title}" (${trip.startDate} to ${trip.endDate}). Look at the bookings and the plan, then tell me what is missing or could be better.`)}>
+            <Sparkles size={13} /> Ask {agentName}
+          </button>
+        </div>
+      </header>
+
+      {stage.live && <TripNow trip={trip} journey={stage.journey} />}
+      {placed}
 
       {editing && <TripSheet trip={trip} onClose={() => setEditing(false)} />}
       {booking && <BookingSheet trip={trip} segment={booking === 'new' ? null : booking} onClose={() => setBooking(null)} />}
@@ -2485,7 +2561,7 @@ function DaySteps({ journey }: { journey: Journey }) {
  * glance, then the lounge, Seldon's plan and the trip's to-dos folded into a line each. From 36 hours
  * before a flight; the day's steps join 18 hours out and stay until 6 hours after you land.
  */
-function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null }) {
+function TravelDayCard({ trip, journey, inPage = false }: { trip: Trip; journey: Journey | null; inPage?: boolean }) {
   const { data: t } = useTravel();
   const { agentName, ask } = useApp();
   const openTrip = useOpenTrip();
@@ -2506,7 +2582,7 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
   const loungeTrip = lounges ? t.trips.find((x) => x.id === lounges.to.tripId) : undefined;
 
   return (
-    <section className="card travel-mode travel-day is-link" onClick={(e) => onCardItself(e) && openTrip(trip)}>
+    <section className={cx('card travel-mode travel-day', !inPage && 'is-link')} onClick={(e) => !inPage && onCardItself(e) && openTrip(trip)}>
       <div className="tm-head">
         <span className="tm-kicker">
           <Plane size={13} aria-hidden /> {trip.title}
@@ -2574,16 +2650,18 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
         <button type="button" className="link" onClick={() => ask(`I'm flying ${f.carrier} ${f.number} from ${f.fromCode} to ${f.toCode}. What should I do before boarding, and what should I know on arrival?`)}>
           Ask {agentName} about this flight
         </button>
-        <button type="button" className="trip-hero-open" onClick={() => openTrip(trip)}>
-          Full plan <ChevronRight size={14} aria-hidden />
-        </button>
+        {!inPage && (
+          <button type="button" className="trip-hero-open" onClick={() => openTrip(trip)}>
+            Full plan <ChevronRight size={14} aria-hidden />
+          </button>
+        )}
       </div>
       {lounges && loungeTrip && <LayoverSheet trip={loungeTrip} from={lounges.from} to={lounges.to} loyalty={t.loyalty} onClose={() => setLounges(null)} />}
     </section>
   );
 }
 
-function TravelNowCard() {
+function TravelNowCard({ inPage = false }: { inPage?: boolean }) {
   const { data: t } = useTravel();
   const { agentName, ask } = useApp();
   const openTrip = useOpenTrip();
@@ -2599,7 +2677,7 @@ function TravelNowCard() {
   const hhmmNow = new Date(now).toTimeString().slice(0, 5);
   const nextItem = items.find((i) => !i.done && (i.time ?? '99:99') >= hhmmNow);
   return (
-    <section className="card travel-mode tm-away is-link" onClick={(e) => onCardItself(e) && openTrip(trip)}>
+    <section className={cx('card travel-mode tm-away', !inPage && 'is-link')} onClick={(e) => !inPage && onCardItself(e) && openTrip(trip)}>
       <div className="tm-head">
         <span className="tm-kicker">
           <Palmtree size={13} /> {trip.title} · day {c.dayOfTrip} of {c.tripDays}
