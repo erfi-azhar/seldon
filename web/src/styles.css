@@ -4797,6 +4797,15 @@ button.chip-ask:hover {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
+.verse-all {
+  margin-left: auto;
+  flex: none;
+  gap: 6px;
+}
+.verse-all.is-on {
+  color: var(--ink);
+  background: var(--sunken);
+}
 .verse-meta {
   display: grid;
   gap: 1px;

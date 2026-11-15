@@ -11,6 +11,8 @@ export interface Verse {
   /** One string per ayah, verbatim. */
   arabic: string[];
   english: string;
+  /** One of the seven saving verses (al-āyāt al-munjiyāt), recited as a set. */
+  munjiyat?: boolean;
 }
 
 export const VERSES: Verse[] = [
@@ -80,7 +82,60 @@ export const VERSES: Verse[] = [
     arabic: ['وَيَرْزُقْهُ مِنْ حَيْثُ لَا يَحْتَسِبُ ۚ وَمَن يَتَوَكَّلْ عَلَى ٱللَّهِ فَهُوَ حَسْبُهُۥٓ ۚ إِنَّ ٱللَّهَ بَـٰلِغُ أَمْرِهِۦ ۚ قَدْ جَعَلَ ٱللَّهُ لِكُلِّ شَىْءٍ قَدْرًا'],
     english: 'and will provide for them from an unexpected source; God will be enough for those who put their trust in Him. God achieves His purpose; God has set a due measure for everything.',
   },
+  // The seven saving verses (al-āyāt al-munjiyāt), in the order they are recited.
+  {
+    ref: '9:51',
+    surah: 'At-Tawbah',
+    munjiyat: true,
+    arabic: ['قُل لَّن يُصِيبَنَآ إِلَّا مَا كَتَبَ ٱللَّهُ لَنَا هُوَ مَوْلَىٰنَا ۚ وَعَلَى ٱللَّهِ فَلْيَتَوَكَّلِ ٱلْمُؤْمِنُونَ'],
+    english: 'Say, ‘Only what God has decreed will happen to us. He is our Master: let the believers put their trust in God.’',
+  },
+  {
+    ref: '10:107',
+    surah: 'Yūnus',
+    munjiyat: true,
+    arabic: ['وَإِن يَمْسَسْكَ ٱللَّهُ بِضُرٍّ فَلَا كَاشِفَ لَهُۥٓ إِلَّا هُوَ ۖ وَإِن يُرِدْكَ بِخَيْرٍ فَلَا رَآدَّ لِفَضْلِهِۦ ۚ يُصِيبُ بِهِۦ مَن يَشَآءُ مِنْ عِبَادِهِۦ ۚ وَهُوَ ٱلْغَفُورُ ٱلرَّحِيمُ'],
+    english: 'If God inflicts harm on you, no one can remove it but Him, and if He intends good for you, no one can turn His bounty away; He grants His bounty to any of His servants He will. He is the Most Forgiving, the Most Merciful.',
+  },
+  {
+    ref: '11:6',
+    surah: 'Hūd',
+    munjiyat: true,
+    arabic: ['۞ وَمَا مِن دَآبَّةٍ فِى ٱلْأَرْضِ إِلَّا عَلَى ٱللَّهِ رِزْقُهَا وَيَعْلَمُ مُسْتَقَرَّهَا وَمُسْتَوْدَعَهَا ۚ كُلٌّ فِى كِتَـٰبٍ مُّبِينٍ'],
+    english: 'There is not a creature that moves on earth whose provision is not His concern. He knows where it lives and its [final] resting place: it is all [there] in a clear record.',
+  },
+  {
+    ref: '11:56',
+    surah: 'Hūd',
+    munjiyat: true,
+    arabic: ['إِنِّى تَوَكَّلْتُ عَلَى ٱللَّهِ رَبِّى وَرَبِّكُم ۚ مَّا مِن دَآبَّةٍ إِلَّا هُوَ ءَاخِذٌۢ بِنَاصِيَتِهَآ ۚ إِنَّ رَبِّى عَلَىٰ صِرَٰطٍ مُّسْتَقِيمٍ'],
+    english: 'I put my trust in God, my Lord and your Lord. There is no moving creature which He does not control. My Lord’s way is straight.',
+  },
+  {
+    ref: '29:60',
+    surah: 'Al-ʿAnkabūt',
+    munjiyat: true,
+    arabic: ['وَكَأَيِّن مِّن دَآبَّةٍ لَّا تَحْمِلُ رِزْقَهَا ٱللَّهُ يَرْزُقُهَا وَإِيَّاكُمْ ۚ وَهُوَ ٱلسَّمِيعُ ٱلْعَلِيمُ'],
+    english: 'How many are the creatures who do not store their sustenance! God sustains them and you: He alone is the All Hearing, the All Knowing.',
+  },
+  {
+    ref: '35:2',
+    surah: 'Fāṭir',
+    munjiyat: true,
+    arabic: ['مَّا يَفْتَحِ ٱللَّهُ لِلنَّاسِ مِن رَّحْمَةٍ فَلَا مُمْسِكَ لَهَا ۖ وَمَا يُمْسِكْ فَلَا مُرْسِلَ لَهُۥ مِنۢ بَعْدِهِۦ ۚ وَهُوَ ٱلْعَزِيزُ ٱلْحَكِيمُ'],
+    english: 'No one can withhold the blessing God opens up for people, nor can anyone but Him release whatever He withholds: He is the Almighty, the All Wise.',
+  },
+  {
+    ref: '39:38',
+    surah: 'Az-Zumar',
+    munjiyat: true,
+    arabic: ['وَلَئِن سَأَلْتَهُم مَّنْ خَلَقَ ٱلسَّمَـٰوَٰتِ وَٱلْأَرْضَ لَيَقُولُنَّ ٱللَّهُ ۚ قُلْ أَفَرَءَيْتُم مَّا تَدْعُونَ مِن دُونِ ٱللَّهِ إِنْ أَرَادَنِىَ ٱللَّهُ بِضُرٍّ هَلْ هُنَّ كَـٰشِفَـٰتُ ضُرِّهِۦٓ أَوْ أَرَادَنِى بِرَحْمَةٍ هَلْ هُنَّ مُمْسِكَـٰتُ رَحْمَتِهِۦ ۚ قُلْ حَسْبِىَ ٱللَّهُ ۖ عَلَيْهِ يَتَوَكَّلُ ٱلْمُتَوَكِّلُونَ'],
+    english: 'If you [Prophet] ask them, ‘Who created the heavens and earth?’ they are sure to answer, ‘God,’ so say, ‘Consider those you invoke beside Him: if God wished to harm me, could they undo that harm? If God wished to show me mercy, could they withhold that mercy?’ Say, ‘God is enough for me: all those who trust should put their trust in Him.’',
+  },
 ];
+
+/** Where each of the seven saving verses sits in VERSES, in recitation order. */
+export const MUNJIYAT = VERSES.flatMap((v, i) => (v.munjiyat ? [i] : []));
 
 /** One verse per day, the same all day, moving through the list in order. */
 export function verseIndexFor(date: string): number {

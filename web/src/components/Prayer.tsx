@@ -8,7 +8,7 @@ import { PRAYERS, type FaithState, type PrayerDay, type PrayerName, type PrayerS
 import { api, faithWrite, useFaith, useWrite } from '../api.ts';
 import { addDays, cx, parseDay, plural, todayStr } from '../lib.ts';
 import { Field, Modal } from './ui.tsx';
-import { VERSES, verseIndexFor } from './verses.ts';
+import { MUNJIYAT, VERSES, verseIndexFor } from './verses.ts';
 
 const NAME: Record<PrayerName, string> = { fajr: 'Fajr', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' };
 
@@ -460,10 +460,26 @@ const audioSources = (surah: number, ayah: number): string[] => {
   return [`https://verses.quran.com/Alafasy/mp3/${file}`, `https://everyayah.com/data/Alafasy_128kbps/${file}`];
 };
 
-type Playback = { state: 'idle' } | { state: 'loading' | 'playing' | 'paused'; ayah: number } | { state: 'error' };
+/** One ayah to recite; `verse` is its entry in VERSES, so the card can follow along. */
+type Track = { surah: number; ayah: number; verse: number };
+type Playback =
+  | { state: 'idle' }
+  | { state: 'loading' | 'playing' | 'paused'; track: Track; set: string }
+  | { state: 'error' };
 
-/** Plays a run of ayat one after another, falling back to the second host if the first fails. */
-function useRecitation(surah: number, first: number, last: number) {
+/** The ayat of one entry in VERSES, in order. */
+function tracksOf(index: number): Track[] {
+  const v = VERSES[index]!;
+  const [surah, range] = v.ref.split(':') as [string, string];
+  const first = Number(range.split('-')[0]);
+  return v.arabic.map((_, i) => ({ surah: Number(surah), ayah: first + i, verse: index }));
+}
+
+/**
+ * Plays a list of ayat one after another, falling back to the second host when the first
+ * fails. `set` names what is playing (one verse, or all seven), so a button knows its own.
+ */
+function useRecitation() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const [pb, setPb] = useState<Playback>({ state: 'idle' });
 
@@ -477,63 +493,91 @@ function useRecitation(surah: number, first: number, last: number) {
     }
     audio.current = null;
   };
-  // A different verse, or leaving the page, stops what is playing.
-  useEffect(() => {
-    setPb({ state: 'idle' });
-    return stop;
-  }, [surah, first, last]);
+  useEffect(() => stop, []);
 
-  const play = (ayah: number, source = 0) => {
+  const playAt = (tracks: Track[], i: number, set: string, source = 0) => {
     stop();
-    const a = new Audio(audioSources(surah, ayah)[source]);
+    const track = tracks[i]!;
+    const a = new Audio(audioSources(track.surah, track.ayah)[source]);
     audio.current = a;
-    setPb({ state: 'loading', ayah });
-    a.onplaying = () => setPb({ state: 'playing', ayah });
-    a.onwaiting = () => setPb({ state: 'loading', ayah });
-    a.onended = () => (ayah < last ? play(ayah + 1) : (stop(), setPb({ state: 'idle' })));
-    a.onerror = () => (source === 0 ? play(ayah, 1) : (stop(), setPb({ state: 'error' })));
+    setPb({ state: 'loading', track, set });
+    a.onplaying = () => setPb({ state: 'playing', track, set });
+    a.onwaiting = () => setPb({ state: 'loading', track, set });
+    a.onended = () => (i + 1 < tracks.length ? playAt(tracks, i + 1, set) : (stop(), setPb({ state: 'idle' })));
+    a.onerror = () => (source === 0 ? playAt(tracks, i, set, 1) : (stop(), setPb({ state: 'error' })));
     a.play().catch((e: unknown) => {
       // Autoplay refusals are reported here; load failures arrive via onerror.
       if (e instanceof DOMException && e.name === 'NotAllowedError') (stop(), setPb({ state: 'idle' }));
     });
   };
 
-  const toggle = () => {
+  /** Start `set`, or pause and resume it if it is the one already going. */
+  const toggle = (set: string, tracks: Track[]) => {
     const a = audio.current;
-    if (pb.state === 'playing' && a) {
+    const mine = (pb.state === 'playing' || pb.state === 'paused' || pb.state === 'loading') && pb.set === set;
+    if (mine && pb.state === 'playing' && a) {
       a.pause();
-      setPb({ state: 'paused', ayah: pb.ayah });
-    } else if (pb.state === 'paused' && a) {
+      setPb({ ...pb, state: 'paused' });
+    } else if (mine && pb.state === 'paused' && a) {
       void a.play().catch(() => setPb({ state: 'error' }));
-    } else if (pb.state !== 'loading') play(first);
+    } else if (!(mine && pb.state === 'loading')) playAt(tracks, 0, set);
   };
 
-  return { pb, toggle };
+  const halt = () => {
+    stop();
+    setPb({ state: 'idle' });
+  };
+
+  return { pb, toggle, halt };
+}
+
+function PlayIcon({ state }: { state: 'loading' | 'playing' | 'other' }) {
+  if (state === 'loading') return <LoaderCircle size={15} className="spin" />;
+  if (state === 'playing') return <Pause size={15} fill="currentColor" strokeWidth={0} />;
+  return <Play size={15} fill="currentColor" strokeWidth={0} />;
 }
 
 /** Outside Ramadan: a verse of encouragement and calm, a new one each day. */
 function VerseCard({ date }: { date: string }) {
   const [offset, setOffset] = useState(0);
-  const v = VERSES[(verseIndexFor(date) + offset) % VERSES.length]!;
-  const [surah, range] = v.ref.split(':') as [string, string];
-  const first = Number(range.split('-')[0]);
-  const last = first + v.arabic.length - 1;
-  const { pb, toggle } = useRecitation(Number(surah), first, last);
-  const current = pb.state === 'playing' || pb.state === 'paused' || pb.state === 'loading' ? pb.ayah : null;
+  const { pb, toggle, halt } = useRecitation();
+  const active = pb.state === 'playing' || pb.state === 'paused' || pb.state === 'loading' ? pb : null;
+  // While all seven saving verses are recited, the card shows the one being read.
+  const index = active?.set === 'munjiyat' ? active.track.verse : (verseIndexFor(date) + offset) % VERSES.length;
+  // Keep the card on the verse being recited, so it stays there when the set ends.
+  const following = active?.set === 'munjiyat' ? active.track.verse : null;
+  useEffect(() => {
+    if (following !== null) setOffset((((following - verseIndexFor(date)) % VERSES.length) + VERSES.length) % VERSES.length);
+  }, [following, date]);
+  const v = VERSES[index]!;
+  const tracks = tracksOf(index);
+  const first = tracks[0]!.ayah;
+  const reciting = active && active.track.verse === index ? active.track.ayah : null;
+  const verseSet = `verse:${index}`;
+  const stateOf = (set: string) => (active?.set === set ? (active.state === 'paused' ? 'other' : active.state) : 'other');
+  const seventh = v.munjiyat ? MUNJIYAT.indexOf(index) + 1 : 0;
   // The translation is kept verbatim; only a trailing dash or comma, left where the
   // sentence runs on into the next ayah, is dropped for display.
   const english = v.english.replace(/[\s,;:\-–—]+$/, '');
   return (
     <section className="card verse-card" aria-label="Verse of the day">
       <div className="verse-head">
-        <span className="verse-eyebrow">{offset ? 'Another verse' : 'Verse for today'}</span>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOffset((o) => (o + 1) % VERSES.length)}>
+        <span className="verse-eyebrow">{seventh ? `Seven saving verses · ${seventh} of 7` : offset ? 'Another verse' : 'Verse for today'}</span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => {
+            halt();
+            // The verse after the one on show (which, mid-set, may not be today's plus the offset).
+            setOffset((((index + 1 - verseIndexFor(date)) % VERSES.length) + VERSES.length) % VERSES.length);
+          }}
+        >
           Another <ChevronRight size={13} />
         </button>
       </div>
       <p className="verse-arabic" lang="ar" dir="rtl">
         {v.arabic.map((a, i) => (
-          <span key={i} className={cx(v.arabic.length > 1 && current === first + i && 'is-reciting')}>
+          <span key={i} className={cx(v.arabic.length > 1 && reciting === first + i && 'is-reciting')}>
             {a} <span className="verse-end">﴿{arabicDigits(first + i)}﴾</span>{' '}
           </span>
         ))}
@@ -542,17 +586,11 @@ function VerseCard({ date }: { date: string }) {
       <div className="verse-foot">
         <button
           type="button"
-          className={cx('verse-play', pb.state === 'playing' && 'is-playing')}
-          onClick={toggle}
-          aria-label={pb.state === 'playing' ? 'Pause recitation' : 'Play recitation'}
+          className={cx('verse-play', stateOf(verseSet) === 'playing' && 'is-playing')}
+          onClick={() => toggle(verseSet, tracks)}
+          aria-label={stateOf(verseSet) === 'playing' ? 'Pause recitation' : 'Play recitation'}
         >
-          {pb.state === 'loading' ? (
-            <LoaderCircle size={15} className="spin" />
-          ) : pb.state === 'playing' ? (
-            <Pause size={15} fill="currentColor" strokeWidth={0} />
-          ) : (
-            <Play size={15} fill="currentColor" strokeWidth={0} />
-          )}
+          <PlayIcon state={stateOf(verseSet)} />
         </button>
         <div className="verse-meta">
           <a href={`https://quran.com/${v.ref}`} target="_blank" rel="noreferrer">
@@ -560,6 +598,16 @@ function VerseCard({ date }: { date: string }) {
           </a>
           <span>{pb.state === 'error' ? 'Recitation couldn’t load — try again' : `Recited by ${RECITER} · Abdel Haleem translation`}</span>
         </div>
+        {v.munjiyat && (
+          <button
+            type="button"
+            className={cx('btn btn-ghost btn-sm verse-all', active?.set === 'munjiyat' && 'is-on')}
+            onClick={() => toggle('munjiyat', MUNJIYAT.flatMap(tracksOf))}
+            aria-label={stateOf('munjiyat') === 'playing' ? 'Pause the seven saving verses' : 'Play all seven saving verses'}
+          >
+            <PlayIcon state={stateOf('munjiyat')} /> {active?.set === 'munjiyat' ? `${seventh} of 7` : 'All seven'}
+          </button>
+        )}
       </div>
     </section>
   );
