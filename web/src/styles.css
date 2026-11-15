@@ -11281,10 +11281,11 @@ button.xw-coin:hover,
 }
 .bk-settle {
   display: grid;
-  gap: 6px;
-  padding: 0 20px 12px;
+  gap: 8px;
+  padding: 0 20px 16px;
 }
-.bk-settle-line {
+.bk-settle-line,
+.bk-sched-line {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -11294,83 +11295,239 @@ button.xw-coin:hover,
   font: 500 25px/1.2 var(--mono);
   letter-spacing: -0.045em;
 }
-.bk-settle-line .muted {
+.bk-settle-line .muted,
+.bk-sched-line .muted {
   font-size: 13px;
 }
+.bk-settle-line .chip {
+  align-self: center;
+}
+.bk-covered,
 .bk-settle-line b.bk-covered {
-  font: 600 18px/1.3 var(--sans);
+  font: 600 17px/1.3 var(--sans);
   letter-spacing: 0;
   color: var(--good);
 }
-.bk-stats {
+
+/* The bar: paid, against the settlement mark and the full contribution term. */
+.bk-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0 20px 12px;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  gap: 5px;
+  margin: 4px 0 2px;
 }
-.bk-stats > div {
+.bk-bar-row {
+  position: relative;
+  height: 30px;
+}
+.bk-mark {
+  position: absolute;
+  top: 0;
   display: grid;
-  align-content: start;
-  gap: 3px;
-  min-width: 0;
-}
-.bk-stats b {
-  font: 500 15px/1.25 var(--mono);
-  letter-spacing: -0.03em;
+  gap: 1px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--ink-2);
 }
-.bk-stats .btn {
-  justify-self: start;
-  margin-top: 2px;
+.bk-mark .num {
+  font-size: 12px;
 }
-.bk-stats .is-owing b {
-  color: var(--bad);
+.bk-mark-l {
+  color: var(--ink-4);
+}
+.bk-mark.is-strong .num {
+  color: var(--ink);
+  font-weight: 600;
+}
+.bk-track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+  box-shadow: inset 0 1px 1px rgb(22 26 45 / 0.08);
+}
+.bk-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--sphere, var(--ink)) 62%, white), var(--sphere, var(--ink)));
+}
+.bk-tick {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.bk-section {
+  padding: 4px 0 4px;
+  border-top: 1px solid var(--line);
 }
 .bk-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 20px 2px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 20px;
+}
+.bk-sched-line {
+  padding: 0 20px 10px;
+}
+.bk-sched-line b.num {
+  font: 500 20px/1.2 var(--mono);
+  letter-spacing: -0.04em;
+}
+.is-bad {
+  color: var(--bad);
 }
 .bk-pad {
-  padding: 0 20px 10px;
+  padding: 0 20px 12px;
+}
+
+/* A calendar of contributions: a row per year, a cell per month, filled as far as the money reaches. */
+.bk-cal {
+  display: grid;
+  grid-template-columns: 34px repeat(12, minmax(0, 1fr));
+  gap: 4px;
+  align-items: center;
+  padding: 0 20px 12px;
+}
+.bk-cal-m,
+.bk-cal-y {
+  font: 500 10.5px var(--mono);
+  color: var(--ink-4);
+  text-align: center;
+}
+.bk-cal-y {
+  text-align: left;
+}
+.bk-cell {
+  position: relative;
+  height: 14px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--ink) 7%, transparent);
+}
+.bk-cell::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--fill, 0) * 100%);
+  background: var(--sphere, var(--ink));
+}
+.bk-cell.is-behind {
+  background: color-mix(in oklab, var(--bad) 30%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--bad) 55%, transparent);
+}
+.bk-cell.is-now {
+  box-shadow: inset 0 0 0 1.5px var(--ink-2);
+}
+.bk-why {
+  display: grid;
+  gap: 6px;
+  padding: 0 20px 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.bk-why li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.bk-why b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.bk-key {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  transform: translateY(1px);
+}
+.bk-key.is-paid {
+  background: var(--sphere, var(--ink));
+}
+.bk-key.is-behind {
+  background: color-mix(in oklab, var(--bad) 30%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--bad) 55%, transparent);
+}
+.bk-key.is-now {
+  box-shadow: inset 0 0 0 1.5px var(--ink-2);
+}
+
+/* Travel */
+.bk-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-left: -4px;
+  padding: 0 4px;
+  border-radius: 8px;
+  color: inherit;
+}
+.bk-fold:hover .fin-label {
+  color: var(--ink);
+}
+.bk-fold-chev {
+  color: var(--ink-4);
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+.bk-travel.is-closed .bk-fold-chev {
+  transform: none;
+}
+.chip-good {
+  background: color-mix(in oklab, var(--good) 14%, transparent);
+  color: var(--good);
+}
+.bk-alert {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 20px 6px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.bk-alert svg {
+  flex: none;
+  margin-top: 2px;
 }
 .bk-trips {
   display: grid;
-  gap: 2px;
-  padding: 0 20px 10px;
+  padding: 0 20px 8px;
 }
 .bk-trips li {
   display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 6px 0;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
   font-size: 13.5px;
 }
-.bk-trips li svg {
-  flex: none;
-  margin-top: 3px;
+.bk-trips li + li {
+  border-top: 1px solid var(--line);
 }
-.bk-ok {
-  color: var(--good);
+.bk-trip-main {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
-.bk-warn {
-  color: var(--bad);
+.bk-trip-main .faint {
+  font-size: 12.5px;
 }
 .bk-trip-msg {
-  display: block;
-  margin-top: 2px;
   font-size: 12.5px;
-  color: var(--ink-3);
-}
-.bk-trips li.is-outside .bk-trip-msg,
-.bk-trips li.is-none .bk-trip-msg {
   color: var(--bad);
 }
 .bk-list {
@@ -11379,16 +11536,26 @@ button.xw-coin:hover,
 .bk-list li {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 4px 0;
   font-size: 13.5px;
 }
 .bk-list .num {
   font-size: 13px;
 }
+.bk-pay-amt {
+  min-width: 84px;
+}
 .bk-foot {
   padding: 10px 20px 14px;
   border-top: 1px solid var(--line);
+}
+/* With no case to track, the debts card takes the band's full width. */
+.fin-liabilities:has(> .col:first-child:empty) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.fin-liabilities > .col:empty {
+  display: none;
 }
 .bk-entry {
   padding: 0 12px 8px;
@@ -11455,8 +11622,9 @@ button.xw-coin:hover,
   .xw-metrics {
     display: none;
   }
-  .bk-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .bk-cal {
+    grid-template-columns: 30px repeat(12, minmax(0, 1fr));
+    gap: 3px;
   }
 }
 

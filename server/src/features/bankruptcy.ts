@@ -126,6 +126,8 @@ export function bankruptcyState(store: Store, today: string): BankruptcyState {
   const month = today.slice(0, 7);
   const months = c.contributionsFrom && c.contributionsFrom <= month ? monthsBetween(c.contributionsFrom, month) : 0;
   const expected = c.monthlyContribution ? r2(Math.min(months, c.targetMonths) * c.monthlyContribution) : 0;
+  // What was due before this month: this month's contribution isn't late until the month is out.
+  const expectedBefore = c.monthlyContribution ? r2(Math.min(Math.max(0, months - 1), c.targetMonths) * c.monthlyContribution) : 0;
   return {
     active,
     case: c,
@@ -133,7 +135,7 @@ export function bankruptcyState(store: Store, today: string): BankruptcyState {
     payments,
     settlement: settleTarget === null ? null : { target: r2(settleTarget), estimated: !c.settlementQuote, remaining: r2(Math.max(0, settleTarget - paid)) },
     contribution: c.monthlyContribution ? { target: r2(c.monthlyContribution * c.targetMonths), remaining: r2(Math.max(0, c.monthlyContribution * c.targetMonths - paid)) } : null,
-    schedule: c.monthlyContribution && c.contributionsFrom ? { months, expected, behind: r2(Math.max(0, expected - paid)) } : null,
+    schedule: c.monthlyContribution && c.contributionsFrom ? { months, expected, behind: r2(Math.max(0, expected - paid)), overdue: r2(Math.max(0, expectedBefore - paid)) } : null,
     thisMonth: c.monthlyContribution ? { due: c.monthlyContribution, paid: r2(payments.filter((p) => p.date.slice(0, 7) === month).reduce((n, p) => n + p.amount, 0)) } : null,
     approvals,
     trips: c.status === 'active' ? checkTrips(store, today, approvals) : [],
@@ -149,6 +151,7 @@ registerSnapshotSection<Store>('Bankruptcy', (store, today) => {
   if (!s.active || s.case.status !== 'active') return null;
   const parts = [`Bankruptcy case ${s.case.reference || ''} with ${s.case.trustee || 'a trustee'}: ${money(s.paid)} paid in contributions.`];
   if (s.settlement) parts.push(`${s.settlement.estimated ? 'Estimated' : 'Quoted'} left to settle the estate (annulment): ${money(s.settlement.remaining)}${s.settlement.estimated ? ' before fees not yet known' : ''}.`);
+  if (s.schedule?.overdue) parts.push(`Behind the monthly schedule: ${money(s.schedule.overdue)} overdue from before this month (${money(s.schedule.expected)} due over ${s.schedule.months} months including this one, ${money(s.paid)} paid).`);
   if (s.thisMonth) parts.push(`This month: ${money(s.thisMonth.paid)} of ${money(s.thisMonth.due)} recorded.`);
   const bad = s.trips.filter((t) => t.status !== 'covered');
   if (bad.length) parts.push(`Trips without matching travel approval: ${bad.map((t) => `${t.title} (${t.leave} to ${t.back})`).join('; ')}. Remind them before they travel.`);
