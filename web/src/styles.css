@@ -1543,6 +1543,11 @@ p.lately {
 .todo-fold ul {
   padding-bottom: 8px;
 }
+/* A fold that closes its card keeps the card's rounded corners under its hover. */
+.card > .todo-fold:last-child {
+  overflow: hidden;
+  border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px);
+}
 /* Work to-dos grouped by project, or by day. */
 .work-todos .card-head .seg button {
   height: 26px;
@@ -7466,9 +7471,6 @@ button.layover-pill:hover .layover-lounge {
   color: inherit;
   text-decoration: none;
 }
-.horizon-link:hover {
-  background: var(--surface-2);
-}
 
 /* A trip's own page */
 .trip-page-head .trip-sub {
@@ -9522,11 +9524,13 @@ button.layover-pill:hover .layover-lounge {
 .fin-upcoming {
   padding: 0 20px 8px;
 }
+/* Date, name, amount — the amount always on the right edge. Paid/Skip, when an item is
+   due within three days, sit on their own line under the name. */
 .fin-upcoming li {
   display: grid;
-  grid-template-columns: 62px minmax(0, 1fr) auto 104px;
+  grid-template-columns: 62px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
   padding: 6px 0;
   font-size: 14px;
 }
@@ -9551,14 +9555,14 @@ button.layover-pill:hover .layover-lounge {
 .fin-up-name .faint {
   font-size: 12px;
 }
-.fin-up-name:hover .clamp-1 {
+.fin-up-name:hover .clamp-1:first-child {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 .fin-up-acts {
+  grid-column: 2 / -1;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 2px;
 }
 .fin-rec {
@@ -9633,13 +9637,6 @@ button.layover-pill:hover .layover-lounge {
   }
   .fin-upcoming li {
     grid-template-columns: 54px minmax(0, 1fr) auto;
-  }
-  .fin-upcoming .fin-up-acts:empty {
-    display: none;
-  }
-  .fin-upcoming .fin-up-acts:not(:empty) {
-    grid-column: 2 / -1;
-    justify-content: flex-start;
   }
   .fin-tx-make {
     opacity: 1;
