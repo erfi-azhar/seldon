@@ -9635,12 +9635,19 @@ button.layover-pill:hover .layover-lounge {
 }
 
 /* Today's travel card on a travel day: now, the day's steps, the flight, then folds. */
+/* Three sections on one rhythm: now and the day's steps, the flight, then the folds. Each
+   section opens with one rule and the same 18px beneath it; inside, things sit closer. */
 .travel-day {
-  gap: 14px;
+  --td-section: 18px;
+  gap: var(--td-section);
+  padding-bottom: 14px;
+}
+.travel-day > .tm-head + .td-now {
+  margin-top: -6px;
 }
 .td-now {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 .td-steps {
   display: flex;
@@ -9730,15 +9737,28 @@ button.layover-pill:hover .layover-lounge {
    a rule above it like the card's other sections. */
 .flight-card.is-inline,
 .flight-card.is-inline:hover {
-  padding: 14px 0 0;
+  gap: 12px;
+  padding: var(--td-section, 18px) 0 0;
   border-top: 1px solid var(--line);
   border-radius: 0;
   background: none;
   box-shadow: none;
 }
+/* One rule per section: the facts follow the route on space alone. */
+.flight-card.is-inline .fc-facts {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
 .td-folds {
   display: grid;
+  /* The rows bring their own 11px, so the text lands the same 18px under the rule. */
+  padding-top: calc(var(--td-section) - 11px);
   border-top: 1px solid var(--line);
+}
+.travel-day > .td-folds + .td-foot,
+.travel-day > .td-folds + .error-text {
+  margin-top: -8px;
 }
 .td-fold {
   border-bottom: 1px solid var(--line);
