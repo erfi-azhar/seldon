@@ -21,7 +21,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
     "@fontsource-variable/eb-garamond": "^5.3.0",
-    "@fontsource-variable/newsreader": "^5.3.0",
     "@hono/node-server": "^2.1.8",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "adhan": "^4.4.6",
