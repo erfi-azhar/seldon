@@ -651,6 +651,16 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE trips ADD COLUMN guide TEXT;
   `,
+  // Quran study: each ayah marked studied, once per day.
+  `
+  CREATE TABLE quran_study_log (
+    verse_key TEXT NOT NULL,
+    date TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (verse_key, date)
+  );
+  CREATE INDEX quran_study_by_date ON quran_study_log(date);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

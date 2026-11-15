@@ -21,6 +21,7 @@ import './followups.ts';
 import './weather.ts';
 import './finance.ts';
 import './reading.ts';
+import './quran.ts';
 
 /** Mount every feature's routes and register its jobs. */
 export function installFeatures(app: Hono, ctx: FeatureContext): void {

@@ -1303,3 +1303,44 @@ export interface GuideSection {
   title: string;
   tips: string[];
 }
+
+// ── Quran study ─────────────────────────────────────────────────────────────
+
+export interface QuranChapter {
+  id: number;
+  name: string;
+  nameArabic: string;
+  /** "The Opener". */
+  meaning: string;
+  verses: number;
+}
+
+/** A paragraph of tafsir: a heading, plain text, or a line of Arabic. */
+export interface TafsirBlock {
+  kind: 'h' | 'p' | 'ar';
+  text: string;
+}
+
+export interface QuranVerse {
+  key: string;
+  surah: number;
+  ayah: number;
+  arabic: string;
+  translation: string;
+  translator: string;
+  tafsir: { id: number; name: string; covers: string[]; blocks: TafsirBlock[] } | null;
+}
+
+export interface QuranStudy {
+  surah: number;
+  ayah: number;
+  key: string;
+  tafsir: number;
+  tafsirs: { id: number; name: string }[];
+  studiedToday: boolean;
+  /** Ayat marked studied since Monday, and ever. */
+  week: number;
+  total: number;
+  /** Days in a row with at least one ayah studied, up to today or yesterday. */
+  streak: number;
+}
