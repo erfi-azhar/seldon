@@ -11,6 +11,7 @@ import { FaithVerse, PrayerCard } from '../components/Prayer.tsx';
 import { QuranStudyCard } from '../components/QuranStudy.tsx';
 import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.tsx';
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
+import { TravelGuides } from '../components/TravelGuides.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
 import { ReadingList } from '../components/Reading.tsx';
 import { CryptoTwitterCard } from '../components/CryptoTwitter.tsx';
@@ -100,6 +101,7 @@ function ScreeningsEntry({ sphereId }: { sphereId: string }) {
 
 export function SphereDetail({ id }: { id: string }) {
   const { data, isError } = useSphere(id);
+  const { data: travel } = useTravel();
   const { openSheet, ask, agentName } = useApp();
   const [showClosed, setShowClosed] = useState(false);
   const saveVision = useWrite((vision: string) => write.patch(`/spheres/${id}`, { vision }));
@@ -131,6 +133,15 @@ export function SphereDetail({ id }: { id: string }) {
   const quiet = s.stats.quietDays;
   // Spheres with a card you use every day: food, prayers, work to-dos and job alerts, money and markets.
   const hasDaily = s.key === 'health' || s.key === 'faith' || s.key === 'work' || s.key === 'finances';
+  // Travels has no habits card, and its numbers only show once they matter: a number with a reading,
+  // or a trip under way or within the week.
+  const travels = s.key === 'travels';
+  const today = new Date().toISOString().slice(0, 10);
+  const soon = (d: string) => (Date.parse(d) - Date.parse(today)) / 86_400_000;
+  const numbersShown =
+    !travels ||
+    metrics.some((m) => m.latest !== null) ||
+    !!travel?.trips.some((t) => t.startDate <= today ? t.endDate >= today : soon(t.startDate) <= 7);
 
   const habitsCard = (
     <section className="card">
@@ -197,6 +208,7 @@ export function SphereDetail({ id }: { id: string }) {
       {/* Today: what you act on most days. */}
       <div className="band-label">Today</div>
       {s.key === 'travels' && <TravelTrips />}
+      {s.key === 'travels' && <TravelGuides />}
       {s.key === 'finances' && <MoneyHero />}
       {/* Work's to-dos are the heart of the sphere, so they get the full width. */}
       {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} projects={projects} />}
@@ -204,8 +216,9 @@ export function SphereDetail({ id }: { id: string }) {
       {s.key === 'learning' && <ReadingList />}
       {/* With a daily card on the left, tasks join habits on the right so the columns even out.
           Work has no habits card: job alerts lead on the left, and what needs you sits beside them
-          when there is any, so the left column is never the empty one. */}
-      <div className="detail-grid">
+          when there is any, so the left column is never the empty one. Travels keeps only what
+          needs you here: its to-dos live with each trip. */}
+      <div className={travels ? undefined : 'detail-grid'}>
         <div className="col">
           {s.key === 'work' ? <JobAlertsCard /> : <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} />}
           {s.key === 'health' && <HealthToday />}
@@ -213,7 +226,7 @@ export function SphereDetail({ id }: { id: string }) {
           {s.key === 'finances' && <CashflowCard />}
           {s.key === 'finances' && <PlanCard />}
           {s.key === 'finances' && habitsCard}
-          {!hasDaily && (
+          {!hasDaily && !travels && (
             <section className="card">
               <div className="card-head">
                 <h2 className="card-title">Tasks</h2>
@@ -228,7 +241,7 @@ export function SphereDetail({ id }: { id: string }) {
             </section>
           )}
         </div>
-        <div className="col">
+        {!travels && <div className="col">
           {s.key === 'faith' && <FaithVerse />}
           {s.key === 'faith' && <QuranStudyCard />}
           {s.key === 'work' ? <SignalsCard sphereId={id} title={`Needs you in ${s.name}`} /> : s.key === 'finances' ? <CryptoDesk /> : habitsCard}
@@ -248,12 +261,12 @@ export function SphereDetail({ id }: { id: string }) {
               <AddTask sphereId={id} placeholder={`Add a task to ${s.name}…`} />
             </section>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Progress: what you update now and then, and read for the trend. */}
       <div className="band-label">Progress</div>
-      <div className="detail-grid">
+      <div className={numbersShown ? 'detail-grid' : undefined}>
         <div className="col">
           <section className="card">
             <div className="card-head">
@@ -285,7 +298,7 @@ export function SphereDetail({ id }: { id: string }) {
           {s.key === 'health' && <TrainingAndBody part="training" />}
           {s.key === 'finances' && <PortfolioCard />}
         </div>
-        <div className="col">
+        {numbersShown && <div className="col">
           <section className="card">
             <div className="card-head">
               <h2 className="card-title">Numbers</h2>
@@ -313,7 +326,7 @@ export function SphereDetail({ id }: { id: string }) {
           </section>
           {s.key === 'health' && <TrainingAndBody part="body" />}
           {s.key === 'finances' && <DebtsCard />}
-        </div>
+        </div>}
       </div>
 
       {/* Reference: what you look things up in, and rarely change. */}

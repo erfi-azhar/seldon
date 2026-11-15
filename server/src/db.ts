@@ -714,6 +714,23 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE trip_segments ADD COLUMN delay_min INTEGER NOT NULL DEFAULT 0;
   `,
+  // Travel guides: a place being researched, the Library items gathered for it, and the guide built from them.
+  `
+  CREATE TABLE travel_guides (
+    id TEXT PRIMARY KEY,
+    place TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    guide TEXT,
+    built_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE travel_guide_notes (
+    guide_id TEXT NOT NULL REFERENCES travel_guides(id) ON DELETE CASCADE,
+    note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    added_at TEXT NOT NULL,
+    PRIMARY KEY (guide_id, note_id)
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

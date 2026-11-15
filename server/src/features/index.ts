@@ -14,6 +14,7 @@ import './mcp.ts';
 import './gravl.ts';
 import './travel.ts';
 import './journey.ts';
+import './guides.ts';
 import './calendar.ts';
 import './google-calendar.ts';
 import './job-alerts.ts';

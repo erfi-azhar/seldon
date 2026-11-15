@@ -1434,3 +1434,37 @@ export type QuranThemes =
   | { status: 'ready'; tafsir: string; covers: string[]; themes: QuranTheme[] }
   /** No tafsir passage for this ayah, or no model to read it: nothing to show. */
   | { status: 'none'; reason: string };
+
+/** A place being researched: the materials gathered for it and the guide built from them. */
+export interface TravelGuide {
+  id: string;
+  place: string;
+  /** What the trip is about, in their words: "a week in winter, halal food, museums". */
+  notes: string;
+  createdAt: string;
+  builtAt: string | null;
+  guide: PlaceGuide | null;
+  materials: Note[];
+}
+
+export interface TravelGuideSummary {
+  id: string;
+  place: string;
+  materials: number;
+  builtAt: string | null;
+  createdAt: string;
+}
+
+export interface PlaceGuide {
+  overview: string;
+  bestTime?: string;
+  sections: PlaceGuideSection[];
+  days?: { title: string; items: string[] }[];
+}
+
+export interface PlaceGuideSection {
+  kind: 'see' | 'do' | 'food' | 'areas' | 'stay' | 'transport' | 'safety' | 'money' | 'etiquette' | 'shopping' | 'budget' | 'tips';
+  title: string;
+  /** Each item names the materials (note ids) it came from. */
+  items: { name: string; text: string; sources: string[] }[];
+}
