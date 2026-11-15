@@ -93,6 +93,7 @@ function segmentFromRow(r: Row, accounts: LoyaltyAccount[], stays?: MarriottStay
     fromTerminal: r.from_terminal ?? '',
     toTerminal: r.to_terminal ?? '',
     checkedInAt: r.checked_in_at ?? null,
+    delayMin: r.delay_min ?? 0,
     address: r.address,
     notes: r.notes,
     source: r.source,
@@ -415,10 +416,19 @@ export function setCheckedIn(store: Store, id: string, checkedIn: boolean): void
   store.db.prepare('UPDATE trip_segments SET checked_in_at = ? WHERE id = ?').run(checkedIn ? nowIso() : null, id);
 }
 
+/** How late a flight is leaving, in minutes (0 when it's back on time). Today then follows the new times. */
+export function setDelay(store: Store, id: string, minutes: number): Segment {
+  const r = store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row | undefined;
+  if (!r || r.kind !== 'flight') throw new NotFound('Flight');
+  const m = Math.max(0, Math.min(24 * 60, Math.round(minutes)));
+  store.db.prepare('UPDATE trip_segments SET delay_min = ? WHERE id = ?').run(m, id);
+  return segmentFromRow({ ...r, delay_min: m }, []);
+}
+
 export function updateSegment(store: Store, id: string, p: Partial<SegmentInput>): Segment {
   const r = store.db.prepare('SELECT * FROM trip_segments WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Booking');
-  const { lounges: _l, perks: _p, startUtc: _s, endUtc: _e, checkedInAt: _c, ...cur } = segmentFromRow(r, []);
+  const { lounges: _l, perks: _p, startUtc: _s, endUtc: _e, checkedInAt: _c, delayMin: _d, ...cur } = segmentFromRow(r, []);
   // Names and a flight's own title follow its codes and number: drop the stale ones so normalise derives them again.
   const changed = (k: 'fromCode' | 'toCode' | 'carrier' | 'number') => p[k] !== undefined && clean(p[k]).toUpperCase() !== cur[k].toUpperCase();
   if (changed('fromCode') && p.fromName === undefined) cur.fromName = '';
@@ -1596,6 +1606,15 @@ registerFeature({
       },
     ),
     tool(
+      'set_flight_delay',
+      'Record that a booked flight is delayed: how many minutes late it now leaves (0 when it is back on time). Use it when an airline email or the user says so. Today\'s travel card then shows the delay, the new times and the flight\'s progress by them.',
+      z.object({ segment_id: z.string().min(1), minutes: z.number().int().min(0).max(1440) }),
+      ({ segment_id, minutes }, { store }) => {
+        const f = setDelay(store, segment_id, minutes);
+        return { data: { ok: true, delay_min: f.delayMin }, summary: minutes ? `${f.title || 'Flight'} delayed ${minutes} min` : `${f.title || 'Flight'} back on time` };
+      },
+    ),
+    tool(
       'update_loyalty_account',
       'Record the user\'s standing in a loyalty programme (KrisFlyer, Marriott Bonvoy, Priority Pass or another): tier, miles or points, progress to the next tier, expiry. Only the last four digits of a membership number.',
       loyaltyInput,
@@ -1635,6 +1654,10 @@ registerFeature({
     });
     app.post('/api/travel/segments/:id/checkin', async (c) => {
       setCheckedIn(store, c.req.param('id'), (await read(c, z.object({ checkedIn: z.boolean() }))).checkedIn);
+      return c.json(state(c));
+    });
+    app.post('/api/travel/segments/:id/delay', async (c) => {
+      setDelay(store, c.req.param('id'), (await read(c, z.object({ minutes: z.number().int().min(0).max(1440) }))).minutes);
       return c.json(state(c));
     });
     app.delete('/api/travel/segments/:id', (c) => {

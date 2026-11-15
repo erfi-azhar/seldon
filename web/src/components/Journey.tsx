@@ -7,7 +7,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Bell, BellOff, Check, Clock, KeyRound, MapPin, Navigation, Plane, Route as RouteIcon, Send, Sofa } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { boardsAt, checkInCloses, clock, leaveBy, reachAirportBy, span, type Journey as JourneyT } from '../../../shared/journey.ts';
+import { boardsAt, checkInCloses, clock, delayOf, departs, lands, leaveBy, reachAirportBy, span, type Journey as JourneyT } from '../../../shared/journey.ts';
 import type { JourneyStatus, Segment, Trip, TripTrack } from '../../../shared/types.ts';
 import { api, travelWrite, useWrite, write } from '../api.ts';
 import { cx, plural } from '../lib.ts';
@@ -80,9 +80,12 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
     const boards = boardsAt(leg);
     return (
       <div className="journey-now">
-        <b className="jn-title">{now < boards ? `Be at the gate in ${span((boards - now) / MIN)}` : `${flightName(leg)} is boarding`}</b>
+        <b className="jn-title">
+          {now < boards ? `Be at the gate in ${span((boards - now) / MIN)}` : `${flightName(leg)} is boarding`}
+          {delayOf(leg) > 0 && <span className="jn-delay">Delayed {span(delayOf(leg) / MIN)}</span>}
+        </b>
         <span className="jn-sub">
-          Boards around {clock(boards, leg.startTz)} · leaves {clock(Date.parse(leg.startUtc), leg.startTz)}
+          Boards around {clock(boards, leg.startTz)} · leaves {clock(departs(leg), leg.startTz)}
           {leg.seat && ` · seat ${leg.seat}`}
         </span>
         <button type="button" className="jn-btn is-done" aria-pressed="true" title="Not checked in after all? Tap to undo" disabled={checkIn.isPending} onClick={() => checkIn.mutate(false)}>
@@ -93,20 +96,22 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
   }
 
   if (phase.kind === 'flight') {
-    const total = Date.parse(leg.endUtc) - Date.parse(leg.startUtc);
-    const done = Math.min(1, Math.max(0, (now - Date.parse(leg.startUtc)) / total));
+    const late = delayOf(leg);
     return (
-      <div className="journey-now is-flight">
-        <b className="jn-title">{span((Date.parse(leg.endUtc) - now) / MIN)} to arrival</b>
-        <FlightArc progress={done} />
+      <div className={cx('journey-now is-flight', late > 0 && 'is-late')}>
+        <b className="jn-title">
+          {span((lands(leg) - now) / MIN)} to arrival
+          {late > 0 && <span className="jn-delay">Delayed {span(late / MIN)}</span>}
+        </b>
+        <FlightArc start={departs(leg)} end={lands(leg)} late={late > 0} />
         <div className="jn-ends">
           <span>
-            <b className="num">{clock(Date.parse(leg.startUtc), leg.startTz)}</b>
+            <FlightTime at={departs(leg)} booked={Date.parse(leg.startUtc)} tz={leg.startTz} />
             <small>{leg.fromCode}</small>
           </span>
-          <span className="jn-dur">{span(total / MIN)}</span>
+          <span className="jn-dur">{span((lands(leg) - departs(leg)) / MIN)}</span>
           <span className="is-end">
-            <b className="num">{clock(Date.parse(leg.endUtc), leg.endTz)}</b>
+            <FlightTime at={lands(leg)} booked={Date.parse(leg.endUtc)} tz={leg.endTz} />
             <small>{leg.toCode}</small>
           </span>
         </div>
@@ -163,27 +168,71 @@ export function NowPanel({ journey, focus, now, trips, home, onLounges }: { jour
   );
 }
 
-/** "ようこそ to Tokyo": welcome in the language where you've landed (by the place's zone), and how to say it. */
+/** "ようこそ to Tokyo": welcome in the language where you've landed (by the place's zone); how to say it on hover. */
 export function WelcomeTitle({ tz, city: place }: { tz: string | null | undefined; city: string }) {
   const w = welcomeIn(tz);
   if (!w) return <b className="jn-title">Welcome to {place}</b>;
   return (
-    <>
-      <b className="jn-title" title={`${w.roman || w.word}: welcome in ${w.language}`}>
-        <span className="jn-welcome">{w.word}</span> to {place}
-      </b>
-      <span className="jn-gloss">
-        {w.roman && <i>{w.roman}</i>}
-        {w.roman ? ' · ' : ''}welcome in {w.language}
-      </span>
-    </>
+    <b className="jn-title" title={`${w.roman || w.word}: welcome in ${w.language}`}>
+      <span className="jn-welcome">{w.word}</span> to {place}
+    </b>
   );
 }
 
-/** The flight as an arc over the horizon, the plane where it is now, nose along the arc. */
-function FlightArc({ progress }: { progress: number }) {
-  // A shallow arc from (8, 46) to (312, 46) in a 320 × 56 drawing, peaking at y 14. The drawing
-  // stretches to the card's width, so the plane sits over it, placed and turned in real pixels.
+/** A time on the flight, and when it's late the booked time struck through beside it. */
+function FlightTime({ at, booked, tz }: { at: number; booked: number; tz: string }) {
+  if (at === booked) return <b className="num">{clock(at, tz)}</b>;
+  return (
+    <b className="num">
+      <s className="jn-was" aria-label={`booked ${clock(booked, tz)}`}>
+        {clock(booked, tz)}
+      </s>{' '}
+      <span className="jn-now-time">{clock(at, tz)}</span>
+    </b>
+  );
+}
+
+// A shallow arc from P0 (8, 46) to P2 (312, 46) in a 320 × 56 drawing, bent by P1 (160, -18).
+const P0 = [8, 46] as const;
+const P1 = [160, -18] as const;
+const P2 = [312, 46] as const;
+const mix = (a: readonly [number, number], b: readonly [number, number], t: number) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] as const;
+const fmt = (p: readonly [number, number]) => `${p[0].toFixed(2)} ${p[1].toFixed(2)}`;
+
+/** Where you are on the flight right now, 0 to 1, ticking each second. */
+function useFlightProgress(start: number, end: number): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)));
+}
+
+/** On first show, the plane sweeps out from the start to where it is; then it follows the clock. */
+function useIntro(ms = 1400): number {
+  const [k, setK] = useState(() => (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 1 : 0));
+  useEffect(() => {
+    if (k >= 1) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const x = Math.min(1, (t - t0) / ms);
+      setK(1 - (1 - x) ** 3);
+      if (x < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, []); // Only once, on mount.
+  return k;
+}
+
+/**
+ * The flight as a live tracker over the horizon: the way flown drawn solid up to the plane, the
+ * way left marching on ahead of it, the plane nose-along the arc at the real share of the flight.
+ */
+function FlightArc({ start, end, late = false }: { start: number; end: number; late?: boolean }) {
+  // The drawing stretches to the card's width, so the plane sits over it, placed and turned in real pixels.
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 320, h: 56 });
   useEffect(() => {
@@ -193,19 +242,23 @@ function FlightArc({ progress }: { progress: number }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const t = Math.min(1, Math.max(0, progress));
-  const x = 8 + 304 * t;
-  const y = 46 - 128 * t * (1 - t);
+  const t = useFlightProgress(start, end) * useIntro();
+  // Split the curve at t (de Casteljau): the part flown and the part left are curves of their own.
+  const a = mix(P0, P1, t);
+  const b = mix(P1, P2, t);
+  const at = mix(a, b, t);
+  const flown = `M${fmt(P0)} Q${fmt(a)} ${fmt(at)}`;
+  const left = `M${fmt(at)} Q${fmt(b)} ${fmt(P2)}`;
   // The arc's direction here, in the drawing as it's stretched on screen.
-  const heading = (Math.atan2(-128 * (1 - 2 * t) * (box.h / 56), 304 * (box.w / 320)) * 180) / Math.PI;
+  const heading = (Math.atan2((b[1] - a[1]) * (box.h / 56), (b[0] - a[0]) * (box.w / 320)) * 180) / Math.PI;
   return (
-    <div ref={ref} className="jn-arc" aria-hidden>
-      <svg viewBox="0 0 320 56" preserveAspectRatio="none">
-        <path d="M8 46 Q160 -18 312 46" fill="none" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        <path d="M8 46 Q160 -18 312 46" fill="none" stroke="currentColor" strokeWidth="2" pathLength={1} strokeDasharray={`${t} 1`} vectorEffect="non-scaling-stroke" />
+    <div ref={ref} className={cx('jn-arc', late && 'is-late')} role="img" aria-label={`${Math.round(t * 100)}% of the way`}>
+      <svg viewBox="0 0 320 56" preserveAspectRatio="none" aria-hidden>
+        <path className="jn-arc-left" d={left} fill="none" vectorEffect="non-scaling-stroke" />
+        <path className="jn-arc-flown" d={flown} fill="none" vectorEffect="non-scaling-stroke" />
       </svg>
       {/* Lucide's plane points up and to the right, so it turns 45° more than the heading. */}
-      <span className="jn-plane" style={{ left: `${(x / 320) * 100}%`, top: `${(y / 56) * 100}%`, transform: `translate(-50%, -50%) rotate(${heading + 45}deg)` }}>
+      <span className="jn-plane" aria-hidden style={{ left: `${(at[0] / 320) * 100}%`, top: `${(at[1] / 56) * 100}%`, transform: `translate(-50%, -50%) rotate(${heading + 45}deg)` }}>
         <Plane size={18} fill="currentColor" strokeWidth={1.25} />
       </span>
     </div>

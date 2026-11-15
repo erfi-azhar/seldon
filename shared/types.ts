@@ -949,6 +949,8 @@ export interface Segment {
   toTerminal: string;
   /** Flights: when you said you'd checked in (ISO), so Today sends you to the gate. */
   checkedInAt?: string | null;
+  /** Flights: how many minutes late it leaves (and so lands); 0 or missing when on time. */
+  delayMin?: number;
   address: string;
   notes: string;
   source: string;

@@ -16,7 +16,7 @@ import { AirlineTail } from './Tails.tsx';
 import { NowPanel, RouteCard, WelcomeTitle } from './Journey.tsx';
 import { ItemModules } from './ItemModules.tsx';
 import { TripGuideBody } from './TripGuide.tsx';
-import { activeJourney, boardsAt, checkInCloses, clock, journeys, leaveBy, reachAirportBy, type Journey } from '../../../shared/journey.ts';
+import { activeJourney, boardsAt, checkInCloses, clock, delayOf, departs, span, journeys, leaveBy, reachAirportBy, type Journey } from '../../../shared/journey.ts';
 import { layoverPlan, type LayoverPlan } from '../layover.ts';
 import { RouteGlobe, type GlobeLeg } from './Globe.tsx';
 import { Check, Field, Modal, ScrollBlur, Seg, Spinner, useScrollEdges } from './ui.tsx';
@@ -586,12 +586,22 @@ function FlightRow({ s, onEdit }: { s: Segment; onEdit: () => void }) {
  * A flight as the trip page shows it: the airline and its tail, the times and places at each end,
  * then check-in, boarding, cabin and booking reference. The badge says when it is, unless given.
  */
-function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: 'soon' | 'past' | '' } }) {
+function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: 'soon' | 'past' | 'late' | '' } }) {
   const today = todayStr();
   const day = dayOf(s.startLocal);
   const plus = daysFrom(day, dayOf(s.endLocal));
   const until = daysFrom(today, day);
-  const when = badge ?? { label: until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day), tone: until < 0 ? 'past' : until <= 1 ? 'soon' : '' };
+  const late = until >= 0 ? delayOf(s) : 0;
+  const when = late > 0 ? { label: `Delayed ${span(late / 60_000)}`, tone: 'late' as const } : (badge ?? { label: until < 0 ? 'Flown' : until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : weekday(day), tone: until < 0 ? 'past' : until <= 1 ? 'soon' : '' });
+  // A late flight shows its new times, the booked ones struck through beside them.
+  const shown = (local: string, tz: string, utc: string) =>
+    late > 0 ? (
+      <>
+        <s className="fc-was">{time(local)}</s> {clock(Date.parse(utc) + late, tz)}
+      </>
+    ) : (
+      time(local)
+    );
   const code = s.carrier.toUpperCase();
   const airline = AIRLINES[code] ?? (s.carrier || 'Flight');
   const place = (c: string, city: string | undefined, name: string) => [c, city || name].filter(Boolean).join(' · ') || '—';
@@ -606,11 +616,11 @@ function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: '
           <b>{airline}</b>
           <span>{`${s.carrier} ${s.number}`.trim()}</span>
         </span>
-        <span className={cx('fc-badge', when.tone === 'past' ? 'is-past' : when.tone === 'soon' ? 'is-soon' : '')}>{when.label}</span>
+        <span className={cx('fc-badge', when.tone === 'past' ? 'is-past' : when.tone === 'soon' ? 'is-soon' : when.tone === 'late' ? 'is-late' : '')}>{when.label}</span>
       </span>
       <span className="fc-route">
         <span className="fc-end">
-          <b className="fc-time">{time(s.startLocal)}</b>
+          <b className="fc-time">{shown(s.startLocal, s.startTz, s.startUtc)}</b>
           <span className="fc-place">{place(s.fromCode, s.fromCity, s.fromName)}</span>
           {s.fromTerminal && <span className="fc-terminal">Terminal {s.fromTerminal}</span>}
         </span>
@@ -627,7 +637,7 @@ function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: '
         </span>
         <span className="fc-end is-arrival">
           <b className="fc-time">
-            {time(s.endLocal)}
+            {shown(s.endLocal, s.endTz, s.endUtc)}
             {plus > 0 && <sup>+{plus}</sup>}
           </b>
           <span className="fc-place">{place(s.toCode, s.toCity, s.toName)}</span>
@@ -2233,6 +2243,19 @@ export function followingTrips(featured: Trip, rest: Trip[]): Trip[] {
 }
 
 /**
+ * Whether today is a travel day: a journey is under way (from 18 hours before the flight to 6
+ * after landing) or a flight leaves within 36 hours. Today then leads with the travel card.
+ */
+export function useTravelDay(): boolean {
+  const { data: t } = useTravel();
+  const now = useNow();
+  const segments = useMemo(() => t?.trips.flatMap((x) => x.segments) ?? [], [t]);
+  const journey = useMemo(() => activeJourney(segments, now), [segments, now]);
+  if (!t) return false;
+  return (!!journey && t.trips.some((x) => x.id === journey.legs[0]!.tripId)) || (t.context.mode === 'departing' && !!t.context.trip);
+}
+
+/**
  * Travel on Today features one trip: the one under way (a flight today, or away now), else the
  * next one ahead. Trips that follow on within a week tuck beneath it as notches that open them
  * in the Travels sphere. Trips further out wait there until their turn.
@@ -2452,7 +2475,7 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
   // The flight the moment is about: on a connection, the one you're waiting for.
   const f = journey && phase ? journey.legs[phase.kind === 'connection' ? phase.leg + 1 : phase.leg]! : t.context.flight;
   if (!f) return null;
-  const takesOff = Date.parse(f.startUtc);
+  const takesOff = departs(f);
   const beforeTakeoff = now < takesOff;
   const notes = trip.companion[f.id];
   const loungeNotes = notes?.lounges?.length ? notes.lounges : f.lounges.map((l) => l.access);
@@ -2487,7 +2510,7 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
       {/* In the air and after landing, the panel above already draws the flight. */}
       {!(phase && (phase.kind === 'flight' || phase.kind === 'arrived')) && (
         <div className="flight-card is-inline">
-          <FlightFace s={f} badge={beforeTakeoff ? { label: `Leaves in ${untilLabel(f.startUtc, now)}`, tone: 'soon' } : undefined} />
+          <FlightFace s={f} badge={beforeTakeoff ? { label: `Leaves in ${untilLabel(new Date(departs(f)).toISOString(), now)}`, tone: 'soon' } : undefined} />
         </div>
       )}
 

@@ -24,6 +24,12 @@ let port = 4400;
 for (const s of scenarios) {
   const copy = `${dbPath}.${s.id}`;
   copyFileSync(dbPath, copy);
+  // A moment can change its own copy first (a delayed flight, say).
+  if (s.sql) {
+    const d = new DatabaseSync(copy);
+    d.exec(s.sql);
+    d.close();
+  }
   const p = ++port;
   const srv = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', '--import', resolve(here, 'fake-now.mjs'), resolve(root, 'server/src/index.ts')], {
     env: { ...process.env, FAKE_NOW: s.now, TERMINUS_DB: copy, PORT: String(p) }, stdio: ['ignore', 'pipe', 'inherit'],

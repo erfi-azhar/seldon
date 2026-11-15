@@ -51,6 +51,10 @@ async function handle(method: string, path: string, body: Json): Promise<Respons
     each(m[1]!, (o) => 'checkedInAt' in o && (o.checkedInAt = body.checkedIn ? new Date().toISOString() : null));
     return json(data['/travel']);
   }
+  if (method === 'POST' && (m = path.match(/^\/travel\/segments\/([^/]+)\/delay$/))) {
+    each(m[1]!, (o) => 'delayMin' in o && (o.delayMin = Number(body.minutes) || 0));
+    return json(data['/travel']);
+  }
   if (method === 'PATCH' && (m = path.match(/^\/travel\/itinerary\/([^/]+)$/))) {
     each(m[1]!, (o) => 'done' in o && Object.assign(o, body));
     return json(data['/travel']);

@@ -20,8 +20,9 @@
   {
     "id": "flight",
     "label": "In the air",
-    "detail": "Mon 11:30, Singapore",
-    "now": "2026-11-16T11:30:00+08:00"
+    "detail": "Mon 11:30, Singapore; SQ 636 left 40 minutes late",
+    "now": "2026-11-16T11:30:00+08:00",
+    "sql": "UPDATE trip_segments SET delay_min = 40 WHERE number = '636'"
   },
   {
     "id": "landed",

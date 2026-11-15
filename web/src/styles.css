@@ -6286,6 +6286,10 @@ textarea.title-input {
   color: var(--ink-3);
   background: var(--surface-2);
 }
+.fc-badge.is-late {
+  color: oklch(0.48 0.13 60);
+  background: oklch(0.95 0.05 75);
+}
 .fc-route {
   display: grid;
   grid-template-columns: auto minmax(60px, 1fr) auto;
@@ -6365,6 +6369,10 @@ textarea.title-input {
   color: oklch(0.85 0.1 155);
   background: oklch(0.3 0.06 155);
 }
+:root[data-theme='dark'] .fc-badge.is-late {
+  color: oklch(0.85 0.12 75);
+  background: oklch(0.32 0.07 65);
+}
 :root[data-theme='dark'] .fc-stops {
   color: oklch(0.78 0.1 245);
 }
@@ -6376,6 +6384,10 @@ textarea.title-input {
   :root:not([data-theme='light']) .fc-badge.is-soon {
     color: oklch(0.85 0.1 155);
     background: oklch(0.3 0.06 155);
+  }
+  :root:not([data-theme='light']) .fc-badge.is-late {
+    color: oklch(0.85 0.12 75);
+    background: oklch(0.32 0.07 65);
   }
   :root:not([data-theme='light']) .fc-stops {
     color: oklch(0.78 0.1 245);
@@ -9159,6 +9171,13 @@ button.layover-pill:hover .layover-lounge {
   margin-bottom: 20px;
   padding-bottom: 6px;
 }
+/* On a travel day the travel card leads Today, and the to-dos sit in the column (which spaces them). */
+.today-lead {
+  margin-bottom: 20px;
+}
+.col > .today-todos {
+  margin-bottom: 0;
+}
 .todo-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -9546,14 +9565,6 @@ button.layover-pill:hover .layover-lounge {
   font-size: 13.5px;
   color: var(--ink-2);
 }
-.jn-gloss {
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-.jn-gloss i {
-  font-style: italic;
-  color: var(--ink-2);
-}
 /* The welcome on the trip card while you're away: the headline, then the day below it. */
 .tm-welcome {
   margin-top: -2px;
@@ -9631,7 +9642,29 @@ button.layover-pill:hover .layover-lounge {
   height: 100%;
   overflow: visible;
 }
-/* The plane on the arc, with a soft glow of the same blue. */
+.jn-arc-flown {
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+}
+/* The way left marches on toward the destination, like a loading bar. */
+.jn-arc-left {
+  stroke: currentColor;
+  stroke-opacity: 0.32;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 2 6;
+  animation: jn-march 1.2s linear infinite;
+}
+@keyframes jn-march {
+  to {
+    stroke-dashoffset: -8;
+  }
+}
+.jn-arc.is-late {
+  color: oklch(0.68 0.15 65);
+}
+/* The plane on the arc, with a soft glow of its colour that breathes. */
 .jn-plane {
   position: absolute;
   display: grid;
@@ -9639,7 +9672,44 @@ button.layover-pill:hover .layover-lounge {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: radial-gradient(closest-side, oklch(0.6 0.13 245 / 0.22), transparent);
+  background: radial-gradient(closest-side, color-mix(in oklch, currentColor 26%, transparent), transparent);
+  animation: jn-breathe 2.4s ease-in-out infinite;
+}
+@keyframes jn-breathe {
+  50% {
+    filter: drop-shadow(0 0 4px color-mix(in oklch, currentColor 45%, transparent));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jn-arc-left,
+  .jn-plane {
+    animation: none;
+  }
+}
+/* A late flight: a chip by the headline, and the booked times struck through. */
+.jn-delay {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  vertical-align: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: oklch(0.5 0.13 60);
+  background: oklch(0.75 0.15 70 / 0.18);
+}
+:root[data-theme='dark'] .jn-delay {
+  color: oklch(0.82 0.13 75);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .jn-delay {
+    color: oklch(0.82 0.13 75);
+  }
+}
+.jn-was {
+  font-weight: 450;
+  color: var(--ink-4);
 }
 .jn-ends {
   display: grid;
@@ -12166,6 +12236,12 @@ button.xw-coin:hover,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.fc-was {
+  font-size: 0.62em;
+  font-weight: 450;
+  color: var(--ink-4);
+  vertical-align: 0.2em;
 }
 .fc-add {
   font-weight: 450;

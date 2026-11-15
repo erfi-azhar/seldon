@@ -706,6 +706,10 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE trip_segments ADD COLUMN checked_in_at TEXT;
   `,
+  // How late a flight is leaving, in minutes (0 on time), so Today follows the new times.
+  `
+  ALTER TABLE trip_segments ADD COLUMN delay_min INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
