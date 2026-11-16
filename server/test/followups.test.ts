@@ -120,3 +120,29 @@ test('a failed answer is recorded and can be tried again', async () => {
   await followupsSettled();
   assert.equal((await call<TaskFollowups>('GET', `/api/tasks/${task.id}/followups`)).body.status, 'ready');
 });
+
+test('Seldon can write the suggestions itself, with no brain connected, and they go stale on edit', async () => {
+  const { store, call } = setup();
+  const task = store.createTask({ title: 'Book a surgeon consultation' });
+  assert.equal((await call<TaskFollowups>('GET', `/api/tasks/${task.id}/followups`)).body.status, 'unavailable');
+
+  const wrote = await call<{ ok: boolean; summary: string }>('POST', '/api/agent/tools/suggest_for_task', { input: { task_id: task.id, ...GALLBLADDER } });
+  assert.equal(wrote.status, 200);
+  assert.match(wrote.body.summary, /Wrote 2 suggestions/);
+  const f = (await call<TaskFollowups>('GET', `/api/tasks/${task.id}/followups`)).body;
+  assert.equal(f.status, 'ready');
+  assert.equal(f.steps[0]!.task?.dueDate, '2026-11-18');
+  assert.equal(f.steps[1]!.ask?.label, 'Ask Seldon to book it');
+
+  // The step's task can be added as usual.
+  assert.equal((await call('POST', `/api/tasks/${task.id}/followups/0/task`)).status, 201);
+
+  // Nothing more needed.
+  const milk = store.createTask({ title: 'Buy milk' });
+  await call('POST', '/api/agent/tools/suggest_for_task', { input: { task_id: milk.id, relevant: false, summary: '', steps: [] } });
+  assert.equal((await call<TaskFollowups>('GET', `/api/tasks/${milk.id}/followups`)).body.status, 'none');
+
+  // Written for what the task said then: an edit makes them stale.
+  store.updateTask(task.id, { title: 'Book a gastroenterologist' });
+  assert.equal((await call<TaskFollowups>('GET', `/api/tasks/${task.id}/followups`)).body.status, 'unavailable');
+});
