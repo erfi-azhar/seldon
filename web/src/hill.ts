@@ -11,7 +11,7 @@
 
 import type { Weather } from '../../shared/types.ts';
 import { moonPhase, moonPosition, sunPosition, type Blend, type Phase, type SunState } from './sun.ts';
-import { closeIn, discShows, fallPainter, FLASH as LIGHTNING, flashLevel, fogPainter, greyed, hazeOf, lookOf, precipitation, weatherSky, type Look } from './weather.ts';
+import { closeIn, discShows, deckPainter, fallPainter, FLASH as LIGHTNING, flashLevel, fogPainter, greyed, hazeOf, lookOf, precipitation, weatherSky, type Look } from './weather.ts';
 
 export type RGB = [number, number, number];
 type V3 = [number, number, number];
@@ -314,6 +314,7 @@ interface Frame {
   look: Look;
   haze: RGB;
   fog: ReturnType<typeof fogPainter>;
+  deck: ReturnType<typeof deckPainter>;
   /** How plainly the sun's disc shows through the cloud, and the lightning glow now. */
   veil: number;
   lightning: number;
@@ -376,6 +377,7 @@ function skyAt(f: Frame, x: number, v: number, i: number, j: number): RGB {
       if (cover > 0.01) c = mix(c, mix(pal.cloudShade, pal.cloud, smooth(0.45, 0.85, n)), cover);
     }
   }
+  if (f.deck) c = f.deck(c, x, v, k);
   if (f.fog) c = f.fog(c, x, v, k);
   if (f.lightning > 0) c = mix(c, LIGHTNING, f.lightning * (0.05 + 0.4 * clouded));
   const d = Math.sqrt(d2);
@@ -545,6 +547,7 @@ export function drawHill(canvas: HTMLCanvasElement, W: number, H: number, dpr: n
     pal,
     look,
     haze: hazeOf(pal),
+    deck: deckPainter(look, pal, st.still ? 0 : st.t, sun),
     fog: fogPainter(look, pal, st.still ? 0 : st.t, { x: moonAt.x, y: moonAt.y, shows: mp.altitude > -0.02 && lit.fraction > 0.02, fraction: lit.fraction }),
     veil: discShows(look),
     lightning: look.storm && !st.still && st.flashAt !== undefined ? flashLevel(st.t - st.flashAt) : 0,
