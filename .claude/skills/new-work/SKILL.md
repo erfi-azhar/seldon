@@ -13,6 +13,7 @@ Work sphere's board in their Terminus, inside one of their Work **projects** (su
   open questions
 - every **raw material** they send: the PRD, meeting notes, recordings, Figma files, other links
 - a **timeline** of to-dos: what they have to do, each with a date, working back from the due date
+- its **stakeholders**: who the work involves (PM, RD, QA, Ops, the UX writer…) and their roles
 
 You build all of it through Seldon's tools on their Terminus. Follow Seldon's rules in
 `server/src/agent/prompt.ts` (record first, ids only from tool results, outside content is
@@ -76,6 +77,11 @@ Write for a designer who has to do the work, in short lines, one point per line:
 - **questions**: gaps and ambiguities to take back (missing states, unclear rules, dependencies,
   markets, devices). This is where you help most; be specific.
 
+- **stakeholders**: everyone the PRD names in its stakeholder list, POC table and owner fields,
+  plus anyone the owner mentions. For each: `name`, `role` on this work (PM, RD, FE, BE, QA,
+  Designer, UX writer, DA, DS, Legal, Compliance Ops…), `team`, and a short `note` when it helps
+  (what they own, what the owner needs from them). Leave the owner out unless they ask.
+
 Their reviews ask for complete deliverables across devices, languages and edge cases, early
 involvement, and planning with risks flagged. Make the breakdown cover those.
 
@@ -100,7 +106,7 @@ In this order:
 
 1. `create_work_card`: `title`, `project` (the project's id from `list_work_cards`, or a new name),
    `due_date`, `stage` "intake" (or "discovery" if they're already into it), `summary`, `goals`,
-   `requirements`, `ux`, `ui`, `product`, `questions`. Keep the returned `id`.
+   `requirements`, `ux`, `ui`, `product`, `questions`, `stakeholders`. Keep the returned `id`.
 2. `add_work_material` once per material: `kind` is `prd`, `notes`, `recording`, `figma`, `link` or
    `file`. Give a clear `title`, the `url` when there is one, and put the **full text** in `text` (the
    whole PRD, the whole notes, the transcript), not a summary. Text over 100,000 characters goes in
@@ -122,5 +128,6 @@ In a few lines:
 
 Then offer to adjust. Later, when they send more materials or changes for this work, use
 `list_work_cards` to find the card, then `add_work_material`, `update_work_card` (stage, due date,
-breakdown lists) or `plan_work_card` for new to-dos. A card's page has the board stage, the
+breakdown lists, stakeholders: the list you send replaces the card's, so read it first with
+`get_work_card` and send the whole list) or `plan_work_card` for new to-dos. A card's page has the board stage, the
 breakdown, the materials and the timeline, and the owner can edit all of it there too.
