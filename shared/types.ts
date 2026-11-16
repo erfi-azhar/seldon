@@ -1536,3 +1536,61 @@ export interface BankruptcyState {
   approvals: TravelApproval[];
   trips: TripCheck[];
 }
+
+// ── The Work board ──────────────────────────────────────────────────────────
+
+/** Where a piece of work stands, left to right on the board. */
+export type WorkStage = 'intake' | 'discovery' | 'design' | 'review' | 'handoff' | 'done';
+
+/** What a PRD asks of the design work, broken down. Each list is short lines. */
+export interface WorkBreakdown {
+  goals: string[];
+  requirements: string[];
+  ux: string[];
+  ui: string[];
+  product: string[];
+  questions: string[];
+}
+
+export type WorkMaterialKind = 'prd' | 'notes' | 'recording' | 'figma' | 'link' | 'file';
+
+/** A raw material for a card: the PRD, meeting notes, a recording, a Figma file, a link. */
+export interface WorkMaterial {
+  id: string;
+  cardId: string;
+  kind: WorkMaterialKind;
+  title: string;
+  url: string;
+  /** Pasted text: the PRD itself, notes, a transcript. */
+  body: string;
+  createdAt: string;
+}
+
+/** A piece of work on the board: one PRD or requirement, inside one of the Work projects. */
+export interface WorkCard {
+  id: string;
+  projectId: string | null;
+  projectName: string | null;
+  title: string;
+  summary: string;
+  breakdown: WorkBreakdown;
+  stage: WorkStage;
+  position: number;
+  dueDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Counts for the board. */
+  materials: number;
+  tasksOpen: number;
+  tasksDone: number;
+  /** The earliest open to-do, for the card's face. */
+  nextTask: { title: string; dueDate: string | null } | null;
+}
+
+export interface WorkCardDetail {
+  card: WorkCard;
+  materials: WorkMaterial[];
+  /** Its to-dos, open and done, in timeline order. */
+  tasks: Task[];
+}
+

@@ -22,6 +22,7 @@ import { CryptoMonitor } from './components/CryptoTwitter.tsx';
 import { Settings } from './views/Settings.tsx';
 import { SphereDetail, Spheres } from './views/Spheres.tsx';
 import { TripPage } from './components/Travel.tsx';
+import { WorkCardPage } from './views/WorkCardPage.tsx';
 import { GuidePage } from './components/TravelGuides.tsx';
 import { QuranStudyPage } from './components/QuranStudy.tsx';
 import { Today } from './views/Today.tsx';
@@ -189,6 +190,7 @@ function Shell({ settings }: { settings: SettingsData }) {
               <Route path="/spheres/:id/crypto">{(params) => <CryptoMonitor sphereId={params.id} />}</Route>
               <Route path="/spheres/:id">{(params) => <SphereDetail key={params.id} id={params.id} />}</Route>
               <Route path="/trips/:id">{(params) => <TripPage key={params.id} id={params.id} />}</Route>
+              <Route path="/work/:id">{(params) => <WorkCardPage key={params.id} id={params.id} />}</Route>
               <Route path="/guides/:id">{(params) => <GuidePage key={params.id} id={params.id} />}</Route>
               <Route path="/quran" component={QuranStudyPage} />
               <Route path="/goals" component={Goals} />

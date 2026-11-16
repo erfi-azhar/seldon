@@ -13,6 +13,7 @@ import { BodyCard, HealthToday, TrainingCard } from '../components/HealthPanels.
 import { TravelLoyalty, TravelTrips, WorkTrips } from '../components/Travel.tsx';
 import { TravelGuides } from '../components/TravelGuides.tsx';
 import { JobAlertsCard } from '../components/Jobs.tsx';
+import { Timeline, WorkBoard } from '../components/Work.tsx';
 import { ReadingList } from '../components/Reading.tsx';
 import { CryptoTwitterCard } from '../components/CryptoTwitter.tsx';
 import { BankruptcyCard } from '../components/Bankruptcy.tsx';
@@ -213,6 +214,8 @@ export function SphereDetail({ id }: { id: string }) {
       {s.key === 'finances' && <MoneyHero />}
       {/* Work's to-dos are the heart of the sphere, so they get the full width. */}
       {s.key === 'work' && <WorkTodos sphereId={id} tasks={tasks} projects={projects} />}
+      {/* Work as a project tracker: a card per PRD, moving left to right. */}
+      {s.key === 'work' && <WorkBoard />}
       {/* Learning's reading list is a shelf, and a shelf wants the full width. */}
       {s.key === 'learning' && <ReadingList />}
       {/* With a daily card on the left, tasks join habits on the right so the columns even out.
@@ -392,11 +395,12 @@ function TrainingAndBody({ part }: { part: 'training' | 'body' }) {
  * hotel, check in online) are logistics rather than work, so they fold into one line per
  * trip below, still a tap away and still on time.
  */
-type TodoView = 'project' | 'day';
+type TodoView = 'project' | 'day' | 'timeline';
 const VIEW_KEY = 'work-todos-view';
 function readView(): TodoView {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'day' ? 'day' : 'project';
+    const v = localStorage.getItem(VIEW_KEY);
+    return v === 'day' || v === 'timeline' ? v : 'project';
   } catch {
     return 'project';
   }
@@ -422,6 +426,7 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
   for (const t of tasks) if (t.tripId) byTrip.set(t.tripId, [...(byTrip.get(t.tripId) ?? []), t]);
   const tripTitle = (tripId: string) => travel?.trips.find((x) => x.id === tripId)?.title ?? 'a trip';
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
+  const tagOf = (t: Task) => (t.tripId ? `✈ ${tripTitle(t.tripId)}` : t.projectId ? projectName.get(t.projectId) : undefined);
   const lateCount = work.filter((t) => t.dueDate && t.dueDate < today).length;
   // A trip's logistics start folded away; the ones you open stay open.
   const tripFolds = useFolds('work-todos-open-trips', (k) => byTrip.has(k), false);
@@ -445,13 +450,18 @@ function WorkTodos({ sphereId, tasks, projects }: { sphereId: string; tasks: Tas
           options={[
             { value: 'project', label: 'Projects' },
             { value: 'day', label: 'By day' },
+            { value: 'timeline', label: 'Timeline' },
           ]}
         />
       </div>
       {view === 'project' ? (
         <ProjectGroups sphereId={sphereId} work={work} projects={projects} today={today} />
+      ) : view === 'day' ? (
+        <DayGroups tasks={tasks} today={today} label={tagOf} />
       ) : (
-        <DayGroups tasks={tasks} today={today} label={(t) => (t.tripId ? `✈ ${tripTitle(t.tripId)}` : t.projectId ? projectName.get(t.projectId) : undefined)} />
+        <div className="todo-timeline">
+          <Timeline tasks={tasks} tag={tagOf} empty="Nothing open in Work." />
+        </div>
       )}
       <AddTask sphereId={sphereId} projects={projects} placeholder="Add a work to-do…" />
       {view === 'project' &&

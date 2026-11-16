@@ -29,6 +29,10 @@ import type {
   SphereWithStats,
   Task,
   TaskFollowups,
+  Project,
+  WorkCard,
+  WorkCardDetail,
+  WorkStage,
 } from '../../shared/types.ts';
 import { useSyncExternalStore } from 'react';
 import { todayStr } from './lib.ts';
@@ -100,6 +104,12 @@ export const useSpheres = (archived = false) =>
 
 export const useSphere = (id: string) =>
   useQuery({ queryKey: ['sphere', id, todayStr()], queryFn: () => api<SphereDetail>('GET', withDate(`/spheres/${id}`)) });
+
+/** The Work board: every card, the stages, and the Work projects to file them under. */
+export const useWorkBoard = () =>
+  useQuery({ queryKey: ['work-board'], queryFn: () => api<{ stages: WorkStage[]; projects: Project[]; cards: WorkCard[] }>('GET', '/work/cards') });
+
+export const useWorkCard = (id: string) => useQuery({ queryKey: ['work-card', id], queryFn: () => api<WorkCardDetail>('GET', `/work/cards/${id}`) });
 
 export const useGoals = (status: 'active' | 'done' | 'all' | 'paused' = 'all') =>
   useQuery({ queryKey: ['goals', status], queryFn: () => api<Goal[]>('GET', `/goals?status=${status}`) });
