@@ -3,9 +3,10 @@
 // from the server (/api/weather, from Open-Meteo); this turns it into how a sky looks.
 //
 // Cloud cover sets how much cloud there is. Overcast, wet, foggy and snowy skies turn
-// greyer and dimmer, their clouds run together into one layer, the stars hide and the sun
-// and moon are veiled. Rain falls in slanted streaks, snow drifts down, fog drifts in banks
-// (with a moon halo and a warm town glow after dark), and storms add an occasional soft lightning glow (a slow
+// greyer and dimmer, the stars hide and the sun and moon are veiled; a closed-in sky is a
+// drifting cloud deck with light and shade, and patches of light moving over it. Rain
+// falls in slanted streaks, snow drifts down, fog drifts in banks (with a moon halo and a
+// warm town glow after dark), and storms add an occasional soft lightning glow (a slow
 // fade, seconds apart, never a strobe). Wind speeds the clouds up.
 
 import type { Weather } from '../../shared/types.ts';
@@ -187,6 +188,46 @@ export function fogPainter(w: Look, p: SkyColors, seconds: number, moon: FogMoon
     }
     if (dark > 0) out = add(out, CITY_GLOW, smooth(0.55, 1.1, k) * 0.16 * dark * (0.85 + 0.15 * Math.sin(s * 0.3 + x * 1.7)));
     return out;
+  };
+}
+
+// ── Overcast ──────────────────────────────────────────────────────────────────
+
+/** The sun, where a scene has put it, for light moving over the cloud. */
+export interface DeckSun {
+  x: number;
+  y: number;
+  altitude: number;
+}
+
+const SUN_PATCH: RGB = [255, 250, 236];
+
+/**
+ * How an overcast sky colours a dot at (x, v), in a scene's own units: a cloud deck with
+ * form and movement instead of one flat grey. Two layers of big, soft cloud masses drift
+ * at different speeds, lit on top and shaded underneath, now and then thinning to a paler
+ * patch of sky; broad patches of brighter light sweep slowly across them, like the sun
+ * moving behind the cloud (only a faint shimmer after dark). Null when the sky isn't
+ * closed in, or it is foggy, which has its own look.
+ */
+export function deckPainter(w: Look, p: SkyColors, seconds: number, sun: DeckSun): ((c: RGB, x: number, v: number, k: number) => RGB) | null {
+  if (w.cover < 0.75 || w.fog > 0) return null;
+  const s = seconds;
+  const lit = add(p.cloud, [18, 18, 20], 1);
+  const shade = mul(mix(p.cloud, p.top, 0.55), 0.82);
+  // How strongly the sun's light moves over the cloud: full by day, a faint shimmer at night.
+  const sunlight = 0.06 + 0.14 * clamp(Math.sin(sun.altitude) * 3);
+  return (c, x, v, k) => {
+    const a = fbm(x * 0.9 + s * 0.02, v * 2.2 + 3);
+    const b = fbm(x * 1.8 + s * 0.045 + 30, v * 3.5 + 5);
+    // Lit from above: brighter where the cloud thins upward, shaded underneath.
+    const above = fbm(x * 0.9 + s * 0.02, (v - 0.06) * 2.2 + 3);
+    const form = clamp(0.5 + (a - above) * 3.2 + (b - 0.5) * 0.6);
+    const thin = smooth(0.35, 0.2, a * 0.7 + b * 0.3);
+    let deck = mix(shade, lit, form);
+    deck = mix(deck, mix(p.top, p.mid, Math.min(1, k)), thin * 0.65);
+    const patch = smooth(0.5, 0.75, fbm(x * 0.6 - s * 0.06, v * 1.2 + 9));
+    return add(mix(c, deck, 0.9), SUN_PATCH, patch * sunlight);
   };
 }
 

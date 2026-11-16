@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import type { Weather } from '../../../shared/types.ts';
 import { useWeather } from '../api.ts';
-import { closeIn, discShows, fallPainter, FLASH, flashLevel, fogPainter, lookOf, moving, nextFlashIn, precipitation, weatherSky, type Look } from '../weather.ts';
+import { closeIn, discShows, deckPainter, fallPainter, FLASH, flashLevel, fogPainter, lookOf, moving, nextFlashIn, precipitation, weatherSky, type Look } from '../weather.ts';
 import { moonPhase, moonPosition, sunPosition, useSun, type Blend, type Phase, type SunState } from '../sun.ts';
 
 type RGB = [number, number, number];
@@ -310,6 +310,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
   // Under heavy cloud the sun's disc is only a pale shape behind it.
   const veil = discShows(look);
   const paintFog = fogPainter(look, pal, seconds, { x: moon.x, y: moon.y, shows: moonShows, fraction: lit.fraction });
+  const paintDeck = deckPainter(look, pal, seconds, sun);
   for (let j = 0; j < rows; j++) {
     const v = (j + 0.5) / rows;
     const k = v / HZ;
@@ -365,6 +366,7 @@ function draw(canvas: HTMLCanvasElement, scene: Scene, seconds: number): void {
         }
       }
 
+      if (paintDeck) c = paintDeck(c, x, v, k);
       if (paintFog) c = paintFog(c, x, v, k);
       if (flash > 0) c = mix(c, FLASH, flash * (0.05 + 0.4 * clouded));
 
