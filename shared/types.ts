@@ -1552,6 +1552,15 @@ export interface WorkBreakdown {
   questions: string[];
 }
 
+/** Someone a piece of work involves. */
+export interface WorkStakeholder {
+  name: string;
+  /** What they do on this work: PM, RD, QA, UX writer, Compliance Ops… */
+  role: string;
+  team: string;
+  note: string;
+}
+
 export type WorkMaterialKind = 'prd' | 'notes' | 'recording' | 'figma' | 'link' | 'file';
 
 /** A raw material for a card: the PRD, meeting notes, a recording, a Figma file, a link. */
@@ -1574,6 +1583,7 @@ export interface WorkCard {
   title: string;
   summary: string;
   breakdown: WorkBreakdown;
+  stakeholders: WorkStakeholder[];
   stage: WorkStage;
   position: number;
   dueDate: string | null;

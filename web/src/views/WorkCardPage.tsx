@@ -3,7 +3,7 @@
 import { ArrowLeft, ChevronRight, ExternalLink, FileText, Link2, Mic, NotebookPen, Paperclip, PenTool, Plus, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
-import type { WorkBreakdown, WorkMaterial, WorkMaterialKind, WorkStage } from '../../../shared/types.ts';
+import type { WorkBreakdown, WorkMaterial, WorkMaterialKind, WorkStage, WorkStakeholder } from '../../../shared/types.ts';
 import { useSpheres, useWorkBoard, useWorkCard, useWrite, write } from '../api.ts';
 import { STAGE_LABEL, Timeline } from '../components/Work.tsx';
 import { InlineEdit, Loading, useFolds } from '../components/ui.tsx';
@@ -117,6 +117,7 @@ export function WorkCardPage({ id }: { id: string }) {
               <AddStep cardId={id} />
             </Timeline>
           </section>
+          <Stakeholders people={card.stakeholders} onSave={(stakeholders) => patch.mutate({ stakeholders })} />
         </div>
       </div>
     </div>
@@ -286,5 +287,108 @@ function AddStep({ cardId }: { cardId: string }) {
         Add
       </button>
     </form>
+  );
+}
+
+/** Roles offered while typing; any other role can be written in. */
+const ROLES = ['PM', 'RD', 'FE', 'BE', 'QA', 'Designer', 'UX writer', 'Localization', 'DA', 'DS', 'DE', 'Legal', 'Compliance Ops', 'Compliance Strategy', 'FCC Advisory', 'BPO'];
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
+
+/** Who the work involves: read as a list, edited as rows. */
+function Stakeholders({ people, onSave }: { people: WorkStakeholder[]; onSave: (people: WorkStakeholder[]) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [rows, setRows] = useState<WorkStakeholder[]>([]);
+  const blank: WorkStakeholder = { name: '', role: '', team: '', note: '' };
+  const set = (i: number, patch: Partial<WorkStakeholder>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2 className="card-title">Stakeholders</h2>
+        {!editing && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setRows(people.length ? people : [blank]);
+              setEditing(true);
+            }}
+          >
+            {people.length ? (
+              'Edit'
+            ) : (
+              <>
+                <Plus size={14} /> Add
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      {!editing && people.length === 0 && <p className="empty">PM, RD, QA, Ops, the UX writer: who this work involves, and what you need from them.</p>}
+      {!editing && people.length > 0 && (
+        <ul className="wc-people">
+          {people.map((p, i) => (
+            <li key={i}>
+              <span className="wc-avatar" aria-hidden>
+                {initials(p.name)}
+              </span>
+              <div className="grow">
+                <div className="wc-person">
+                  <b>{p.name}</b>
+                  {p.role && <span className="task-tag">{p.role}</span>}
+                </div>
+                {(p.team || p.note) && <span className="faint">{[p.team, p.note].filter(Boolean).join(' · ')}</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {editing && (
+        <form
+          className="wc-people-edit"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSave(rows.map((r) => ({ name: r.name.trim(), role: r.role.trim(), team: r.team.trim(), note: r.note.trim() })).filter((r) => r.name));
+            setEditing(false);
+          }}
+        >
+          <datalist id="wc-roles">
+            {ROLES.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
+          {rows.map((r, i) => (
+            <div key={i} className="wc-person-row">
+              <input className="input" value={r.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Name" aria-label="Name" autoFocus={i === rows.length - 1 && !r.name} />
+              <input className="input" value={r.role} onChange={(e) => set(i, { role: e.target.value })} placeholder="Role" aria-label="Role" list="wc-roles" />
+              <input className="input" value={r.team} onChange={(e) => set(i, { team: e.target.value })} placeholder="Team" aria-label="Team" />
+              <input className="input" value={r.note} onChange={(e) => set(i, { note: e.target.value })} placeholder="Note (what they own, what you need)" aria-label="Note" />
+              <button type="button" className="icon-btn icon-btn-sm" aria-label={`Remove ${r.name || 'this person'}`} title="Remove" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+          <div className="row" style={{ gap: 6, justifyContent: 'space-between' }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRows([...rows, blank])}>
+              <Plus size={14} /> Person
+            </button>
+            <span className="row" style={{ gap: 6 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary btn-sm">
+                Save
+              </button>
+            </span>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

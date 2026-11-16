@@ -787,6 +787,10 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX work_card_tasks_by_card ON work_card_tasks(card_id);
   `,
+  // Who a piece of work involves: PM, RD, QA, Ops, the UX writer and so on.
+  `
+  ALTER TABLE work_cards ADD COLUMN stakeholders TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

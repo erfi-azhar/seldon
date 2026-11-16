@@ -10,7 +10,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read } from '../http.ts';
 import { Invalid, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { Project, Task, WorkBreakdown, WorkCard, WorkCardDetail, WorkMaterial, WorkMaterialKind, WorkStage } from '../../../shared/types.ts';
+import type { Project, Task, WorkBreakdown, WorkCard, WorkCardDetail, WorkMaterial, WorkMaterialKind, WorkStage, WorkStakeholder } from '../../../shared/types.ts';
 import { registerFeature } from './registry.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,6 +49,23 @@ function cleanBreakdown(raw: unknown): WorkBreakdown {
   return out;
 }
 
+function cleanStakeholders(raw: unknown): WorkStakeholder[] {
+  if (!Array.isArray(raw)) return [];
+  const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  return raw
+    .map((x) => (x && typeof x === 'object' ? (x as Record<string, unknown>) : {}))
+    .map((x) => ({ name: str(x.name, 120), role: str(x.role, 80), team: str(x.team, 120), note: str(x.note, 300) }))
+    .filter((x) => x.name)
+    .slice(0, 40);
+}
+
+const stakeholderSchema = z.object({
+  name: z.string().min(1).max(120),
+  role: z.string().max(80).default(''),
+  team: z.string().max(120).default(''),
+  note: z.string().max(300).default(''),
+});
+
 function cardFromRow(store: Store, r: Row): WorkCard {
   const counts = store.db
     .prepare('SELECT SUM(CASE WHEN t.done = 0 THEN 1 ELSE 0 END) AS open, SUM(CASE WHEN t.done = 1 THEN 1 ELSE 0 END) AS done FROM work_card_tasks w JOIN tasks t ON t.id = w.task_id WHERE w.card_id = ?')
@@ -63,6 +80,12 @@ function cardFromRow(store: Store, r: Row): WorkCard {
   } catch {
     breakdown = cleanBreakdown({});
   }
+  let stakeholders: WorkStakeholder[];
+  try {
+    stakeholders = cleanStakeholders(JSON.parse(r.stakeholders ?? '[]'));
+  } catch {
+    stakeholders = [];
+  }
   return {
     id: r.id,
     projectId: r.project_id,
@@ -70,6 +93,7 @@ function cardFromRow(store: Store, r: Row): WorkCard {
     title: r.title,
     summary: r.summary,
     breakdown,
+    stakeholders,
     stage: r.stage,
     position: r.position,
     dueDate: r.due_date,
@@ -135,6 +159,7 @@ export interface CardInput {
   project?: string | null;
   summary?: string;
   breakdown?: Partial<WorkBreakdown>;
+  stakeholders?: Partial<WorkStakeholder>[];
   dueDate?: string | null;
   stage?: WorkStage;
 }
@@ -148,8 +173,8 @@ export function createCard(store: Store, input: CardInput): WorkCard {
     const id = newId();
     const now = nowIso();
     store.db
-      .prepare('INSERT INTO work_cards (id, project_id, title, summary, breakdown, stage, position, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
-      .run(id, projectId, title, (input.summary ?? '').trim().slice(0, 4000), JSON.stringify(cleanBreakdown(input.breakdown)), stage, endOf(store, stage), input.dueDate ?? null, now, now);
+      .prepare('INSERT INTO work_cards (id, project_id, title, summary, breakdown, stakeholders, stage, position, due_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, projectId, title, (input.summary ?? '').trim().slice(0, 4000), JSON.stringify(cleanBreakdown(input.breakdown)), JSON.stringify(cleanStakeholders(input.stakeholders ?? [])), stage, endOf(store, stage), input.dueDate ?? null, now, now);
     store.record('created', 'work_card', id, workSphereId(store), `New work: ${title}`);
     return cardFromRow(store, cardRow(store, id));
   });
@@ -163,6 +188,8 @@ export interface CardPatch {
   summary?: string;
   /** Lists given here replace the card's; lists left out stay as they are. */
   breakdown?: Partial<WorkBreakdown>;
+  /** Replaces the card's stakeholders. */
+  stakeholders?: Partial<WorkStakeholder>[];
   dueDate?: string | null;
   stage?: WorkStage;
   position?: number;
@@ -179,6 +206,7 @@ export function updateCard(store: Store, id: string, patch: CardPatch): WorkCard
       const current = cardFromRow(store, r).breakdown;
       next.breakdown = JSON.stringify(cleanBreakdown({ ...current, ...patch.breakdown }));
     }
+    if (patch.stakeholders !== undefined) next.stakeholders = JSON.stringify(cleanStakeholders(patch.stakeholders));
     if (patch.dueDate !== undefined) next.due_date = patch.dueDate;
     if (patch.stage !== undefined && patch.stage !== r.stage) {
       next.stage = patch.stage;
@@ -187,8 +215,8 @@ export function updateCard(store: Store, id: string, patch: CardPatch): WorkCard
     }
     if (patch.position !== undefined) next.position = patch.position;
     store.db
-      .prepare('UPDATE work_cards SET title = ?, project_id = ?, summary = ?, breakdown = ?, stage = ?, position = ?, due_date = ?, updated_at = ? WHERE id = ?')
-      .run(next.title, next.project_id, next.summary, next.breakdown, next.stage, next.position, next.due_date, nowIso(), id);
+      .prepare('UPDATE work_cards SET title = ?, project_id = ?, summary = ?, breakdown = ?, stakeholders = ?, stage = ?, position = ?, due_date = ?, updated_at = ? WHERE id = ?')
+      .run(next.title, next.project_id, next.summary, next.breakdown, next.stakeholders, next.stage, next.position, next.due_date, nowIso(), id);
     if (patch.stage !== undefined && patch.stage !== r.stage) store.record('updated', 'work_card', id, workSphereId(store), `${next.title}: moved to ${STAGE_LABEL[patch.stage]}`);
     return cardFromRow(store, cardRow(store, id));
   });
@@ -295,6 +323,11 @@ const breakdownInput = {
   product: lines.optional().describe('Product design work: alignment, metrics, experiments, reviews, handoff'),
   questions: lines.optional().describe('Open questions to take back to PM, RD or stakeholders'),
 };
+const stakeholdersInput = z
+  .array(stakeholderSchema)
+  .max(40)
+  .optional()
+  .describe("Who the work involves, from the PRD's stakeholder list and POCs and anyone the user names: name, role on this work (PM, RD, FE, BE, QA, UX writer, DA, Legal, Compliance Ops, Designer…), team, and a short note when useful (what they own, what you need from them). The list replaces the card's.");
 const pickBreakdown = (i: Partial<Record<(typeof LISTS)[number], string[]>>): Partial<WorkBreakdown> =>
   Object.fromEntries(LISTS.filter((k) => i[k] !== undefined).map((k) => [k, i[k]])) as Partial<WorkBreakdown>;
 
@@ -324,6 +357,7 @@ registerFeature({
             ...cardView(d.card),
             summary: d.card.summary,
             breakdown: d.card.breakdown,
+            stakeholders: d.card.stakeholders,
             materials: d.materials.map((m) => ({ id: m.id, kind: m.kind, title: m.title, url: m.url || undefined, text: m.body ? m.body.slice(0, 20_000) : undefined })),
             to_dos: d.tasks.map((t) => ({ id: t.id, title: t.title, due_date: t.dueDate, done: t.done })),
           },
@@ -333,7 +367,7 @@ registerFeature({
     ),
     tool(
       'create_work_card',
-      "Put a new piece of work on the Work board, usually from a PRD the user shared. Ask the user first which project it belongs to and when it is due, unless they said. Write the breakdown from the PRD: a two or three sentence summary, the goals, the requirements, and the UX, UI and product design work it needs, plus open questions. Then attach the raw materials with add_work_material and lay out the to-dos with plan_work_card.",
+      "Put a new piece of work on the Work board, usually from a PRD the user shared. Ask the user first which project it belongs to and when it is due, unless they said. Write the breakdown from the PRD: a two or three sentence summary, the goals, the requirements, and the UX, UI and product design work it needs, plus open questions; and list its stakeholders. Then attach the raw materials with add_work_material and lay out the to-dos with plan_work_card.",
       z.object({
         title: z.string().min(1).max(200).describe('A short name for the work, like "One-click loan activation"'),
         project: z.string().min(1).max(80).describe('A Work project id from list_work_cards, or the name of a new project'),
@@ -341,15 +375,16 @@ registerFeature({
         stage: stageSchema.default('intake'),
         summary: z.string().max(4000).default(''),
         ...breakdownInput,
+        stakeholders: stakeholdersInput,
       }),
       (i, { store }) => {
-        const c = createCard(store, { title: i.title, project: i.project, dueDate: i.due_date ?? null, stage: i.stage, summary: i.summary, breakdown: pickBreakdown(i) });
+        const c = createCard(store, { title: i.title, project: i.project, dueDate: i.due_date ?? null, stage: i.stage, summary: i.summary, breakdown: pickBreakdown(i), stakeholders: i.stakeholders });
         return { data: { ok: true, ...cardView(c) }, summary: `New work: ${c.title}${c.projectName ? ` in ${c.projectName}` : ''}` };
       },
     ),
     tool(
       'update_work_card',
-      "Change a Work card: move it to another stage (intake, discovery, design, review, handoff, done), set its due date, project, title or summary, or replace any of the breakdown's lists.",
+      "Change a Work card: move it to another stage (intake, discovery, design, review, handoff, done), set its due date, project, title or summary, replace any of the breakdown's lists, or replace its stakeholders.",
       z.object({
         card_id: z.string().min(1),
         title: z.string().min(1).max(200).optional(),
@@ -358,10 +393,11 @@ registerFeature({
         stage: stageSchema.optional(),
         summary: z.string().max(4000).optional(),
         ...breakdownInput,
+        stakeholders: stakeholdersInput,
       }),
       (i, { store }) => {
         const b = pickBreakdown(i);
-        const c = updateCard(store, i.card_id, { title: i.title, project: i.project, dueDate: i.due_date, stage: i.stage, summary: i.summary, breakdown: Object.keys(b).length ? b : undefined });
+        const c = updateCard(store, i.card_id, { title: i.title, project: i.project, dueDate: i.due_date, stage: i.stage, summary: i.summary, breakdown: Object.keys(b).length ? b : undefined, stakeholders: i.stakeholders });
         return { data: { ok: true, ...cardView(c) }, summary: i.stage ? `${c.title}: ${STAGE_LABEL[c.stage]}` : `Updated ${c.title}` };
       },
     ),
@@ -408,6 +444,7 @@ registerFeature({
           project: z.string().max(80).nullable().optional(),
           summary: z.string().max(4000).optional(),
           breakdown: z.object(Object.fromEntries(LISTS.map((k) => [k, lines.optional()]))).partial().optional(),
+          stakeholders: z.array(stakeholderSchema).max(40).optional(),
           dueDate: dateStr.nullable().optional(),
           stage: stageSchema.optional(),
           position: z.number().finite().optional(),

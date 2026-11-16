@@ -119,6 +119,20 @@ test("Seldon's tools build a card from a PRD, and undo takes it back", async () 
   assert.equal(listCards(store).length, 0);
 });
 
+test('stakeholders: kept on the card, cleaned, and replaced as a list', async () => {
+  const store = fresh();
+  const card = createCard(store, { title: 'Appeal flow', stakeholders: [{ name: ' Ginny Guo ', role: 'PM', team: 'PIPO Compliance' }, { name: '', role: 'RD' }] });
+  assert.deepEqual(card.stakeholders, [{ name: 'Ginny Guo', role: 'PM', team: 'PIPO Compliance', note: '' }], 'trimmed; nameless dropped');
+  updateCard(store, card.id, { title: 'Appeal flow v2' });
+  assert.equal(getCard(store, card.id).card.stakeholders.length, 1, 'other edits leave them alone');
+  const ctx = { store, today: TODAY };
+  const r = await runTool('update_work_card', { card_id: card.id, stakeholders: [{ name: 'Linjie Fang', role: 'UX writer' }, { name: 'Jie Ren', role: 'DA', note: 'event tracking' }] }, ctx);
+  assert.ok(!r.isError, r.content);
+  assert.deepEqual(getCard(store, card.id).card.stakeholders.map((x) => `${x.role}:${x.name}`), ['UX writer:Linjie Fang', 'DA:Jie Ren'], 'the list replaces the old one');
+  const read = JSON.parse((await runTool('get_work_card', { card_id: card.id }, ctx)).content);
+  assert.equal(read.stakeholders[1].note, 'event tracking');
+});
+
 test('the HTTP routes: board, card, materials and to-dos', async () => {
   const db = openDb(':memory:');
   new Store(db).onboard({ userName: 'Sam', agentName: 'Seldon', sphereKeys: ['work'] });
@@ -133,6 +147,7 @@ test('the HTTP routes: board, card, materials and to-dos', async () => {
   assert.equal((await call('POST', `/work/cards/${id}/materials`, { kind: 'notes', title: 'Kickoff', body: 'Notes' })).status, 201);
   assert.equal((await call('POST', `/work/cards/${id}/tasks`, { title: 'Wireframes', dueDate: '2026-11-25' })).status, 201);
   assert.equal((await call('PATCH', `/work/cards/${id}`, { stage: 'review', breakdown: { ui: ['Status screen'] } })).json.stage, 'review');
+  assert.equal((await call('PATCH', `/work/cards/${id}`, { stakeholders: [{ name: 'Qiaoxin Liu', role: 'PM' }] })).json.stakeholders[0].name, 'Qiaoxin Liu');
   const board = await call('GET', '/work/cards');
   assert.deepEqual(board.json.stages, ['intake', 'discovery', 'design', 'review', 'handoff', 'done']);
   assert.equal(board.json.projects[0].name, 'Personal Loan (MX)');
