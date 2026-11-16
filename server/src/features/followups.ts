@@ -11,7 +11,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { NoBrain, think, wrapUntrusted } from '../agent/think.ts';
-import { toolbox, toolSpecs } from '../agent/tools.ts';
+import { tool, toolbox, toolSpecs } from '../agent/tools.ts';
 import { Invalid, NotFound, nowIso, type Store } from '../store.ts';
 import type { FollowupStep, Task, TaskFollowups } from '../../../shared/types.ts';
 import { registerFeature } from './registry.ts';
@@ -226,6 +226,19 @@ export async function sweep(store: Store, signal?: AbortSignal): Promise<void> {
   }
 }
 
+/**
+ * Seldon writes the suggestions itself, from a chat, in the same shape the background brain
+ * answers in. They are kept against the task as it reads now, so editing it later still makes
+ * them stale; a task that needs nothing more can be marked so.
+ */
+export function saveFollowups(store: Store, taskId: string, answer: z.input<typeof Answer>): TaskFollowups {
+  const task = store.getTask(taskId);
+  const parsed = Answer.parse(answer);
+  const steps = toSteps(parsed);
+  save(store, taskId, fingerprint(task), steps.length || (parsed.relevant && parsed.summary) ? { status: 'ready', summary: parsed.summary, steps } : { status: 'none' });
+  return getFollowups(store, taskId);
+}
+
 /** Add a suggested follow-up as a task of its own, alongside the one it came from. */
 export function addStepTask(store: Store, taskId: string, index: number): { task: Task; followups: TaskFollowups } {
   const parent = store.getTask(taskId);
@@ -252,6 +265,31 @@ export function addStepTask(store: Store, taskId: string, index: number): { task
 registerFeature({
   id: ID,
   jobs: [{ id: ID, everyMs: 60_000, run: sweep }],
+  tools: [
+    tool(
+      'suggest_for_task',
+      'Write the "Seldon suggests" card on a task yourself: when the user asks for suggestions on a task, or its card failed or never filled. Same rules as the background suggestions: up to four practical next steps, most useful first, each with a short title and a one- or two-sentence detail, optionally an "ask" (a first-person prompt for you, with a 2-5 word button label starting with a verb) or a "task" worth tracking on its own (with due_date YYYY-MM-DD when timing matters, never the task itself). "summary" is the most useful thing to know in a sentence or two. Plain words, no markdown. relevant: false (and no steps) marks a task that needs nothing more. Replaces what the card showed.',
+      z.object({
+        task_id: z.string().min(1),
+        relevant: z.boolean(),
+        summary: z.string().max(600),
+        steps: z
+          .array(
+            z.object({
+              title: z.string().min(1).max(160),
+              detail: z.string().max(500),
+              ask: z.object({ label: z.string().min(1).max(40), prompt: z.string().min(1).max(800) }).nullable().optional(),
+              task: z.object({ title: z.string().min(1).max(200), due_date: z.string().nullable().optional() }).nullable().optional(),
+            }),
+          )
+          .max(MAX_STEPS),
+      }),
+      ({ task_id, ...answer }, { store }) => {
+        const f = saveFollowups(store, task_id, answer);
+        return { data: f, summary: f.status === 'ready' ? `Wrote ${f.steps.length} suggestion${f.steps.length === 1 ? '' : 's'} on the task` : 'Marked the task as needing nothing more' };
+      },
+    ),
+  ],
   routes: (app, { store }) => {
     // Jobs run only while their integration is on; this one has nothing to set up, so it starts on.
     store.db.prepare('INSERT OR IGNORE INTO integrations (id, enabled) VALUES (?, 1)').run(ID);
