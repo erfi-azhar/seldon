@@ -13420,6 +13420,25 @@ button.xw-coin:hover,
   justify-content: space-between;
   min-height: 24px;
 }
+.wc-list-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  margin: -4px 0;
+  padding: 4px 0;
+  text-align: left;
+}
+.wc-list-toggle .todo-fold-chev {
+  transform: rotate(90deg);
+}
+.wc-list.is-folded .wc-list-toggle .todo-fold-chev {
+  transform: none;
+}
+.wc-list-toggle:hover h3 {
+  color: var(--ink);
+}
 .wc-list h3 {
   font-size: 12px;
   font-weight: 600;

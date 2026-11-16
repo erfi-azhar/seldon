@@ -1,12 +1,12 @@
 // One piece of work: its breakdown, its raw materials, and the timeline of what to do.
 
-import { ArrowLeft, ExternalLink, FileText, Link2, Mic, NotebookPen, Paperclip, PenTool, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, ExternalLink, FileText, Link2, Mic, NotebookPen, Paperclip, PenTool, Plus, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import type { WorkBreakdown, WorkMaterial, WorkMaterialKind, WorkStage } from '../../../shared/types.ts';
 import { useSpheres, useWorkBoard, useWorkCard, useWrite, write } from '../api.ts';
 import { STAGE_LABEL, Timeline } from '../components/Work.tsx';
-import { InlineEdit, Loading } from '../components/ui.tsx';
+import { InlineEdit, Loading, useFolds } from '../components/ui.tsx';
 import { cx, hueStyle, plural, shortDay, todayStr } from '../lib.ts';
 
 const STAGES: WorkStage[] = ['intake', 'discovery', 'design', 'review', 'handoff', 'done'];
@@ -36,6 +36,8 @@ export function WorkCardPage({ id }: { id: string }) {
   const [, navigate] = useLocation();
   const patch = useWrite((body: Record<string, unknown>) => write.patch(`/work/cards/${id}`, body));
   const remove = useWrite(() => write.del(`/work/cards/${id}`));
+  // Breakdown sections you fold stay folded, on every card (Goals folded here is folded there).
+  const sections = useFolds('work-card-folded-sections', (k) => SECTIONS.some((s) => s.key === k));
   const work = spheres?.find((s) => s.key === 'work');
   const back = work ? `/spheres/${work.id}` : '/spheres';
   if (error) return <div className="page"><p className="empty">{error.message}</p></div>;
@@ -93,7 +95,14 @@ export function WorkCardPage({ id }: { id: string }) {
               <InlineEdit label="Summary" multiline value={card.summary} placeholder="What this work is, in two or three sentences" onSave={(summary) => patch.mutate({ summary })} />
             </div>
             {SECTIONS.map((s) => (
-              <ListSection key={s.key} label={s.label} items={card.breakdown[s.key]} onSave={(items) => patch.mutate({ breakdown: { [s.key]: items } })} />
+              <ListSection
+                key={s.key}
+                label={s.label}
+                items={card.breakdown[s.key]}
+                open={sections.isOpen(s.key)}
+                onToggle={(open) => sections.toggle(s.key, open)}
+                onSave={(items) => patch.mutate({ breakdown: { [s.key]: items } })}
+              />
             ))}
           </section>
           <Materials cardId={id} materials={materials} />
@@ -114,14 +123,20 @@ export function WorkCardPage({ id }: { id: string }) {
   );
 }
 
-/** A breakdown list: bullets to read, one per line to edit. */
-function ListSection({ label, items, onSave }: { label: string; items: string[]; onSave: (items: string[]) => void }) {
+/** A breakdown list: bullets to read, one per line to edit. Folds away to its heading. */
+function ListSection({ label, items, open, onToggle, onSave }: { label: string; items: string[]; open: boolean; onToggle: (open: boolean) => void; onSave: (items: string[]) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  // Editing always shows the list, folded or not.
+  const shown = open || editing;
   return (
-    <div className="wc-list">
+    <div className={cx('wc-list', !shown && 'is-folded')}>
       <div className="wc-list-head">
-        <h3>{label}</h3>
+        <button type="button" className="wc-list-toggle" aria-expanded={shown} onClick={() => onToggle(!shown)}>
+          <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+          <h3>{label}</h3>
+          {!shown && items.length > 0 && <span className="todo-fold-meta">{items.length}</span>}
+        </button>
         {!editing && (
           <button
             type="button"
@@ -153,7 +168,7 @@ function ListSection({ label, items, onSave }: { label: string; items: string[];
             </button>
           </div>
         </form>
-      ) : items.length ? (
+      ) : shown && items.length ? (
         <ul>
           {items.map((x, i) => (
             <li key={i}>{x}</li>
