@@ -13232,3 +13232,372 @@ button.xw-coin:hover,
     opacity: 0;
   }
 }
+
+/* ── The Work board ─────────────────────────────────────────────────────── */
+
+.btn-xs {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.wb {
+  margin-bottom: 20px;
+}
+/* Six columns that keep a usable width, scrolling sideways when the page is narrower. */
+.wb-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(164px, 1fr);
+  gap: 10px;
+  padding: 0 16px 16px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.wb-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px dashed transparent;
+  transition: border-color 0.12s, background 0.12s;
+}
+.wb-col.is-over {
+  border-color: var(--sphere, var(--line-2));
+  background: var(--sphere-softer, var(--surface-2));
+}
+.wb-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 4px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.wb-card {
+  display: grid;
+  gap: 5px;
+  padding: 10px 11px;
+  border-radius: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+  color: inherit;
+  text-decoration: none;
+  cursor: grab;
+  transition: border-color 0.12s, transform 0.12s;
+}
+.wb-card:hover {
+  border-color: var(--sphere-line, var(--line-2));
+}
+.wb-card.is-dragging {
+  opacity: 0.45;
+}
+.wb-col.is-done .wb-card {
+  opacity: 0.7;
+}
+.wb-project {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sphere-ink, var(--ink-2));
+}
+.wb-title {
+  font-size: 13.5px;
+  font-weight: 550;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wb-next {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.wb-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.wb-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.wb-meta .late {
+  color: var(--bad);
+  font-weight: 500;
+}
+.wb-progress {
+  position: relative;
+  gap: 6px !important;
+}
+.wb-progress::before {
+  content: '';
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+.wb-progress i {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 4px;
+  max-width: 36px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: var(--sphere, var(--ink-3));
+}
+.wb-progress b {
+  font-weight: 500;
+}
+.wb-new {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* A card's own page. */
+.wc-head {
+  margin: 4px 0 22px;
+}
+.wc-title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.wc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.wc-meta > .select {
+  width: auto;
+  max-width: 240px;
+}
+.wc-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.wc-due .input {
+  width: auto;
+}
+.wc-stages {
+  flex-wrap: wrap;
+}
+.wc-stages button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.wc-summary {
+  padding: 0 20px 6px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.wc-list {
+  padding: 10px 20px;
+  border-top: 1px solid var(--line);
+}
+.wc-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+}
+.wc-list h3 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.wc-list ul {
+  margin: 6px 0 2px;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.wc-list li + li {
+  margin-top: 3px;
+}
+.wc-list textarea {
+  margin-top: 6px;
+  width: 100%;
+  resize: vertical;
+}
+.wc-materials > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 20px;
+}
+.wc-materials > li + li {
+  border-top: 1px solid var(--line);
+}
+.wc-kind {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--sphere-softer, var(--surface-2));
+  color: var(--sphere-ink, var(--ink-2));
+}
+.wc-mat-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+.wc-mat-title a {
+  color: inherit;
+  text-decoration: none;
+}
+.wc-mat-title a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wc-materials .faint {
+  font-size: 12px;
+}
+.wc-body summary {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.wc-text {
+  margin-top: 6px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.wc-add {
+  display: grid;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--line);
+}
+.wc-add textarea {
+  resize: vertical;
+}
+
+/* The timeline: a line down the left, a node per day, the day's to-dos beside it. */
+.wtl ol {
+  position: relative;
+  padding: 4px 0 6px;
+}
+.wtl ol::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 18px;
+  /* Through the node: 14px padding + 76px date + 6px gap + half the 20px node column. */
+  left: 105px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+.wtl-day {
+  position: relative;
+  display: grid;
+  grid-template-columns: 76px 20px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 6px;
+  padding: 2px 8px 6px 14px;
+}
+.wtl-when {
+  display: grid;
+  justify-items: end;
+  padding-top: 9px;
+  line-height: 1.2;
+  text-align: right;
+}
+.wtl-when b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.wtl-when span {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.wtl-node {
+  justify-self: center;
+  width: 12px;
+  height: 12px;
+  margin-top: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--sphere, var(--ink-3));
+  z-index: 1;
+}
+.wtl-day.is-today .wtl-node {
+  background: var(--sphere, var(--ink-2));
+}
+.wtl-day.is-late .wtl-when b,
+.wtl-day.is-late .wtl-when span {
+  color: var(--bad);
+}
+.wtl-day.is-late .wtl-node {
+  border-color: var(--bad);
+}
+.wtl-day.is-done .wtl-node {
+  border-color: var(--line-2);
+  background: var(--line-2);
+}
+.wtl-day.is-done .wtl-when b {
+  color: var(--ink-3);
+}
+.wtl-day ul .task {
+  padding-left: 4px;
+  padding-right: 12px;
+}
+.wtl .empty {
+  padding: 4px 20px 8px;
+}
+.wtl-add .wtl-add-date {
+  width: auto;
+  height: 30px;
+}
+.todo-timeline {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+@media (max-width: 720px) {
+  .wtl ol::before {
+    left: 78px;
+  }
+  .wtl-day {
+    grid-template-columns: 56px 18px minmax(0, 1fr);
+    padding-left: 8px;
+  }
+  .wc-title {
+    font-size: 22px;
+  }
+  /* Six stages wrap onto two lines; a softer corner than the pill keeps that tidy. */
+  .wc-stages {
+    border-radius: 16px;
+  }
+}

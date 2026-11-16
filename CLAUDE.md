@@ -18,6 +18,11 @@ Seldon's own rules from `server/src/agent/prompt.ts`. In particular, the standin
 
 Find sphere ids in the snapshot. The token cannot delete; tell the owner where to remove things.
 
+- **New work goes on the Work board.** When the owner starts a new piece of work or shares a PRD,
+  use the `new-work` skill (`.claude/skills/new-work/SKILL.md`): it collects the materials, asks
+  for the project and due date, and builds the card, its materials and its to-do timeline with the
+  `*_work_card` and `add_work_material` tools.
+
 ## Changing the code
 
 - Another session may push to `main` at the same time: `git fetch origin main` and rebase onto

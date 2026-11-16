@@ -753,6 +753,40 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  // The Work board: a card per piece of work (a PRD, a requirement) inside a project, moving
+  // through stages, holding its raw materials and the breakdown of what the design work is.
+  // Its to-dos are ordinary tasks, tied to the card by work_card_tasks.
+  `
+  CREATE TABLE work_cards (
+    id TEXT PRIMARY KEY,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    breakdown TEXT NOT NULL DEFAULT '{}',
+    stage TEXT NOT NULL DEFAULT 'intake',
+    position REAL NOT NULL DEFAULT 0,
+    due_date TEXT,
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX work_cards_by_stage ON work_cards(archived, stage, position);
+  CREATE TABLE work_materials (
+    id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL REFERENCES work_cards(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX work_materials_by_card ON work_materials(card_id, created_at);
+  CREATE TABLE work_card_tasks (
+    task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+    card_id TEXT NOT NULL REFERENCES work_cards(id) ON DELETE CASCADE
+  );
+  CREATE INDEX work_card_tasks_by_card ON work_card_tasks(card_id);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */
