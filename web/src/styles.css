@@ -387,11 +387,6 @@ ul {
   padding: 2px 4px;
 }
 
-.wordmark {
-  display: none;
-  font-size: 27px;
-  line-height: 1;
-}
 .icon-btn.only-mobile {
   display: none;
 }
@@ -2688,9 +2683,6 @@ code,
   .topbar .agent-button {
     display: none;
   }
-  .wordmark {
-    display: block;
-  }
   .icon-btn.only-mobile {
     display: inline-grid;
   }
@@ -2799,6 +2791,208 @@ code,
   .composer textarea,
   .metric-log input {
     font-size: 16px;
+  }
+}
+
+/* A foldable opened flat (the iPhone Duo's inner screen is ~626pt wide): too narrow for the
+   desktop layout, wide enough that one stretched column wastes it. Today, the spheres, the
+   goals and a sphere's own page go to two columns, a card on each side of the fold. Cards
+   built for a phone's width get their rows rearranged to fit half of it. */
+@media (min-width: 600px) and (max-width: 860px) {
+  .today-grid,
+  .detail-grid,
+  .sphere-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+  }
+  .today-grid > .col,
+  .detail-grid > .col {
+    gap: 14px;
+  }
+  .goal-groups {
+    columns: 2;
+    column-gap: 14px;
+  }
+  .goal-groups > section {
+    margin-bottom: 14px;
+  }
+  /* Same for a meal: its name on one line, the numbers under it. */
+  .detail-grid .food {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: 'name name name' 'macros kcal remove';
+    column-gap: 10px;
+  }
+  .detail-grid .food > .grow {
+    grid-area: name;
+  }
+  .detail-grid .food > .food-macros {
+    grid-area: macros;
+  }
+  .detail-grid .food > .food-kcal {
+    grid-area: kcal;
+  }
+  .detail-grid .food > button {
+    grid-area: remove;
+  }
+  /* The flight's times stand over and under the plane, so both airports keep their size. */
+  .today-grid .tm-route {
+    gap: 8px;
+  }
+  .today-grid .tm-plane {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .today-grid .tm-plane i {
+    display: none;
+  }
+  /* Each coin row loses its own trade and alert buttons; the card's head has both. */
+  .today-grid .fin-ticker li,
+  .detail-grid .fin-ticker li {
+    grid-template-columns: minmax(48px, 0.8fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+  .today-grid .fin-row-acts,
+  .detail-grid .fin-row-acts {
+    display: none;
+  }
+  /* A card's buttons go under its title when both don't fit. */
+  .detail-grid .card-head {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .detail-grid .card-head > .row {
+    flex-wrap: wrap;
+  }
+  .detail-grid .card-head > :last-child:not(:first-child) {
+    margin-left: auto;
+  }
+  /* Names get a second line before they lose their end. */
+  .detail-grid .clamp-1 {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  /* The month's in, out and left: one a line, so whole amounts show. */
+  .detail-grid .fin-flow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .detail-grid .fin-flow > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .detail-grid .fin-flow b {
+    margin-top: 0;
+  }
+  /* A budget's amount goes under its category when they don't fit side by side. */
+  .detail-grid .fin-cat-line {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .detail-grid .fin-cat-line .grow {
+    flex: 1 0 auto;
+  }
+  .detail-grid .fin-cat-line .num {
+    margin-left: auto;
+  }
+  /* A transaction: what it was on one line, the amount and its buttons under it. */
+  .detail-grid .fin-tx li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: 'icon name name name' '. amount repeat remove';
+    column-gap: 10px;
+    row-gap: 0;
+  }
+  .detail-grid .fin-tx-icon {
+    grid-area: icon;
+  }
+  .detail-grid .fin-tx li > .grow {
+    grid-area: name;
+  }
+  .detail-grid .fin-tx li > .num {
+    grid-area: amount;
+    justify-self: end;
+  }
+  .detail-grid .fin-tx li > :nth-child(4) {
+    grid-area: repeat;
+  }
+  .detail-grid .fin-tx li > :last-child {
+    grid-area: remove;
+  }
+  /* A prayer's time sits under its name, so the three buttons keep their room. */
+  .detail-grid .prayer-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'name buttons' 'time buttons' 'when when';
+    row-gap: 0;
+  }
+  .detail-grid .prayer-name {
+    grid-area: name;
+  }
+  .detail-grid .prayer-time {
+    grid-area: time;
+  }
+  .detail-grid .prayer-when {
+    grid-area: when;
+  }
+  .detail-grid .prayer-when:empty {
+    display: none;
+  }
+  .detail-grid .prayer-buttons {
+    grid-area: buttons;
+  }
+  /* Prayers to make up: each one's two buttons stack, so five fit across. */
+  .detail-grid .qada-actions {
+    flex-direction: column;
+  }
+}
+
+/* A column under ~420px, whether half a fold or a narrow desktop window (the Duo opened on
+   its side is 890pt wide): cards whose rows would cut their names short rearrange. */
+@media (min-width: 600px) and (max-width: 1060px) {
+  /* A habit's week goes under its name. */
+  .today-grid .habit,
+  .detail-grid .habit {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'check name name' '. week streak';
+    column-gap: 12px;
+    row-gap: 6px;
+  }
+  .today-grid .habit > :first-child,
+  .detail-grid .habit > :first-child {
+    grid-area: check;
+  }
+  .today-grid .habit-name,
+  .detail-grid .habit-name {
+    grid-area: name;
+  }
+  .today-grid .habit .week,
+  .detail-grid .habit .week {
+    grid-area: week;
+  }
+  .today-grid .habit .streak,
+  .detail-grid .habit .streak {
+    grid-area: streak;
+  }
+  .today-grid .habit-week-head,
+  .detail-grid .habit-week-head {
+    grid-template-areas: 'check week streak';
+  }
+  .today-grid .habit-week-head .habit-name,
+  .detail-grid .habit-week-head .habit-name {
+    display: none;
+  }
+  .today-grid .fin-desk-sum,
+  .detail-grid .fin-desk-sum {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* The day's calories over the three macros, not beside them. */
+  .detail-grid .nutrition-top {
+    flex-direction: column;
+  }
+  .detail-grid .macro-gauges {
+    width: 100%;
   }
 }
 
@@ -4219,20 +4413,6 @@ body:has(.sky)::before {
   }
   .page {
     padding-bottom: calc(110px + env(safe-area-inset-bottom));
-  }
-}
-
-@media (max-width: 720px) {
-  /* Nothing sits behind the top bar any more, so the wordmark carries its own glass. */
-  .wordmark {
-    padding: 7px 16px 9px;
-    border-radius: 999px;
-    font-size: 23px;
-    background: var(--glass-float);
-    border: 1px solid var(--glass-edge);
-    box-shadow: var(--glass-float-shadow);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
   }
 }
 
@@ -6598,6 +6778,7 @@ textarea.title-input {
 .travel-mode {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 18px 20px 16px;
   overflow: hidden;
@@ -6855,6 +7036,8 @@ textarea.title-input {
 /* The featured card and the notches that tuck beneath it. */
 .trip-feature {
   display: grid;
+  /* One column no wider than the card's place: an auto column grows to its widest line. */
+  grid-template-columns: minmax(0, 1fr);
 }
 .trip-notch {
   position: relative;
