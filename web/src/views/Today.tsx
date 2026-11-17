@@ -30,16 +30,14 @@ function TodayTodos({ overview: o }: { overview: Overview }) {
         <h3>{label}</h3>
         <span className="hint">{tasks.open.length === 0 ? (tasks.done.length ? 'all done' : 'nothing due') : `${tasks.open.length} to do`}</span>
       </div>
-      {tasks.open.length + tasks.done.length > 0 && (
+      {tasks.open.length > 0 && (
         <ul>
           {tasks.open.map((t) => (
             <TaskRow key={t.id} task={t} showSphere={showSphere} />
           ))}
-          {tasks.done.map((t) => (
-            <TaskRow key={t.id} task={t} showSphere={showSphere} />
-          ))}
         </ul>
       )}
+      <DoneFold tasks={tasks.done} showSphere={showSphere} />
       {add}
     </div>
   );
@@ -66,6 +64,25 @@ function TodayTodos({ overview: o }: { overview: Overview }) {
       </div>
       <ComingUp tasks={o.tasks.upcoming} />
     </section>
+  );
+}
+
+/** The to-dos ticked off today, folded away under the open ones so the list shows only what's
+ *  left. Closed each time the page loads; open it to untick one. */
+function DoneFold({ tasks, showSphere }: { tasks: Task[]; showSphere: boolean }) {
+  if (tasks.length === 0) return null;
+  return (
+    <details className="todo-done">
+      <summary>
+        <ChevronRight size={14} className="todo-done-chevron" aria-hidden />
+        <span>{tasks.length} done</span>
+      </summary>
+      <ul>
+        {tasks.map((t) => (
+          <TaskRow key={t.id} task={t} showSphere={showSphere} />
+        ))}
+      </ul>
+    </details>
   );
 }
 
