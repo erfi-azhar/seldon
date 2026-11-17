@@ -1,6 +1,6 @@
-import type { CSSProperties } from 'react';
+import { type CSSProperties, useEffect, useState } from 'react';
+import { ThinkingOrb, type OrbSize } from 'thinking-orbs';
 import { SphereIcon } from './Icon.tsx';
-import { cx } from '../lib.ts';
 
 const CIRCUMFERENCE = 2 * Math.PI * 46;
 
@@ -38,10 +38,26 @@ export function Orb({
 
 /** The agent's own orb: a pearl that breathes while it works. */
 export function AgentOrb({ size = 30, thinking = false }: { size?: number; thinking?: boolean }) {
-  const style = { '--size': `${size}px`, '--wrap': `${size}px` } as CSSProperties;
+  // The orb ships three tuned sizes; draw the nearest and scale it to the size asked for.
+  const preset: OrbSize = size <= 24 ? 20 : size <= 44 ? 32 : 64;
+  const reduce = useReducedMotion();
   return (
-    <span className="orb-wrap" style={style} aria-hidden>
-      <span className={cx('orb orb-agent', thinking && 'thinking')} />
+    <span className="orb-wrap agent-orb" style={{ '--wrap': `${size}px` } as CSSProperties} aria-hidden>
+      <span className="agent-orb-inner" style={{ transform: size === preset ? undefined : `scale(${size / preset})` }}>
+        <ThinkingOrb state={thinking ? 'working' : 'breathing'} size={preset} paused={reduce && !thinking} aria-label="" />
+      </span>
     </span>
   );
+}
+
+function useReducedMotion(): boolean {
+  const [reduce, setReduce] = useState(() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
+    const q = matchMedia('(prefers-reduced-motion: reduce)');
+    const on = () => setReduce(q.matches);
+    q.addEventListener('change', on);
+    return () => q.removeEventListener('change', on);
+  }, []);
+  return reduce;
 }

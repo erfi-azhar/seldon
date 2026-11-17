@@ -4197,14 +4197,10 @@ body:has(.sky)::before {
     background: var(--glass-press);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5);
   }
+  /* The dotted orb is see-through, so Seldon's button keeps the same glass circle as search. */
   .tabbar .tab-agent {
     margin: 0;
     padding: 0;
-    background: none;
-    border: 0;
-    box-shadow: none;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
   }
   .agent {
     inset: 0;
@@ -13738,3 +13734,17 @@ button.xw-coin:hover,
   }
 }
 
+
+/* Seldon's orb: a dotted thinking orb, scaled from its nearest tuned size. */
+.agent-orb {
+  overflow: visible;
+}
+.agent-orb-inner {
+  display: grid;
+  place-items: center;
+  transform-origin: center;
+  pointer-events: none;
+}
+.agent-orb-inner canvas {
+  display: block;
+}

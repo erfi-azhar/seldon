@@ -234,7 +234,7 @@ function Shell({ settings }: { settings: SettingsData }) {
           ))}
         </div>
         <button type="button" className="tabbar-round tab-agent" onClick={() => setAgentOpen(true)} aria-label={`Talk to ${agentName}`}>
-          <AgentOrb size={52} thinking={chat.streaming} />
+          <AgentOrb size={34} thinking={chat.streaming} />
         </button>
       </nav>
 
