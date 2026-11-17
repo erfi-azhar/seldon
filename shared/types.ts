@@ -1604,3 +1604,56 @@ export interface WorkCardDetail {
   tasks: Task[];
 }
 
+
+// ── Game plan ───────────────────────────────────────────────────────────────
+
+/** A dated aim: the one-year mission or this month's project. */
+export interface GameAim {
+  text: string;
+  /** YYYY-MM-DD, or null when not set. */
+  by: string | null;
+}
+
+/** The six parts that turn a direction into a game: what's at stake, how you win, the mission,
+ *  the boss fight, the quests (daily levers) and the rules. */
+export interface GamePlan {
+  antiVision: string;
+  vision: string;
+  /** "I am the kind of person who…" */
+  identity: string;
+  /** The inner pattern or belief that has been running the show. */
+  enemy: string;
+  mission: GameAim;
+  project: GameAim;
+  /** Recurring daily levers that quests are drawn from. */
+  levers: string[];
+  rules: string[];
+  updatedAt: string | null;
+}
+
+export interface Quest {
+  id: string;
+  title: string;
+  /** HH:MM, or '' for any time. */
+  time: string;
+  done: boolean;
+}
+
+export interface ResetDay {
+  date: string;
+  answers: Record<string, string>;
+  /** Set once the evening synthesis has been turned into the game plan. */
+  finishedAt: string | null;
+}
+
+export interface GameState {
+  date: string;
+  plan: GamePlan;
+  quests: Quest[];
+  reset: ResetDay | null;
+  prompts: { daily: boolean; weekly: boolean };
+  /** Whether any device can receive notifications. */
+  push: boolean;
+  /** Prompt answers kept today (reset day or daily prompts), by prompt id. */
+  answered: Record<string, string>;
+}

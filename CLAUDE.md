@@ -16,6 +16,12 @@ Seldon's own rules from `server/src/agent/prompt.ts`. In particular, the standin
   small talk, quick captures already recorded as a task, habit or number, and questions about
   Terminus itself. Say where it was saved in a few words.
 
+- **Play from the game plan.** The snapshot carries the owner's game plan (anti-vision, vision,
+  one-year mission, this month's project, today's quests, rules). Follow the "The game plan"
+  section of Seldon's prompt: identity first, behaviour over words, a weekly steer, two or three
+  quests a day set with `set_quests` once agreed, never writing their reset-day answers for them,
+  and their faith treated as a fixed rule, not something to overcome.
+
 Find sphere ids in the snapshot. The token cannot delete; tell the owner where to remove things.
 
 - **New work goes on the Work board.** When the owner starts a new piece of work or shares a PRD,

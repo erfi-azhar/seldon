@@ -15,6 +15,7 @@ import { cx } from './lib.ts';
 import { useSunClock } from './sun.ts';
 import { useNewVersionReload } from './update.ts';
 import { AppContext, type AppState, type Sheet, type Toast } from './state.tsx';
+import { GamePage } from './components/Game.tsx';
 import { Goals } from './views/Goals.tsx';
 import { Library } from './views/Library.tsx';
 import { Screenings } from './views/Screenings.tsx';
@@ -92,7 +93,7 @@ function Shell({ settings }: { settings: SettingsData }) {
     const tripId = location.match(/^\/trips\/([^/]+)/)?.[1];
     if (tripId) return `The page for trip [${tripId}]`;
     if (location === '/') return 'Today';
-    return { '/quran': 'The Quran study page (the ayah there is in the Quran study line of the snapshot)', '/spheres': 'All spheres', '/goals': 'Goals', '/library': 'Library', '/settings': 'Settings' }[location] ?? 'Terminus';
+    return { '/quran': 'The Quran study page (the ayah there is in the Quran study line of the snapshot)', '/spheres': 'All spheres', '/game': 'Game plan (vision, mission, this month’s project, today’s quests)', '/goals': 'Goals', '/library': 'Library', '/settings': 'Settings' }[location] ?? 'Terminus';
   }, [location, spheres]);
   const chat = useAgentChat(useCallback(() => where.current, []));
   const { send } = chat;
@@ -193,6 +194,7 @@ function Shell({ settings }: { settings: SettingsData }) {
               <Route path="/work/:id">{(params) => <WorkCardPage key={params.id} id={params.id} />}</Route>
               <Route path="/guides/:id">{(params) => <GuidePage key={params.id} id={params.id} />}</Route>
               <Route path="/quran" component={QuranStudyPage} />
+              <Route path="/game" component={GamePage} />
               <Route path="/goals" component={Goals} />
               <Route path="/library" component={Library} />
               <Route path="/settings" component={Settings} />

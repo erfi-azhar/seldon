@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type UseMutationResult } from '@
 import type {
   AgentEvent,
   Book,
+  GameState,
   BookCandidate,
   Weather,
   ChatContext,
@@ -281,6 +282,14 @@ export const healthWrite = {
   post: (path: string, body: object) => api<HealthState>('POST', withDate(`/health${path}`), body),
   targets: (body: object) => api<HealthState>('PUT', withDate('/health/targets'), body),
   del: (path: string) => api<{ ok: true }>('DELETE', `/health${path}`),
+};
+
+export const useGame = () =>
+  useQuery({ queryKey: ['game', todayStr()], queryFn: () => api<GameState>('GET', withDate('/game')), refetchInterval: 5 * 60_000 });
+
+export const gameWrite = {
+  post: (path: string, body: object = {}) => api<GameState>('POST', withDate(`/game${path}`), body),
+  put: (path: string, body: object) => api<GameState>('PUT', withDate(`/game${path}`), body),
 };
 
 export const useTravel = () =>

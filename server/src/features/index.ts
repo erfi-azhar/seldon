@@ -46,3 +46,4 @@ export function installFeatures(app: Hono, ctx: FeatureContext): void {
     return c.json(integrationStatus(ctx.store, id, false, features().find((f) => f.id === id)!.integration?.configured ?? (() => true)));
   });
 }
+import './game.ts';

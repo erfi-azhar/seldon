@@ -791,6 +791,15 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE work_cards ADD COLUMN stakeholders TEXT NOT NULL DEFAULT '[]';
   `,
+  // The game plan: vision and anti-vision, the mission, this month's project, today's quests,
+  // the rules, and the one-day reset. Kept as small JSON documents by key.
+  `
+  CREATE TABLE game_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

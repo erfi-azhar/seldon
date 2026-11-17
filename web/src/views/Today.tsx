@@ -11,6 +11,7 @@ import { Sky, type SkyTrip } from '../components/Sky.tsx';
 import { TravelModeCard, TravelPill, useTravelDay } from '../components/Travel.tsx';
 import { NextPrayerPill } from '../components/Prayer.tsx';
 import { TodayCrypto } from '../components/Finance.tsx';
+import { GameCard } from '../components/Game.tsx';
 import { Loading } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -404,6 +405,8 @@ export function Today() {
       </header>
 
       {/* On a travel day the trip leads, and the day's to-dos take its place in the column. */}
+      <GameCard />
+
       {travelDay ? (
         <div className="today-lead">
           <TravelModeCard />
