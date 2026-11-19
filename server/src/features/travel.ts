@@ -107,7 +107,11 @@ function segmentFromRow(r: Row, accounts: LoyaltyAccount[], stays?: MarriottStay
   };
   s.lounges = loungeAccess(s, accounts);
   s.perks = stayPerks(s, accounts);
-  if (stays && s.kind === 'stay' && isMarriott(s.title, s.carrier) && s.endLocal) s.eliteNights = eliteNights({ id: s.id, title: s.title, start: s.startLocal, end: s.endLocal }, stays, accounts);
+  if (stays && s.kind === 'stay' && isMarriott(s.title, s.carrier) && s.endLocal) {
+    s.eliteNights = eliteNights({ id: s.id, title: s.title, start: s.startLocal, end: s.endLocal }, stays, accounts);
+    // Perks follow the tier you'll have by then: Platinum at a stay after the nights that reach it.
+    if (s.eliteNights.before !== null) s.perks = stayPerks(s, accounts, s.eliteNights.before);
+  }
   return s;
 }
 
