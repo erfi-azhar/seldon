@@ -14215,3 +14215,61 @@ button.xw-coin:hover,
     font-size: 19px;
   }
 }
+
+/* The same panel for Marriott Bonvoy: nights against the tiers, then points. */
+.kf.is-bonvoy {
+  --kf-booked: oklch(0.6 0.15 35);
+  --kf-planned: oklch(0.6 0.15 35 / 0.5);
+  --kf-before: oklch(0.66 0.1 35 / 0.6);
+}
+.kf.is-bonvoy .kf-bar {
+  margin-top: 14px;
+}
+.kf-goal.is-tier span {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-style: normal;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.kf-goal.is-tier.is-end span {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.bv-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px 32px;
+}
+.bv-col {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.bv-col h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.kf-rows.is-stacked {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+.bv-out {
+  margin: 2px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.bv-out.is-met {
+  color: var(--kf-met);
+}

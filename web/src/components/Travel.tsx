@@ -1159,6 +1159,162 @@ const BONVOY_TIERS = [
   { tier: 'Ambassador Elite', at: 100 },
 ];
 
+/** Rough US dollar rates, only to estimate Bonvoy points from a price in the booking's notes. */
+const USD_PER: Record<string, number> = {
+  USD: 1, SGD: 0.77, EUR: 1.08, GBP: 1.27, CHF: 1.13, BRL: 0.18, CNY: 0.14, RMB: 0.14, HKD: 0.128, JPY: 0.0066, KRW: 0.00072,
+  MYR: 0.22, THB: 0.028, IDR: 0.000062, VND: 0.00004, PHP: 0.017, INR: 0.012, AUD: 0.65, NZD: 0.6, AED: 0.27, CAD: 0.73,
+};
+/** The first price in a stay's notes ("SGD 671.10", "BRL 3,200"): what the booking cost, in US dollars. */
+function stayPrice(s: Segment): { usd: number; text: string } | null {
+  const m = new RegExp(`\\b(${Object.keys(USD_PER).join('|')})\\s?([\\d,]+(?:\\.\\d+)?)`).exec(s.notes);
+  if (!m) return null;
+  const amount = Number(m[2]!.replace(/,/g, ''));
+  return amount > 0 ? { usd: amount * USD_PER[m[1]!]!, text: `${m[1]} ${m[2]}` } : null;
+}
+/** Bonvoy base points per US dollar of room rate: 10 at most brands, 5 at Element, Residence Inn and TownePlace. */
+const bonvoyBase = (title: string) => (/\b(element|residence inn|towneplace)\b/i.test(title) ? 5 : /executive apartments/i.test(title) ? 2.5 : 10);
+const BONVOY_BONUS: Record<string, number> = { 'Silver Elite': 0.1, 'Gold Elite': 0.25, 'Platinum Elite': 0.5, 'Titanium Elite': 0.75, 'Ambassador Elite': 0.75 };
+const BONVOY_ORDER = ['Member', ...BONVOY_TIERS.map((t) => t.tier)];
+/** The tier in force for a stay: the card's, or the one the year's nights before it have already reached. */
+function bonvoyTierAt(cardTier: string, nightsBefore: number | null) {
+  const byNights = [...BONVOY_TIERS].reverse().find((t) => nightsBefore !== null && nightsBefore >= t.at)?.tier ?? 'Member';
+  return BONVOY_ORDER.indexOf(byNights) > BONVOY_ORDER.indexOf(cardTier) ? byNights : cardTier;
+}
+/** The points a Marriott stay should earn: base points on its price, the elite bonus, and Gold's welcome points. */
+function stayPoints(s: Segment, cardTier: string): { points: number; why: string } | null {
+  const price = stayPrice(s);
+  if (!price || !s.eliteNights) return null;
+  const tier = bonvoyTierAt(cardTier, s.eliteNights.before);
+  const base = Math.round(price.usd * bonvoyBase(s.title));
+  const bonus = Math.round(base * (BONVOY_BONUS[tier] ?? 0));
+  const gift = tier === 'Gold Elite' ? 250 : 0;
+  const parts = [`${base.toLocaleString()} base on ${price.text} (≈ US$${Math.round(price.usd).toLocaleString()})`, bonus ? `${bonus.toLocaleString()} ${tier.replace(' Elite', '')} bonus` : '', gift ? '250 welcome' : ''];
+  return { points: base + bonus + gift, why: parts.filter(Boolean).join(' + ') };
+}
+
+/**
+ * Under a trip's stays: where its Marriott stays take your Bonvoy status and points. The bar is the year's elite
+ * nights (those before the trip, then each stay, striped when only planned) against the tiers; beside it, the
+ * points on the card, stays on earlier trips not yet in it, and an estimate for each of this trip's stays.
+ */
+function BonvoyProgress({ trip, state }: { trip: Trip; state: TravelState }) {
+  const card = state.loyalty.find((a) => a.kind === 'hotel' && /bonvoy|marriott/i.test(a.program));
+  const stays = trip.segments.filter((s) => s.kind === 'stay' && s.eliteNights && !s.eliteNights.counted);
+  if (!card || !stays.length) return null;
+  const tier = card.tier || 'Member';
+  const year = stays[0]!.eliteNights!.year;
+  const ours = stays.filter((s) => s.eliteNights!.year === year);
+  const before = ours[0]!.eliteNights!.before;
+  const n = (v: number) => Math.round(v).toLocaleString();
+  const name = (s: Segment) => shortStay(s.title || 'Hotel');
+  const planned = (s: Segment) => isPlanned(s) || (s.source === 'option' && !s.confirmation && /not booked/i.test(s.notes));
+  const nightsOf = (xs: Segment[]) => xs.reduce((k, s) => k + s.eliteNights!.nights, 0);
+  const booked = ours.filter((s) => !planned(s));
+  const maybe = ours.filter(planned);
+  const after = before === null ? null : before + nightsOf(booked);
+  const afterAll = after === null ? null : after + nightsOf(maybe);
+  const next = (k: number) => BONVOY_TIERS.find((t) => t.at > k) ?? null;
+  const scale = Math.max(afterAll ?? 0, next(afterAll ?? 0)?.at ?? 100);
+  const pct = (v: number) => `${(v / scale) * 100}%`;
+  // Points: the card's, stays on earlier trips since it was updated, then each of this trip's stays.
+  const since = card.updatedAt.slice(0, 10);
+  const first = ours[0]!.startLocal;
+  const earlierPts = state.trips
+    .filter((t) => t.id !== trip.id)
+    .flatMap((t) => t.segments)
+    .filter((s) => s.kind === 'stay' && s.eliteNights && !planned(s) && (s.endLocal || s.startLocal).slice(0, 10) >= since && s.startLocal < first)
+    .reduce((k, s) => k + (stayPoints(s, tier)?.points ?? 0), 0);
+  const est = stays.map((s) => ({ s, p: stayPoints(s, tier) }));
+  const tripPts = est.filter((x) => !planned(x.s)).reduce((k, x) => k + (x.p?.points ?? 0), 0);
+  const plannedPts = est.filter((x) => planned(x.s)).reduce((k, x) => k + (x.p?.points ?? 0), 0);
+  const unpriced = est.filter((x) => !x.p).map((x) => name(x.s));
+  const pointsAfter = (card.points ?? 0) + earlierPts + tripPts;
+  const start = bonvoyTierAt(tier, before);
+  const goal = next(after ?? 0)?.tier ?? start;
+  // A tier this trip crosses into: reached during it, not before.
+  const crosses = (k: number | null) => (k === null || before === null ? null : [...BONVOY_TIERS].reverse().find((t) => before < t.at && k >= t.at) ?? null);
+  const nightsLine = (k: number | null) => {
+    if (k === null) return 'Add your nights this year on the Bonvoy card to see the tiers.';
+    const r = crosses(k);
+    const nx = next(k);
+    return [r ? `Reaches ${r.tier}` : `${k} nights`, nx ? `${nx.at - k} more to ${nx.tier}` : ''].filter(Boolean).join(' · ');
+  };
+  const startAt = BONVOY_TIERS.find((x) => x.tier === start)?.at ?? 0;
+  const tiersShown = BONVOY_TIERS.filter((t) => t.at <= scale && t.at >= startAt);
+  const rowList = (rows: { key: string; label: string; value: string }[]) => (
+    <dl className="kf-rows is-stacked">
+      {rows.map((r) => (
+        <div key={r.label} className="kf-row">
+          <dt>
+            {r.key && <i className={`is-${r.key}`} aria-hidden />}
+            {r.label}
+          </dt>
+          <dd className="num">{r.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+  return (
+    <section className="kf is-bonvoy" aria-label="Marriott Bonvoy elite nights and points">
+      <header className="kf-top">
+        <span className="kf-name">
+          <small>Marriott Bonvoy</small>
+          <b>
+            {start} → {goal}
+          </b>
+        </span>
+        <span className="kf-total">
+          <b className="num">≈ {n(pointsAfter)}</b>
+          <span>points after this trip</span>
+        </span>
+      </header>
+      {before !== null && (
+        <div className="kf-bar" role="img" aria-label={`${nightsLine(after)}, ${year}`}>
+          <span className="kf-seg is-base" style={{ width: pct(before) }} title={`Nights in ${year} before this trip: ${before}`} />
+          {booked.map((s) => (
+            <span key={s.id} className="kf-seg is-booked" style={{ width: pct(s.eliteNights!.nights) }} title={`${name(s)}: ${s.eliteNights!.nights} nights`} />
+          ))}
+          {maybe.map((s) => (
+            <span key={s.id} className="kf-seg is-planned" style={{ width: pct(s.eliteNights!.nights) }} title={`${name(s)} (planned): ${s.eliteNights!.nights} nights`} />
+          ))}
+          {tiersShown.map((t) => (
+            <i key={t.tier} className={cx('kf-goal is-tier', t.at >= scale * 0.97 && 'is-end')} style={{ left: pct(t.at) }} title={`${t.tier}: ${t.at} nights`}>
+              <span>{t.tier.replace(' Elite', '')}</span>
+            </i>
+          ))}
+        </div>
+      )}
+      <div className="bv-cols">
+        <div className="bv-col">
+          <h4>Elite nights in {year}</h4>
+          {rowList([
+            ...(before !== null ? [{ key: 'base', label: 'Before this trip', value: n(before) }] : []),
+            { key: 'booked', label: 'This trip, booked', value: `+${nightsOf(booked)}` },
+            ...(maybe.length ? [{ key: 'planned', label: 'Planned, not booked', value: `+${nightsOf(maybe)}` }] : []),
+          ])}
+          <p className={cx('bv-out', crosses(after) && 'is-met')}>{nightsLine(after)}</p>
+        </div>
+        <div className="bv-col">
+          <h4>Points</h4>
+          {rowList([
+            { key: '', label: 'On your card', value: n(card.points ?? 0) },
+            ...(earlierPts ? [{ key: '', label: 'Earlier trips, not yet in', value: `+${n(earlierPts)}` }] : []),
+            { key: '', label: 'This trip, booked', value: `+${n(tripPts)}` },
+            ...(plannedPts ? [{ key: '', label: 'Planned stays', value: `+${n(plannedPts)}` }] : []),
+          ])}
+          <p className="bv-out" title={est.map((x) => `${name(x.s)}: ${x.p ? `${n(x.p.points)} (${x.p.why})` : 'no price in its notes'}`).join('\n')}>
+            ≈ {n(tripPts)} this trip{est.length > 1 ? ` across ${est.length} stays` : ''}
+          </p>
+        </div>
+      </div>
+      <p className="kf-foot">
+        Points at 10 per US$ of room rate (5 at Element, Residence Inn and TownePlace), plus your elite bonus (Gold 25%, Platinum 50%) and Gold's 250 welcome points. Corporate rates through a travel desk usually earn: give your Bonvoy number at check-in.
+        {unpriced.length ? ` No price noted for ${unpriced.join(' and ')}, so no points counted for it.` : ''}
+      </p>
+    </section>
+  );
+}
+
 /** The Bonvoy elite nights a stay earns: a bar of the year's nights, this stay's share in colour, up to the next tier. */
 function BonvoyNights({ e }: { e: EliteNights }) {
   if (e.after === null || e.before === null) {
@@ -1485,6 +1641,7 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
         peek={others.length ? others.map((o) => shortStay(o.title || 'Hotel')).join(', ') : trip.stayOptions.length ? plural(trip.stayOptions.length, 'hotel option') : 'No hotel yet'}
       >
           {others.length > 0 && <div className="seg-list">{others.map(row)}</div>}
+          <BonvoyProgress trip={trip} state={state} />
           {trip.stayOptions.length > 0 ? (
             <StayOptions trip={trip} booked={others.some((s) => s.kind === 'stay')} />
           ) : (
