@@ -2404,6 +2404,30 @@ function StayOptionRow({ o, rank, showFrom, busy, onToggle, onRemove }: { o: Sta
   );
 }
 
+/** One arrow of the trip pager: a round button to the trip either side, its name and dates in a tooltip; dimmed at the ends. */
+function PagerStep({ trip, dir }: { trip?: Trip; dir: 'prev' | 'next' }) {
+  const icon = dir === 'prev' ? <ChevronLeft size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />;
+  const label = dir === 'prev' ? 'Previous trip' : 'Next trip';
+  if (!trip)
+    return (
+      <span className="trip-pager-step is-off" aria-hidden>
+        {icon}
+      </span>
+    );
+  return (
+    <Link href={`/trips/${trip.id}`} className="trip-pager-step" aria-label={`${label}: ${trip.title}`} aria-keyshortcuts={dir === 'prev' ? '[' : ']'}>
+      {icon}
+      <span className={cx('trip-pager-tip', dir === 'next' && 'is-right')} role="tooltip">
+        <small>
+          {label} <kbd>{dir === 'prev' ? '[' : ']'}</kbd>
+        </small>
+        <b>{trip.title}</b>
+        <span>{dates(trip.startDate, trip.endDate)}</span>
+      </span>
+    </Link>
+  );
+}
+
 /** A trip's own page: everything about it, at /trips/:id. */
 export function TripPage({ id }: { id: string }) {
   const { data: t, isError } = useTravel();
@@ -2433,28 +2457,13 @@ export function TripPage({ id }: { id: string }) {
       <Link href={backTo.href} className="back">
         <ArrowLeft size={15} /> {backTo.label}
       </Link>
-      {(prev || next) && (
-        <nav className="trip-nav" aria-label="Other trips">
-          {prev ? (
-            <Link href={`/trips/${prev.id}`} className="trip-nav-link is-prev" title={`Previous trip: ${prev.title}, ${dates(prev.startDate, prev.endDate)} ( [ )`}>
-              <ChevronLeft size={15} aria-hidden />
-              <span>
-                <small>Previous</small>
-                <b>{prev.title}</b>
-              </span>
-            </Link>
-          ) : (
-            <span />
-          )}
-          {next && (
-            <Link href={`/trips/${next.id}`} className="trip-nav-link is-next" title={`Next trip: ${next.title}, ${dates(next.startDate, next.endDate)} ( ] )`}>
-              <span>
-                <small>Next</small>
-                <b>{next.title}</b>
-              </span>
-              <ChevronRight size={15} aria-hidden />
-            </Link>
-          )}
+      {ordered.length > 1 && at >= 0 && (
+        <nav className="trip-pager" aria-label="Other trips">
+          <PagerStep trip={prev} dir="prev" />
+          <span className="trip-pager-count">
+            <b className="num">{at + 1}</b> of <span className="num">{ordered.length}</span>
+          </span>
+          <PagerStep trip={next} dir="next" />
         </nav>
       )}
     </div>
