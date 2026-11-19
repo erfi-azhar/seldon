@@ -14044,116 +14044,174 @@ button.xw-coin:hover,
 }
 
 /* KrisFlyer elite miles under a trip's flights: the card's number, then what the trip adds, against the next tier. */
-.kf-progress {
-  --kf-base: var(--ink-3);
-  --kf-before: oklch(0.72 0.06 250);
-  --kf-booked: oklch(0.62 0.13 75);
-  --kf-planned: oklch(0.62 0.13 75 / 0.45);
+.kf {
+  --kf-base: color-mix(in oklab, var(--ink) 55%, transparent);
+  --kf-before: oklch(0.7 0.07 250);
+  --kf-booked: oklch(0.68 0.14 75);
+  --kf-planned: oklch(0.68 0.14 75 / 0.5);
+  --kf-met: oklch(0.58 0.13 155);
   display: grid;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 14px 16px;
-  border-radius: 16px;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 18px 20px 16px;
+  border-radius: 18px;
   background: var(--surface-2);
   box-shadow: inset 0 0 0 1px var(--line);
 }
-.kf-head {
+.kf-top {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  font-size: 13.5px;
+  align-items: flex-end;
+  gap: 12px 20px;
+  flex-wrap: wrap;
 }
-.kf-title b {
+.kf-name {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.kf-name small,
+.kf-outcome small {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.kf-name b {
+  font-size: 15px;
   font-weight: 650;
 }
-.kf-target {
-  font-weight: 600;
+.kf-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   white-space: nowrap;
 }
-.kf-target small {
-  font-weight: 400;
+.kf-total b {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.kf-total span {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.kf-total small {
+  margin-left: 4px;
+  font-size: 12px;
   color: var(--ink-3);
 }
 .kf-bar {
   position: relative;
   display: flex;
-  height: 12px;
+  height: 10px;
   border-radius: 999px;
   background: var(--line);
-  overflow: visible;
 }
 .kf-seg {
   height: 100%;
-  min-width: 2px;
-  box-shadow: inset -1px 0 0 var(--surface-2);
+  min-width: 3px;
+  box-shadow: inset -2px 0 0 var(--surface-2);
 }
 .kf-seg:first-child {
   border-radius: 999px 0 0 999px;
 }
+.kf-seg:nth-last-child(2) {
+  border-radius: 0 999px 999px 0;
+  box-shadow: none;
+}
+.kf-seg:first-child:nth-last-child(2) {
+  border-radius: 999px;
+}
 .kf-seg.is-base,
-.kf-legend i.is-base {
+.kf-row i.is-base {
   background: var(--kf-base);
 }
 .kf-seg.is-before,
-.kf-legend i.is-before {
+.kf-row i.is-before {
   background: var(--kf-before);
 }
 .kf-seg.is-booked,
-.kf-legend i.is-booked {
+.kf-row i.is-booked {
   background: var(--kf-booked);
 }
 .kf-seg.is-planned,
-.kf-legend i.is-planned {
-  background: repeating-linear-gradient(135deg, var(--kf-planned) 0 4px, transparent 4px 7px);
+.kf-row i.is-planned {
+  background: repeating-linear-gradient(135deg, var(--kf-planned) 0 3px, transparent 3px 6px);
   box-shadow: inset 0 0 0 1px var(--kf-planned);
 }
 .kf-goal {
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: -5px;
+  bottom: -5px;
   width: 2px;
   margin-left: -1px;
   border-radius: 2px;
   background: var(--ink);
 }
-.kf-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
+.kf-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px 28px;
   margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12px;
-  color: var(--ink-3);
 }
-.kf-legend li {
+.kf-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.kf-row dt {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  color: var(--ink-2);
 }
-.kf-legend b {
-  color: var(--ink);
+.kf-row dd {
+  margin: 0;
   font-weight: 600;
 }
-.kf-legend i {
+.kf-row i {
+  flex: none;
   width: 10px;
   height: 10px;
   border-radius: 3px;
 }
-.kf-verdict {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
+.kf-outcomes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
-.kf-foot {
-  margin: 0;
-  font-size: 11.5px;
+.kf-outcome {
+  display: grid;
+  gap: 3px;
+}
+.kf-outcome b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.kf-outcome.is-met b {
+  color: var(--kf-met);
+}
+.kf-outcome b .num {
+  font-weight: 500;
   color: var(--ink-3);
 }
-.kf-seg:nth-last-child(2) {
-  border-radius: 0 999px 999px 0;
+.kf-foot {
+  margin: -4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
 }
-.kf-seg:first-child:nth-last-child(2) {
-  border-radius: 999px;
+@media (max-width: 520px) {
+  .kf {
+    padding: 16px;
+  }
+  .kf-total b {
+    font-size: 19px;
+  }
 }

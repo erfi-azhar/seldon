@@ -1790,16 +1790,26 @@ function MilesProgress({ trip, state }: { trip: Trip; state: TravelState }) {
   const pct = (n: number) => `${(n / scale) * 100}%`;
   const n = (v: number) => Math.round(v).toLocaleString();
   const name = (s: Segment) => `${s.carrier}${s.number} ${s.fromCode}–${s.toCode}`;
-  const verdict = (total: number) => (total >= target ? `reaches ${tier}` : `${n(target - total)} short of ${tier}`);
+  const verdict = (total: number) => (total >= target ? `Reaches ${tier}` : `${n(target - total)} short of ${tier}`);
+  const rows: { key: string; label: string; value: number; plus: boolean }[] = [
+    { key: 'base', label: 'On your card', value: base, plus: false },
+    ...(before > 0 ? [{ key: 'before', label: 'Earlier trips', value: before, plus: true }] : []),
+    { key: 'booked', label: 'This trip, booked', value: sum(booked), plus: true },
+    ...(planned.length ? [{ key: 'planned', label: 'Planned, not booked', value: sum(planned), plus: true }] : []),
+  ];
   return (
-    <section className="kf-progress" aria-label={`KrisFlyer elite miles towards ${tier}`}>
-      <header className="kf-head">
-        <span className="kf-title">
-          <b>KrisFlyer</b> {kf.tier} → {tier}
+    <section className="kf" aria-label={`KrisFlyer elite miles towards ${tier}`}>
+      <header className="kf-top">
+        <span className="kf-name">
+          <small>KrisFlyer elite miles</small>
+          <b>
+            {kf.tier} → {tier}
+          </b>
         </span>
-        <span className="kf-target num">
-          {n(target)}
-          {byLabel && <small> by {byLabel}</small>}
+        <span className="kf-total">
+          <b className="num">{n(afterBooked)}</b>
+          <span className="num">/ {n(target)}</span>
+          {byLabel && <small>by {byLabel}</small>}
         </span>
       </header>
       <div className="kf-bar" role="img" aria-label={`${n(afterBooked)} of ${n(target)} with booked flights${planned.length ? `, ${n(afterAll)} with planned ones` : ''}`}>
@@ -1813,36 +1823,35 @@ function MilesProgress({ trip, state }: { trip: Trip; state: TravelState }) {
         ))}
         <i className="kf-goal" style={{ left: pct(target) }} aria-hidden />
       </div>
-      <ul className="kf-legend">
-        <li>
-          <i className="is-base" /> On your card <b className="num">{n(base)}</b>
-        </li>
-        {before > 0 && (
-          <li>
-            <i className="is-before" /> Earlier trips <b className="num">+{n(before)}</b>
-          </li>
-        )}
-        <li>
-          <i className="is-booked" /> This trip, booked <b className="num">+{n(sum(booked))}</b>
-        </li>
+      <dl className="kf-rows">
+        {rows.map((r) => (
+          <div key={r.key} className="kf-row">
+            <dt>
+              <i className={`is-${r.key}`} aria-hidden />
+              {r.label}
+            </dt>
+            <dd className="num">
+              {r.plus ? '+' : ''}
+              {n(r.value)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <div className="kf-outcomes">
+        <span className={cx('kf-outcome', afterBooked >= target && 'is-met')}>
+          <small>With what's booked</small>
+          <b>{verdict(afterBooked)}</b>
+        </span>
         {planned.length > 0 && (
-          <li>
-            <i className="is-planned" /> Planned, not booked <b className="num">+{n(sum(planned))}</b>
-          </li>
+          <span className={cx('kf-outcome', afterAll >= target && 'is-met')}>
+            <small>With the planned flights</small>
+            <b>
+              {verdict(afterAll)} <span className="num">({n(afterAll)})</span>
+            </b>
+          </span>
         )}
-      </ul>
-      <p className="kf-verdict">
-        With what's booked: <b className="num">{n(afterBooked)}</b>, {verdict(afterBooked)}.
-        {planned.length > 0 && (
-          <>
-            {' '}
-            With the planned flights too: <b className="num">{n(afterAll)}</b>, {verdict(afterAll)}.
-          </>
-        )}
-      </p>
-      <p className="kf-foot">
-        Estimates by fare class; your card was updated {shortDay(kf.updatedAt.slice(0, 10))}, so flights before then are already in its number.
-      </p>
+      </div>
+      <p className="kf-foot">Estimated by fare class. Flights before {shortDay(kf.updatedAt.slice(0, 10))}, when your card was last updated, are already in its number.</p>
     </section>
   );
 }
