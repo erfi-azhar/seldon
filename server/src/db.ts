@@ -800,6 +800,24 @@ const MIGRATIONS: string[] = [
     updated_at TEXT NOT NULL
   );
   `,
+  // Figma: the comments on the Figma files attached to Work cards, as last read. A thread is a
+  // first comment (parent_id NULL) and its replies; a to-do made from a thread is kept on it.
+  `
+  CREATE TABLE figma_comments (
+    id TEXT PRIMARY KEY,
+    file_key TEXT NOT NULL,
+    parent_id TEXT,
+    author_id TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    node_id TEXT,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT,
+    task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+    first_seen_at TEXT NOT NULL
+  );
+  CREATE INDEX figma_comments_by_file ON figma_comments(file_key, parent_id);
+  `,
 ];
 
 /** TERMINUS_* settings, still honouring the LIFEOS_* names from before the rename. */

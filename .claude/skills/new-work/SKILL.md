@@ -111,6 +111,8 @@ In this order:
    `file`. Give a clear `title`, the `url` when there is one, and put the **full text** in `text` (the
    whole PRD, the whole notes, the transcript), not a summary. Text over 100,000 characters goes in
    parts titled "… (part 2)" and so on.
+   A Figma link (`kind` `figma`, the file's own URL) also has its comments watched once Figma is
+   connected in Terminus: comment threads that need the owner show on the card.
 3. `plan_work_card` with `card_id` and `to_dos`: `[{title, due_date, notes?}]`.
 
 Don't ask for confirmation between these steps: building the card is what they asked for. Every

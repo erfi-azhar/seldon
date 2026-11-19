@@ -403,7 +403,7 @@ registerFeature({
     ),
     tool(
       'add_work_material',
-      "Attach a raw material to a Work card: the PRD (kind prd; paste its full text as text, and its link if there is one), meeting notes (notes), a recording (recording: its link, and the transcript or summary as text), a Figma file (figma), or any other link (link) or document (file). Keep the user's own words; don't summarise them away.",
+      "Attach a raw material to a Work card: the PRD (kind prd; paste its full text as text, and its link if there is one), meeting notes (notes), a recording (recording: its link, and the transcript or summary as text), a Figma file (figma: the file's link; while Figma is connected its comments are watched), or any other link (link) or document (file). Keep the user's own words; don't summarise them away.",
       z.object({
         card_id: z.string().min(1),
         kind: kindSchema,

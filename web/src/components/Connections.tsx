@@ -1,12 +1,12 @@
 // Connections to outside services, managed in Settings.
 
 import { useQuery } from '@tanstack/react-query';
-import { CalendarCheck, CalendarDays, Copy, KeyRound, Mail, Plug, Plus, RefreshCw, Share2 } from 'lucide-react';
+import { CalendarCheck, CalendarDays, Copy, KeyRound, Mail, PenTool, Plug, Plus, RefreshCw, Share2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { IntegrationStatus, McpServerView } from '../../../shared/types.ts';
 import { api, useIntegration, useWrite, write } from '../api.ts';
 import { useApp } from '../state.tsx';
-import { timeAgo } from '../lib.ts';
+import { plural, timeAgo } from '../lib.ts';
 import { Field, Spinner } from './ui.tsx';
 
 export function StatusLine({ status }: { status: IntegrationStatus | undefined }) {
@@ -303,6 +303,121 @@ export function GoogleCalendarConnection() {
           {!connected && status?.lastError && <p className="error-text">{status.lastError}</p>}
           <p className="hint">
             Terminus asks only for your calendar events, not your settings or who you share with. Connect it from the address you'll keep using: Google only returns you to the redirect address you registered. The secret and Google's sign-in stay in your Terminus database and are never shown again.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+type FigmaProblem = { name: string; url: string; error: string };
+
+export function FigmaConnection() {
+  const { data: status } = useIntegration('figma');
+  const { agentName } = useApp();
+  const [token, setToken] = useState('');
+  // The extra files as typed; null until touched, so the saved list shows.
+  const [files, setFiles] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const connected = !!status?.configured;
+  const showForm = !connected || editing;
+  const savedFiles = Array.isArray(status?.settings.files) ? (status!.settings.files as string[]) : [];
+  const watching = Number(status?.settings.watching ?? 0);
+  const problems = Array.isArray(status?.settings.problems) ? (status!.settings.problems as FigmaProblem[]) : [];
+  const save = useWrite(() =>
+    write.put('/integrations/figma', {
+      ...(token.trim() ? { token: token.trim() } : {}),
+      ...(files !== null ? { files: files.split('\n').map((l) => l.trim()).filter(Boolean) } : {}),
+    }),
+  );
+  const run = useWrite(() => write.post('/integrations/figma/run'));
+  const disconnect = useWrite(() => write.del('/integrations/figma'));
+  const close = () => {
+    setEditing(false);
+    setToken('');
+    setFiles(null);
+  };
+
+  return (
+    <div className="conn-card">
+      <div className="conn-head">
+        <span className="brain-icon">
+          <PenTool size={18} />
+        </span>
+        <div className="grow">
+          <b>Figma</b>
+          <span className="hint" style={{ display: 'block' }}>
+            {connected
+              ? [status!.settings.handle ? String(status!.settings.handle) : '', watching ? `watching ${plural(watching, 'file')}` : 'no Figma links on your Work cards yet'].filter(Boolean).join(' · ')
+              : "Watch the comments on your Work cards' Figma files for changes to make"}
+          </span>
+        </div>
+        {connected && !editing && (
+          <div className="row" style={{ gap: 4 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => run.mutate()} disabled={status?.running}>
+              <RefreshCw size={13} /> Check now
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={() => window.confirm(`Disconnect Figma? The token and the comments read so far are deleted from Terminus; to-dos made from comments stay.`) && disconnect.mutate()}
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
+      {connected && <StatusLine status={status} />}
+      {connected && problems.length > 0 && (
+        <ul className="conn-problems">
+          {problems.map((p) => (
+            <li key={p.url}>
+              <b>{p.name}</b>: <span className="error-text">{p.error}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {run.error && <p className="error-text">{run.error.message}</p>}
+
+      {showForm && (
+        <>
+          <ol className="steps-list">
+            <li>
+              In Figma, open Settings → Security → <b>Personal access tokens</b> and generate a new token. Call it "Terminus".
+            </li>
+            <li>
+              Give it only two scopes: <code>file_comments:read</code>, to read comments, and <code>current_user:read</code>, so Terminus can tell your comments from everyone else's.
+            </li>
+            <li>Choose the longest expiry Figma offers and paste the token below. When it runs out, this card says so; make a new one and paste it in.</li>
+          </ol>
+          <Field label="Personal access token">
+            <input className="input" type="password" autoComplete="off" value={token} placeholder={connected ? 'Saved (paste a new one to replace it)' : 'figd_…'} onChange={(e) => setToken(e.target.value)} />
+          </Field>
+          <Field label="Also watch (optional)">
+            <textarea
+              className="input"
+              rows={3}
+              value={files ?? savedFiles.join('\n')}
+              placeholder="https://www.figma.com/design/…"
+              onChange={(e) => setFiles(e.target.value)}
+            />
+          </Field>
+          <div className="row-wrap">
+            <button type="button" className="btn btn-primary" disabled={save.isPending || (!connected && !token.trim())} onClick={() => save.mutate(undefined, { onSuccess: close })}>
+              {save.isPending ? 'Checking…' : connected ? 'Save' : 'Connect Figma'}
+            </button>
+            {editing && (
+              <button type="button" className="btn btn-ghost" onClick={close}>
+                Cancel
+              </button>
+            )}
+          </div>
+          {save.error && <p className="error-text">{save.error.message}</p>}
+          <p className="hint">
+            Terminus watches the Figma link on every Work card that isn't done; add other files above, one link per line. It reads the comments every quarter hour and tells you in Work when someone comments; {agentName} can turn threads into to-dos, which tick off when the thread is resolved in Figma. It never posts, resolves or changes anything in Figma. The token stays in your Terminus database and is never shown again.
           </p>
         </>
       )}

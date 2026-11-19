@@ -1,13 +1,13 @@
 // One piece of work: its breakdown, its raw materials, and the timeline of what to do.
 
-import { ArrowLeft, ChevronRight, ExternalLink, FileText, Link2, Mic, NotebookPen, Paperclip, PenTool, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, ExternalLink, FileText, Link2, Mic, NotebookPen, Paperclip, PenTool, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
-import type { WorkBreakdown, WorkMaterial, WorkMaterialKind, WorkStage, WorkStakeholder } from '../../../shared/types.ts';
-import { useSpheres, useWorkBoard, useWorkCard, useWrite, write } from '../api.ts';
+import type { FigmaThread, WorkBreakdown, WorkMaterial, WorkMaterialKind, WorkStage, WorkStakeholder } from '../../../shared/types.ts';
+import { useFigmaCard, useIntegration, useSpheres, useWorkBoard, useWorkCard, useWrite, write } from '../api.ts';
 import { STAGE_LABEL, Timeline } from '../components/Work.tsx';
 import { InlineEdit, Loading, useFolds } from '../components/ui.tsx';
-import { cx, hueStyle, plural, shortDay, todayStr } from '../lib.ts';
+import { cx, hueStyle, plural, shortDay, timeAgo, todayStr } from '../lib.ts';
 
 const STAGES: WorkStage[] = ['intake', 'discovery', 'design', 'review', 'handoff', 'done'];
 
@@ -117,6 +117,7 @@ export function WorkCardPage({ id }: { id: string }) {
               <AddStep cardId={id} />
             </Timeline>
           </section>
+          {materials.some((m) => /figma\.com\//i.test(m.url)) && <FigmaComments cardId={id} />}
           <Stakeholders people={card.stakeholders} onSave={(stakeholders) => patch.mutate({ stakeholders })} />
         </div>
       </div>
@@ -290,16 +291,123 @@ function AddStep({ cardId }: { cardId: string }) {
   );
 }
 
+/**
+ * The comment threads on this card's Figma files: those waiting on you (someone else had the
+ * last word) up front, those waiting on others folded away.
+ */
+function FigmaComments({ cardId }: { cardId: string }) {
+  const { data } = useFigmaCard(cardId);
+  const { data: status } = useIntegration('figma');
+  const run = useWrite(() => write.post('/integrations/figma/run'));
+  const todo = useWrite((threadId: string) => write.post(`/figma/threads/${threadId}/todo`, { cardId }));
+  if (!data) return null;
+  const needs = data.threads.filter((t) => t.status === 'needs-you');
+  const waiting = data.threads.filter((t) => t.status === 'waiting');
+  const read = data.files.map((f) => f.syncedAt).filter((d): d is string => !!d).sort()[0];
+  const many = data.files.length > 1;
+  const thread = (t: FigmaThread) => <FigmaThreadRow key={t.id} t={t} file={many ? t.fileName : null} pending={todo.isPending && todo.variables === t.id} onToDo={() => todo.mutate(t.id)} />;
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2 className="card-title">Figma comments</h2>
+        {data.connected && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => run.mutate()} disabled={status?.running || run.isPending}>
+            <RefreshCw size={13} /> {status?.running || run.isPending ? 'Checking…' : 'Check now'}
+          </button>
+        )}
+      </div>
+      {!data.connected ? (
+        <p className="empty">
+          Connect Figma in <Link href="/settings#connections">Settings → Connections</Link> and the comments on this card's Figma file show here: what reviewers asked to change, and what's waiting on them.
+        </p>
+      ) : (
+        <>
+          {data.files
+            .filter((f) => f.error)
+            .map((f) => (
+              <p key={f.key} className="error-text fc-note">
+                {many ? `${f.name}: ` : ''}
+                {f.error}
+              </p>
+            ))}
+          {run.error && <p className="error-text fc-note">{run.error.message}</p>}
+          {needs.length === 0 && <p className="empty">{read ? 'Nothing in Figma is waiting on you.' : 'Not read yet. Terminus reads Figma every quarter hour, or check now.'}</p>}
+          {needs.length > 0 && <ul className="fc-threads">{needs.map(thread)}</ul>}
+          {waiting.length > 0 && (
+            <details className="todo-fold">
+              <summary>
+                <ChevronRight size={14} className="todo-fold-chev" aria-hidden />
+                <span className="grow">Waiting on others</span>
+                <span className="todo-fold-meta">{waiting.length}</span>
+              </summary>
+              <ul className="fc-threads">{waiting.map(thread)}</ul>
+            </details>
+          )}
+          {todo.error && <p className="error-text fc-note">{todo.error.message}</p>}
+          {(read || data.resolved > 0) && <p className="fc-foot faint">{[read ? `Read ${timeAgo(read)}` : '', data.resolved ? `${data.resolved} resolved` : ''].filter(Boolean).join(' · ')}</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
+function FigmaThreadRow({ t, file, pending, onToDo }: { t: FigmaThread; file: string | null; pending: boolean; onToDo: () => void }) {
+  const shown = t.replies.slice(-2);
+  const earlier = t.replies.length - shown.length;
+  return (
+    <li>
+      <span className="wc-avatar" aria-hidden>
+        {initials(t.author)}
+      </span>
+      <div className="grow">
+        <div className="fc-by">
+          <b>{t.mine ? 'You' : t.author}</b>
+          <span className="faint">{timeAgo(t.createdAt)}</span>
+          {file && <span className="task-tag">{file}</span>}
+        </div>
+        <p className="fc-msg">{t.message}</p>
+        {t.replies.length > 0 && (
+          <ul className="fc-replies">
+            {earlier > 0 && <li className="faint">{plural(earlier, 'earlier reply', 'earlier replies')}</li>}
+            {shown.map((r) => (
+              <li key={r.id}>
+                <b>{r.mine ? 'You' : r.author}</b> {r.message}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="fc-actions">
+          <a className="chip chip-outline" href={t.link} target="_blank" rel="noreferrer noopener">
+            <ExternalLink size={12} aria-hidden /> Open in Figma
+          </a>
+          {t.taskId ? (
+            <span className="chip chip-tint">
+              <Check size={12} aria-hidden /> {t.taskDone ? 'To-do done' : 'On the timeline'}
+            </span>
+          ) : (
+            <button type="button" className="chip chip-act" onClick={onToDo} disabled={pending}>
+              <Plus size={12} aria-hidden /> Add to-do
+            </button>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 /** Roles offered while typing; any other role can be written in. */
 const ROLES = ['PM', 'RD', 'FE', 'BE', 'QA', 'Designer', 'UX writer', 'Localization', 'DA', 'DS', 'DE', 'Legal', 'Compliance Ops', 'Compliance Strategy', 'FCC Advisory', 'BPO'];
 
+/** "Ann Tan" → AT; "Mei (UX writing)" → M: what's in brackets is a note, not a name. */
 const initials = (name: string) =>
   name
+    .replace(/\(.*?\)/g, ' ')
     .split(/\s+/)
-    .filter(Boolean)
+    .map((w) => w.match(/[\p{L}\p{N}]/u)?.[0])
+    .filter((c): c is string => !!c)
     .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join('');
+    .join('')
+    .toUpperCase();
 
 /** Who the work involves: read as a list, edited as rows. */
 function Stakeholders({ people, onSave }: { people: WorkStakeholder[]; onSave: (people: WorkStakeholder[]) => void }) {

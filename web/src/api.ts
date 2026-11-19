@@ -9,6 +9,7 @@ import type {
   Conversation,
   ConversationSummary,
   FaithState,
+  FigmaCardComments,
   FinanceState,
   BankruptcyState,
   XWatchState,
@@ -111,6 +112,13 @@ export const useWorkBoard = () =>
   useQuery({ queryKey: ['work-board'], queryFn: () => api<{ stages: WorkStage[]; projects: Project[]; cards: WorkCard[] }>('GET', '/work/cards') });
 
 export const useWorkCard = (id: string) => useQuery({ queryKey: ['work-card', id], queryFn: () => api<WorkCardDetail>('GET', `/work/cards/${id}`) });
+
+/** The comment threads on one card's Figma files. */
+export const useFigmaCard = (id: string, enabled = true) =>
+  useQuery({ queryKey: ['figma-card', id], queryFn: () => api<FigmaCardComments>('GET', `/figma/cards/${id}`), enabled, refetchInterval: 5 * 60_000 });
+
+/** How many Figma threads need you, per card on the board. */
+export const useFigmaBoard = () => useQuery({ queryKey: ['figma-board'], queryFn: () => api<Record<string, number>>('GET', '/figma/board'), refetchInterval: 5 * 60_000 });
 
 export const useGoals = (status: 'active' | 'done' | 'all' | 'paused' = 'all') =>
   useQuery({ queryKey: ['goals', status], queryFn: () => api<Goal[]>('GET', `/goals?status=${status}`) });

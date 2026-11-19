@@ -13960,3 +13960,85 @@ button.xw-coin:hover,
     font-size: 22px;
   }
 }
+
+/* A Work card's Figma comments: the threads waiting on you, then those waiting on others. */
+.fc-threads > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 20px;
+}
+.fc-threads > li + li {
+  border-top: 1px solid var(--line);
+}
+.fc-by {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.fc-by b {
+  font-weight: 550;
+}
+.fc-by .faint {
+  font-size: 12px;
+}
+.fc-msg {
+  margin: 3px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fc-replies {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--line-2);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.fc-replies b {
+  margin-right: 3px;
+  font-weight: 550;
+  color: var(--ink);
+}
+.fc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.fc-actions a.chip {
+  text-decoration: none;
+}
+.fc-note {
+  margin: 0;
+  padding: 0 20px 8px;
+}
+.fc-foot {
+  margin: 0;
+  padding: 8px 20px 14px;
+  font-size: 12px;
+}
+.wb-meta .wb-comments {
+  color: var(--sphere-ink, var(--ink-2));
+  font-weight: 500;
+}
+.conn-problems {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 13px;
+  list-style: disc;
+}

@@ -3,7 +3,7 @@ import { useRef, useState, useSyncExternalStore } from 'react';
 import { api, useAuth, useMemories, useSettings, useSpheres, useWrite, write } from '../api.ts';
 import { AccessTokens } from '../components/AccessTokens.tsx';
 import { BrainsSection } from '../components/Brains.tsx';
-import { CalendarConnection, CaptureSetup, GmailConnection, GoogleCalendarConnection, McpConnections } from '../components/Connections.tsx';
+import { CalendarConnection, CaptureSetup, FigmaConnection, GmailConnection, GoogleCalendarConnection, McpConnections } from '../components/Connections.tsx';
 import { Orb } from '../components/Orb.tsx';
 import { RouteRecording, TravelNotifications } from '../components/Journey.tsx';
 import { Field, Loading, Seg } from '../components/ui.tsx';
@@ -92,6 +92,7 @@ export function Settings() {
           <GmailConnection />
           <CalendarConnection />
           <GoogleCalendarConnection />
+          <FigmaConnection />
           <McpConnections />
           <CaptureSetup />
           <TravelNotifications />

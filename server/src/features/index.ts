@@ -26,6 +26,7 @@ import './bankruptcy.ts';
 import './reading.ts';
 import './quran.ts';
 import './work.ts';
+import './figma.ts';
 
 /** Mount every feature's routes and register its jobs. */
 export function installFeatures(app: Hono, ctx: FeatureContext): void {

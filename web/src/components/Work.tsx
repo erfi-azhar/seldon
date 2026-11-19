@@ -1,11 +1,11 @@
 // The Work board: a kanban of the pieces of work in hand (one card per PRD or requirement),
 // and the vertical timeline their to-dos are laid out on.
 
-import { CalendarDays, Paperclip, Plus } from 'lucide-react';
+import { CalendarDays, MessageSquare, Paperclip, Plus } from 'lucide-react';
 import { useState, type DragEvent, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import type { Project, Task, WorkCard, WorkStage } from '../../../shared/types.ts';
-import { useWorkBoard, useWrite, write } from '../api.ts';
+import { useFigmaBoard, useWorkBoard, useWrite, write } from '../api.ts';
 import { cx, dueLabel, parseDay, plural, todayStr } from '../lib.ts';
 import { TaskRow } from './rows.tsx';
 
@@ -15,6 +15,7 @@ export const STAGE_LABEL: Record<WorkStage, string> = { intake: 'Intake', discov
 
 export function WorkBoard() {
   const { data } = useWorkBoard();
+  const { data: figma } = useFigmaBoard();
   const [adding, setAdding] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<WorkStage | null>(null);
@@ -81,6 +82,7 @@ export function WorkBoard() {
                 <BoardCard
                   key={c.id}
                   card={c}
+                  comments={c.stage === 'done' ? 0 : (figma?.[c.id] ?? 0)}
                   today={today}
                   dragging={dragging === c.id}
                   onDragStart={(e) => {
@@ -103,7 +105,7 @@ export function WorkBoard() {
   );
 }
 
-function BoardCard({ card, today, dragging, onDragStart, onDragEnd, onDrop }: { card: WorkCard; today: string; dragging: boolean; onDragStart: (e: DragEvent) => void; onDragEnd: () => void; onDrop: (e: DragEvent) => void }) {
+function BoardCard({ card, comments, today, dragging, onDragStart, onDragEnd, onDrop }: { card: WorkCard; comments: number; today: string; dragging: boolean; onDragStart: (e: DragEvent) => void; onDragEnd: () => void; onDrop: (e: DragEvent) => void }) {
   const total = card.tasksOpen + card.tasksDone;
   const due = card.dueDate && card.stage !== 'done' ? dueLabel(card.dueDate, today) : null;
   return (
@@ -131,6 +133,11 @@ function BoardCard({ card, today, dragging, onDragStart, onDragEnd, onDrop }: { 
             <b>
               {card.tasksDone}/{total}
             </b>
+          </span>
+        )}
+        {comments > 0 && (
+          <span className="wb-comments" title={`${plural(comments, 'Figma comment thread')} waiting on you`}>
+            <MessageSquare size={12} aria-hidden /> {comments}
           </span>
         )}
         {card.materials > 0 && (

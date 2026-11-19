@@ -1604,6 +1604,61 @@ export interface WorkCardDetail {
   tasks: Task[];
 }
 
+// ── Figma comments ──────────────────────────────────────────────────────────
+// The comment threads on the Figma files attached to Work cards, so what reviewers asked
+// to change doesn't sit unseen in Figma.
+
+export interface FigmaReply {
+  id: string;
+  author: string;
+  /** Written by the owner of this Terminus. */
+  mine: boolean;
+  message: string;
+  createdAt: string;
+}
+
+/**
+ * needs-you: open, and someone else had the last word (a change to make or a question to answer).
+ * waiting: open, and the owner had the last word. resolved: closed in Figma.
+ */
+export type FigmaThreadStatus = 'needs-you' | 'waiting' | 'resolved';
+
+export interface FigmaThread {
+  id: string;
+  fileKey: string;
+  fileName: string;
+  /** Opens the comment in Figma. */
+  link: string;
+  author: string;
+  mine: boolean;
+  message: string;
+  createdAt: string;
+  replies: FigmaReply[];
+  status: FigmaThreadStatus;
+  resolvedAt: string | null;
+  lastActivityAt: string;
+  /** The to-do made from this thread, if one was. */
+  taskId: string | null;
+  taskDone: boolean;
+}
+
+export interface FigmaFileView {
+  key: string;
+  name: string;
+  url: string;
+  syncedAt: string | null;
+  error: string | null;
+}
+
+export interface FigmaCardComments {
+  connected: boolean;
+  files: FigmaFileView[];
+  /** Open threads: needing you first, then waiting on others; newest activity first in each. */
+  threads: FigmaThread[];
+  /** How many threads on these files are resolved. */
+  resolved: number;
+}
+
 
 // ── Game plan ───────────────────────────────────────────────────────────────
 
