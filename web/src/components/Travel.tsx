@@ -3,7 +3,7 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { ArrowLeft, BedDouble, ShieldCheck, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, BedDouble, ShieldCheck, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronLeft, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { Cabin, FlightOption, ItineraryItem, LoungePick, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
@@ -1170,6 +1170,97 @@ function stayPoints(s: Segment, cardTier: string): { points: number; why: string
   return { points: base + bonus + gift, why: parts.filter(Boolean).join(' + ') };
 }
 
+type LoyaltySegment = { key: string; kind: 'base' | 'before' | 'booked' | 'planned'; value: number; title: string };
+type LoyaltyTotal = { label: string; value: string; swatch?: LoyaltySegment['kind'] };
+
+/**
+ * One look for every loyalty programme under a trip: the programme and the tier you're heading for, a headline
+ * number, a bar of where you stand (what's counted, then what the trip adds, striped when only planned) against
+ * the tier markers, a line saying what it comes to, the totals, and a footnote on how it's worked out.
+ */
+function LoyaltyPanel({
+  program,
+  tone,
+  from,
+  to,
+  headline,
+  caption,
+  segments,
+  markers,
+  scale,
+  line,
+  outcome,
+  met,
+  totals,
+  foot,
+}: {
+  program: string;
+  tone: 'krisflyer' | 'bonvoy';
+  from: string;
+  to: string;
+  headline: string;
+  caption: ReactNode;
+  segments: LoyaltySegment[];
+  markers: { label: string; at: number }[];
+  scale: number;
+  line: ReactNode;
+  outcome: ReactNode;
+  met: boolean;
+  totals: LoyaltyTotal[];
+  foot: ReactNode;
+}) {
+  const pct = (v: number) => `${(Math.max(0, v) / scale) * 100}%`;
+  return (
+    <section className={`loyalty is-${tone}`} aria-label={`${program}: ${from} to ${to}`}>
+      <header className="loyalty-top">
+        <span className="loyalty-name">
+          <small>{program}</small>
+          <b>
+            {from} → {to}
+          </b>
+        </span>
+        <span className="loyalty-headline">
+          <b className="num">{headline}</b>
+          <span>{caption}</span>
+        </span>
+      </header>
+      <div className="loyalty-meter">
+        <div className="loyalty-bar" role="img" aria-label={segments.map((s) => s.title).join(', ')}>
+          {segments
+            .filter((s) => s.value > 0)
+            .map((s) => (
+              <span key={s.key} className={`loyalty-seg is-${s.kind}`} style={{ width: pct(s.value) }} title={s.title} />
+            ))}
+          {markers.map((m) => (
+            <i key={m.label} className={cx('loyalty-mark', m.at >= scale * 0.97 && 'is-end')} style={{ left: pct(m.at) }}>
+              <span>{m.label}</span>
+            </i>
+          ))}
+        </div>
+        <p className="loyalty-line">
+          <span>{line}</span>
+          <span className={cx('loyalty-outcome', met && 'is-met')}>{outcome}</span>
+        </p>
+      </div>
+      <dl className="loyalty-totals">
+        {totals.map((t) => (
+          <div key={t.label}>
+            <dt>
+              {t.swatch && <i className={`loyalty-swatch is-${t.swatch}`} aria-hidden />}
+              {t.label}
+            </dt>
+            <dd className="num">{t.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="loyalty-foot">{foot}</p>
+    </section>
+  );
+}
+
+/** "Elite Gold" → "Gold", "Platinum Elite" → "Platinum": a tier's short name for a marker on the bar. */
+const tierShort = (tier: string) => tier.replace(/\s*\bElite\b\s*/i, ' ').trim();
+
 /**
  * Under a trip's stays: where its Marriott stays take your Bonvoy status and points, in total. The bar is the year's
  * elite nights (those before the trip, then each stay, striped when only planned) against the tiers; then the points:
@@ -1184,110 +1275,77 @@ function BonvoyProgress({ trip, state }: { trip: Trip; state: TravelState }) {
   const year = stays[0]!.eliteNights!.year;
   const ours = stays.filter((s) => s.eliteNights!.year === year);
   const first = ours[0]!.eliteNights!;
-  const before = first.before;
+  const before = first.before ?? 0;
+  const known = first.before !== null;
   const n = (v: number) => Math.round(v).toLocaleString();
   const name = (s: Segment) => shortStay(s.title || 'Hotel');
-  const planned = (s: Segment) => isPlanned(s);
   const nightsOf = (xs: Segment[]) => xs.reduce((k, s) => k + s.eliteNights!.nights, 0);
-  const booked = ours.filter((s) => !planned(s));
-  const maybe = ours.filter(planned);
-  const after = before === null ? null : before + nightsOf(booked);
-  const afterAll = after === null ? null : after + nightsOf(maybe);
+  const booked = ours.filter((s) => !isPlanned(s));
+  const maybe = ours.filter(isPlanned);
+  const after = before + nightsOf(booked);
+  const afterAll = after + nightsOf(maybe);
   const next = (k: number) => BONVOY_TIERS.find((t) => t.at > k) ?? null;
-  const scale = Math.max(afterAll ?? 0, next(afterAll ?? 0)?.at ?? 100);
-  const pct = (v: number) => `${(v / scale) * 100}%`;
-  // Points: the card's, stays on earlier trips since it was updated, then each of this trip's stays.
+  const scale = Math.max(afterAll, next(afterAll)?.at ?? 100);
+  // Points: the card's, stays on earlier trips since it was updated, then this trip's stays.
   const since = card.updatedAt.slice(0, 10);
   const earlierPts = state.trips
     .filter((t) => t.id !== trip.id)
     .flatMap((t) => t.segments)
-    .filter((s) => s.kind === 'stay' && s.eliteNights && !planned(s) && (s.endLocal || s.startLocal).slice(0, 10) >= since && s.startLocal < ours[0]!.startLocal)
+    .filter((s) => s.kind === 'stay' && s.eliteNights && !isPlanned(s) && (s.endLocal || s.startLocal).slice(0, 10) >= since && s.startLocal < ours[0]!.startLocal)
     .reduce((k, s) => k + (stayPoints(s, tier)?.points ?? 0), 0);
   const est = stays.map((s) => ({ s, p: stayPoints(s, tier) }));
-  const tripPts = est.filter((x) => !planned(x.s)).reduce((k, x) => k + (x.p?.points ?? 0), 0);
-  const plannedPts = est.filter((x) => planned(x.s)).reduce((k, x) => k + (x.p?.points ?? 0), 0);
+  const tripPts = est.filter((x) => !isPlanned(x.s)).reduce((k, x) => k + (x.p?.points ?? 0), 0);
+  const plannedPts = est.filter((x) => isPlanned(x.s)).reduce((k, x) => k + (x.p?.points ?? 0), 0);
   const pointsAfter = (card.points ?? 0) + earlierPts + tripPts;
-  const start = bonvoyTierAt(tier, before);
-  const goal = next(after ?? 0)?.tier ?? start;
-  const crossed = (from: number | null, to: number | null) => (from === null || to === null ? null : [...BONVOY_TIERS].reverse().find((t) => from < t.at && to >= t.at) ?? null);
-  const reached = crossed(before, after);
-  const nx = after === null ? null : next(after);
+  const start = bonvoyTierAt(tier, first.before);
+  const goal = next(after)?.tier ?? start;
+  const reached = [...BONVOY_TIERS].reverse().find((t) => before < t.at && after >= t.at) ?? null;
+  const nx = next(after);
   const startAt = BONVOY_TIERS.find((x) => x.tier === start)?.at ?? 0;
-  const tiersShown = BONVOY_TIERS.filter((t) => t.at <= scale && t.at >= startAt);
-  // Where the count before the trip comes from: the card, and Marriott stays since.
   const counted = [first.recorded && `${first.recorded.nights} on your Bonvoy card (${shortDay(first.recorded.asOf)})`, ...first.earlier.map((e) => `${e.nights} at ${shortStay(e.title)}`)].filter(Boolean);
   return (
-    <section className="kf is-bonvoy" aria-label="Marriott Bonvoy elite nights and points">
-      <header className="kf-top">
-        <span className="kf-name">
-          <small>Marriott Bonvoy</small>
-          <b>
-            {start} → {goal}
-          </b>
-        </span>
-        <span className="kf-total">
-          <b className="num">≈ {n(pointsAfter)}</b>
-          <span>points after this trip</span>
-        </span>
-      </header>
-
-      {before !== null && after !== null && (
-        <div className="bv-nights">
-          <div className="kf-bar" role="img" aria-label={`${before} to ${after} elite nights in ${year}`}>
-            <span className="kf-seg is-base" style={{ width: pct(before) }} title={`Nights in ${year} before this trip: ${before}`} />
-            {booked.map((s) => (
-              <span key={s.id} className="kf-seg is-booked" style={{ width: pct(s.eliteNights!.nights) }} title={`${name(s)}: ${s.eliteNights!.nights} nights`} />
-            ))}
-            {maybe.map((s) => (
-              <span key={s.id} className="kf-seg is-planned" style={{ width: pct(s.eliteNights!.nights) }} title={`${name(s)} (planned): ${s.eliteNights!.nights} nights`} />
-            ))}
-            {tiersShown.map((t) => (
-              <i key={t.tier} className={cx('kf-goal is-tier', t.at >= scale * 0.97 && 'is-end')} style={{ left: pct(t.at) }} title={`${t.tier}: ${t.at} nights`}>
-                <span>{t.tier.replace(' Elite', '')}</span>
-              </i>
-            ))}
-          </div>
-          <p className="bv-nights-line">
-            <span>
-              <span className="num">{before}</span> → <b className="num">{after}</b> nights in {year}
-              {maybe.length > 0 && <span className="faint"> ({afterAll} with planned stays)</span>}
-            </span>
-            <span className={cx(reached && 'is-met')}>{reached ? `Reaches ${reached.tier}` : nx ? `${nx.at - after} more to ${nx.tier}` : 'Top tier'}</span>
-          </p>
-        </div>
-      )}
-
-
-      <dl className="bv-totals">
-        <div>
-          <dt>On your card</dt>
-          <dd className="num">{n(card.points ?? 0)}</dd>
-        </div>
-        {earlierPts > 0 && (
-          <div>
-            <dt>Earlier trips, not yet in</dt>
-            <dd className="num">+{n(earlierPts)}</dd>
-          </div>
-        )}
-        <div>
-          <dt>This trip</dt>
-          <dd className="num">+{n(tripPts)}</dd>
-        </div>
-        {plannedPts > 0 && (
-          <div>
-            <dt>Planned stays</dt>
-            <dd className="num">+{n(plannedPts)}</dd>
-          </div>
-        )}
-      </dl>
-
-      <p className="kf-foot">
-        {counted.length > 0 && <>Nights counted on from {counted.join(' and ')}. </>}
-        Points at 10 per US$ of room rate (5 at Element, Residence Inn and TownePlace), plus your elite bonus (Gold 25%, Platinum 50%) and Gold's 250 welcome points. Corporate rates through a travel desk usually earn: give your Bonvoy number at check-in.
-      </p>
-    </section>
+    <LoyaltyPanel
+      program="Marriott Bonvoy"
+      tone="bonvoy"
+      from={start}
+      to={goal}
+      headline={`≈ ${n(pointsAfter)}`}
+      caption="points after this trip"
+      segments={[
+        { key: 'base', kind: 'base', value: before, title: `Nights in ${year} before this trip: ${before}` },
+        ...booked.map((s) => ({ key: s.id, kind: 'booked' as const, value: s.eliteNights!.nights, title: `${name(s)}: ${s.eliteNights!.nights} nights` })),
+        ...maybe.map((s) => ({ key: s.id, kind: 'planned' as const, value: s.eliteNights!.nights, title: `${name(s)} (planned): ${s.eliteNights!.nights} nights` })),
+      ]}
+      markers={BONVOY_TIERS.filter((t) => t.at <= scale && t.at >= startAt).map((t) => ({ label: tierShort(t.tier), at: t.at }))}
+      scale={scale}
+      line={
+        known ? (
+          <>
+            <span className="num">{before}</span> → <b className="num">{after}</b> elite nights in {year}
+            {maybe.length > 0 && <span className="faint"> · {afterAll} with planned stays</span>}
+          </>
+        ) : (
+          'Add your nights this year on the Bonvoy card to place them against the tiers.'
+        )
+      }
+      outcome={reached ? `Reaches ${reached.tier}` : nx ? `${nx.at - after} more to ${nx.tier}` : 'Top tier'}
+      met={!!reached}
+      totals={[
+        { label: 'On your card', value: n(card.points ?? 0) },
+        ...(earlierPts > 0 ? [{ label: 'Earlier trips', value: `+${n(earlierPts)}` }] : []),
+        { label: 'This trip, booked', value: `+${n(tripPts)}` },
+        ...(plannedPts > 0 ? [{ label: 'Planned, not booked', value: `+${n(plannedPts)}` }] : []),
+      ]}
+      foot={
+        <>
+          {counted.length > 0 && <>Nights counted on from {counted.join(' and ')}. </>}
+          Points at 10 per US$ of room rate (5 at Element, Residence Inn and TownePlace) plus your elite bonus and Gold's 250 welcome points; each stay's own estimate is on its card. Corporate rates through a travel desk usually earn: give your Bonvoy number at check-in.
+        </>
+      }
+    />
   );
 }
+
 
 
 /** A remembered preference on this device (folded cards, folded days), falling back to the visit when storage is blocked. */
@@ -1899,75 +1957,54 @@ function MilesProgress({ trip, state }: { trip: Trip; state: TravelState }) {
   const sum = (xs: typeof ours) => xs.reduce((n, x) => n + x.e, 0);
   const afterBooked = base + before + sum(booked);
   const afterAll = afterBooked + sum(planned);
-  const scale = Math.max(target, afterAll);
-  const pct = (n: number) => `${(n / scale) * 100}%`;
   const n = (v: number) => Math.round(v).toLocaleString();
   const name = (s: Segment) => `${s.carrier}${s.number} ${s.fromCode}–${s.toCode}`;
   const verdict = (total: number) => (total >= target ? `Reaches ${tier}` : `${n(target - total)} short of ${tier}`);
-  const rows: { key: string; label: string; value: number; plus: boolean }[] = [
-    { key: 'base', label: 'On your card', value: base, plus: false },
-    ...(before > 0 ? [{ key: 'before', label: 'Earlier trips', value: before, plus: true }] : []),
-    { key: 'booked', label: 'This trip, booked', value: sum(booked), plus: true },
-    ...(planned.length ? [{ key: 'planned', label: 'Planned, not booked', value: sum(planned), plus: true }] : []),
-  ];
   return (
-    <section className="kf" aria-label={`KrisFlyer elite miles towards ${tier}`}>
-      <header className="kf-top">
-        <span className="kf-name">
-          <small>KrisFlyer elite miles</small>
-          <b>
-            {kf.tier} → {tier}
-          </b>
-        </span>
-        <span className="kf-total">
-          <b className="num">{n(afterBooked)}</b>
-          <span className="num">/ {n(target)}</span>
-          {byLabel && <small>by {byLabel}</small>}
-        </span>
-      </header>
-      <div className="kf-bar" role="img" aria-label={`${n(afterBooked)} of ${n(target)} with booked flights${planned.length ? `, ${n(afterAll)} with planned ones` : ''}`}>
-        <span className="kf-seg is-base" style={{ width: pct(base) }} title={`On your card: ${n(base)}`} />
-        {before > 0 && <span className="kf-seg is-before" style={{ width: pct(before) }} title={`Earlier trips, not yet counted: ${n(before)}`} />}
-        {booked.map((x) => (
-          <span key={x.s.id} className="kf-seg is-booked" style={{ width: pct(x.e) }} title={`${name(x.s)}: ≈ ${n(x.e)}`} />
-        ))}
-        {planned.map((x) => (
-          <span key={x.s.id} className="kf-seg is-planned" style={{ width: pct(x.e) }} title={`${name(x.s)} (planned): ≈ ${n(x.e)}`} />
-        ))}
-        <i className="kf-goal" style={{ left: pct(target) }} aria-hidden />
-      </div>
-      <dl className="kf-rows">
-        {rows.map((r) => (
-          <div key={r.key} className="kf-row">
-            <dt>
-              <i className={`is-${r.key}`} aria-hidden />
-              {r.label}
-            </dt>
-            <dd className="num">
-              {r.plus ? '+' : ''}
-              {n(r.value)}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      <div className="kf-outcomes">
-        <span className={cx('kf-outcome', afterBooked >= target && 'is-met')}>
-          <small>With what's booked</small>
-          <b>{verdict(afterBooked)}</b>
-        </span>
-        {planned.length > 0 && (
-          <span className={cx('kf-outcome', afterAll >= target && 'is-met')}>
-            <small>With the planned flights</small>
-            <b>
-              {verdict(afterAll)} <span className="num">({n(afterAll)})</span>
-            </b>
-          </span>
-        )}
-      </div>
-      <p className="kf-foot">Estimated by fare class. Flights before {shortDay(kf.updatedAt.slice(0, 10))}, when your card was last updated, are already in its number.</p>
-    </section>
+    <LoyaltyPanel
+      program="KrisFlyer elite miles"
+      tone="krisflyer"
+      from={kf.tier}
+      to={tier}
+      headline={n(afterBooked)}
+      caption={
+        <>
+          of {n(target)}
+          {byLabel && ` by ${byLabel}`}
+        </>
+      }
+      segments={[
+        { key: 'base', kind: 'base', value: base, title: `On your card: ${n(base)}` },
+        { key: 'before', kind: 'before', value: before, title: `Earlier trips, not yet counted: ${n(before)}` },
+        ...booked.map((x) => ({ key: x.s.id, kind: 'booked' as const, value: x.e, title: `${name(x.s)}: ≈ ${n(x.e)}` })),
+        ...planned.map((x) => ({ key: x.s.id, kind: 'planned' as const, value: x.e, title: `${name(x.s)} (planned): ≈ ${n(x.e)}` })),
+      ]}
+      markers={[{ label: tierShort(tier), at: target }]}
+      scale={Math.max(target, afterAll) * 1.0}
+      line={
+        <>
+          <span className="num">{n(base)}</span> → <b className="num">{n(afterBooked)}</b> booked
+          {planned.length > 0 && <span className="faint"> · {n(afterAll)} with planned flights</span>}
+        </>
+      }
+      outcome={
+        <>
+          {verdict(afterBooked)}
+          {planned.length > 0 && <span className="faint"> · with planned: {verdict(afterAll).replace(/^R/, 'r')}</span>}
+        </>
+      }
+      met={afterBooked >= target}
+      totals={[
+        { label: 'On your card', value: n(base), swatch: 'base' },
+        ...(before > 0 ? [{ label: 'Earlier trips', value: `+${n(before)}`, swatch: 'before' as const }] : []),
+        { label: 'This trip, booked', value: `+${n(sum(booked))}`, swatch: 'booked' },
+        ...(planned.length ? [{ label: 'Planned, not booked', value: `+${n(sum(planned))}`, swatch: 'planned' as const }] : []),
+      ]}
+      foot={`Estimated by fare class. Flights before ${shortDay(kf.updatedAt.slice(0, 10))}, when your card was last updated, are already in its number.`}
+    />
   );
 }
+
 
 /** The cabin an option is really about: the one on its longest flight. */
 const mainCabin = (o: FlightOption): Cabin => [...o.legs].sort((a, b) => b.miles - a.miles)[0]?.cabin ?? 'economy';
@@ -2374,10 +2411,53 @@ export function TripPage({ id }: { id: string }) {
   const travels = spheres.find((s) => s.key === 'travels');
   const backTo = travels ? { href: `/spheres/${travels.id}`, label: travels.name } : { href: '/spheres', label: 'Spheres' };
   const trip = t?.trips.find((x) => x.id === id);
+  // The trips either side of this one, by when they start: a way to step through them without going back.
+  const ordered = [...(t?.trips ?? [])].sort((a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate) || a.title.localeCompare(b.title));
+  const at = ordered.findIndex((x) => x.id === id);
+  const prev = at > 0 ? ordered[at - 1] : undefined;
+  const next = at >= 0 && at < ordered.length - 1 ? ordered[at + 1] : undefined;
+  const [, navigate] = useLocation();
+  // [ and ] step to the previous and next trip, unless you're typing.
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))) return;
+      if (e.key === '[' && prev) navigate(`/trips/${prev.id}`);
+      if (e.key === ']' && next) navigate(`/trips/${next.id}`);
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [prev, next, navigate]);
   const back = (
-    <Link href={backTo.href} className="back">
-      <ArrowLeft size={15} /> {backTo.label}
-    </Link>
+    <div className="trip-nav-row">
+      <Link href={backTo.href} className="back">
+        <ArrowLeft size={15} /> {backTo.label}
+      </Link>
+      {(prev || next) && (
+        <nav className="trip-nav" aria-label="Other trips">
+          {prev ? (
+            <Link href={`/trips/${prev.id}`} className="trip-nav-link is-prev" title={`Previous trip: ${prev.title}, ${dates(prev.startDate, prev.endDate)} ( [ )`}>
+              <ChevronLeft size={15} aria-hidden />
+              <span>
+                <small>Previous</small>
+                <b>{prev.title}</b>
+              </span>
+            </Link>
+          ) : (
+            <span />
+          )}
+          {next && (
+            <Link href={`/trips/${next.id}`} className="trip-nav-link is-next" title={`Next trip: ${next.title}, ${dates(next.startDate, next.endDate)} ( ] )`}>
+              <span>
+                <small>Next</small>
+                <b>{next.title}</b>
+              </span>
+              <ChevronRight size={15} aria-hidden />
+            </Link>
+          )}
+        </nav>
+      )}
+    </div>
   );
   if (!t && !isError) return <div className="page">{back}</div>;
   if (!trip)
