@@ -655,6 +655,7 @@ function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: '
   const airline = AIRLINES[code] ?? (s.carrier || 'Flight');
   const place = (c: string, city: string | undefined, name: string) => [c, city || name].filter(Boolean).join(' · ') || '—';
   const details = [s.cabin, s.seat && `Seat ${s.seat}`].filter(Boolean).join(' · ');
+  const elite = flightElite(s);
   return (
     <>
       <span className="fc-head">
@@ -716,6 +717,12 @@ function FlightFace({ s, badge }: { s: Segment; badge?: { label: string; tone: '
           <small>{s.cabin ? 'Cabin' : 'Seat'}</small>
           <b>{details || (until >= 0 ? <span className="fc-add">Add cabin and seat</span> : '—')}</b>
         </span>
+        {elite && (
+          <span className="fc-fact" title={elite.why}>
+            <small>Elite miles</small>
+            <b className="num">{elite.elite ? `≈ ${elite.elite.toLocaleString()}` : 'None'}</b>
+          </span>
+        )}
         {s.confirmation && (
           <span className="fc-fact">
             <small>Booking ref</small>
@@ -1685,6 +1692,59 @@ function eliteMiles(o: FlightOption) {
   const sum = (k: 'low' | 'mid' | 'high') => Math.round(o.legs.reduce((n, l) => n + (earnsElite(l.carrier) ? l.miles * ELITE_RATE[l.cabin ?? 'economy'][k] : 0), 0));
   return { low: sum('low'), mid: sum('mid'), high: sum('high') };
 }
+/** Booking classes and the share of the distance each earns in KrisFlyer, per airline, from KrisFlyer's accrual chart (Jan 2026). */
+type FareRate = { cabin: Cabin; rate: number; fare: string };
+const fares = (cabin: Cabin, rate: number, fare: string, classes: string): Record<string, FareRate> =>
+  Object.fromEntries([...classes].map((c) => [c, { cabin, rate, fare }]));
+const CLASS_RATES: Record<string, Record<string, FareRate>> = {
+  SQ: {
+    ...fares('business', 1.5, 'Flexi', 'AFJCD'),
+    ...fares('business', 1.25, 'Standard', 'UZ'),
+    ...fares('business', 1.25, 'Lite', 'I'),
+    ...fares('premium', 1.25, 'Flexi', 'ST'),
+    ...fares('premium', 1, 'Standard', 'LP'),
+    ...fares('premium', 1, 'Lite', 'R'),
+    ...fares('economy', 1, 'Flexi', 'YBE'),
+    ...fares('economy', 0.75, 'Standard', 'MHW'),
+    ...fares('economy', 0.5, 'Value', 'QN'),
+    ...fares('economy', 0.5, 'Lite', 'VK'),
+  },
+  LH: {
+    ...fares('business', 2, 'First', 'AF'),
+    ...fares('business', 1.5, 'Business', 'CDJ'),
+    ...fares('business', 1.25, 'Business', 'ZP'),
+    ...fares('premium', 1, 'Premium Economy', 'GEN'),
+    ...fares('economy', 1, 'Economy', 'BY'),
+    ...fares('economy', 0.75, 'Economy', 'MUH'),
+    ...fares('economy', 0.5, 'Economy', 'QVWS'),
+    ...fares('economy', 0.1, 'Economy', 'T'),
+  },
+};
+CLASS_RATES.TR = CLASS_RATES.SQ!;
+const cabinOf = (text: string): Cabin => (/business|first|suite/i.test(text) ? 'business' : /premium/i.test(text) ? 'premium' : 'economy');
+
+/**
+ * A booked flight's KrisFlyer elite miles: the distance times the rate for its fare. KrisFlyer credits by the
+ * airline flying it, so a Lufthansa flight sold under an SQ number earns at Lufthansa's rate for its class. With
+ * the booking class on the ticket ("Economy (W)") and that airline's chart known, the rate is exact; otherwise
+ * the cabin's Standard rate, with its range in the hint.
+ */
+function flightElite(s: Pick<Segment, 'carrier' | 'cabin' | 'miles'>): { elite: number; why: string } | null {
+  if (!s.miles) return null;
+  const flown = `${s.miles.toLocaleString()} miles flown`;
+  if (!earnsElite(s.carrier)) return { elite: 0, why: `${s.carrier || 'This airline'} doesn't earn KrisFlyer elite miles` };
+  const cabin = cabinOf(s.cabin);
+  const letter = /\(([A-Z])\)|\bclass\s+([A-Z])\b/i.exec(s.cabin);
+  const code = letter ? (letter[1] ?? letter[2]!).toUpperCase() : '';
+  const known = code ? CLASS_RATES[s.carrier.toUpperCase()]?.[code] : undefined;
+  if (known && known.cabin === cabin) {
+    const fare = known.fare === CABIN_NAME[cabin] ? known.fare : `${CABIN_NAME[cabin]} ${known.fare}`;
+    return { elite: Math.round(s.miles * known.rate), why: `${Math.round(known.rate * 100)}% of ${flown} (${fare}, class ${code})` };
+  }
+  const r = ELITE_RATE[cabin];
+  return { elite: Math.round(s.miles * r.mid), why: `${Math.round(r.mid * 100)}% of ${flown} on a Standard fare; ${Math.round(r.low * 100)}–${Math.round(r.high * 100)}% by fare` };
+}
+
 /** The cabin an option is really about: the one on its longest flight. */
 const mainCabin = (o: FlightOption): Cabin => [...o.legs].sort((a, b) => b.miles - a.miles)[0]?.cabin ?? 'economy';
 const roughly = (n: number) => (n >= 1000 ? `${(Math.round(n / 100) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : String(n));

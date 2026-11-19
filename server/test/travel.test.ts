@@ -92,6 +92,7 @@ test('bookings resolve airports and zones, merge repeats, stretch the trip, and 
   assert.equal(a.segment.fromName, 'Singapore Changi');
   assert.equal(a.segment.title, 'SQ 890');
   assert.match(a.segment.lounges[0]!.access, /SilverKris/);
+  assert.ok(a.segment.miles! > 1550 && a.segment.miles! < 1620, `the distance it credits (${a.segment.miles})`);
   addSegment(store, trip.id, { kind: 'flight', carrier: 'NH', number: '860', fromCode: 'HKG', toCode: 'HND', startLocal: '2026-12-01T15:30', endLocal: '2026-12-01T20:30' });
   addSegment(store, trip.id, { kind: 'stay', title: 'The Westin Tokyo', toCode: 'HND', startLocal: '2026-12-01T22:00', endLocal: '2026-12-07T12:00', address: 'Ebisu' });
   const again = addSegment(store, trip.id, { kind: 'flight', carrier: 'SQ', number: '890', fromCode: 'SIN', toCode: 'HKG', startLocal: '2026-12-01T07:50', endLocal: '2026-12-01T11:50', seat: '14A' }, 'gmail', 'x');
