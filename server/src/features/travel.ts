@@ -576,6 +576,13 @@ export function chooseOption(store: Store, id: string): Trip {
   store.db
     .prepare('UPDATE trip_options SET chosen_at = ?, added = ? WHERE id = ?')
     .run(nowIso(), JSON.stringify({ segments, startDate: before.startDate, endDate: before.endDate }), id);
+  // One way out and one way home: choosing an option replaces the one chosen for the same direction. Flights the
+  // two share stay (with this option's cabin); the rest of the old one's planned flights come off.
+  const homeward = (x: FlightOption) => x.legs[x.legs.length - 1]?.toCode === settings.homeAirport;
+  const rivals = (store.db.prepare('SELECT * FROM trip_options WHERE trip_id = ? AND id != ? AND chosen_at IS NOT NULL').all(o.tripId, id) as Row[])
+    .map(optionFromRow)
+    .filter((x) => homeward(x) === homeward(o));
+  for (const r of rivals) unchooseOption(store, r.id);
   return getTrip(store, o.tripId);
 }
 
@@ -599,7 +606,8 @@ export function unchooseOption(store: Store, id: string): Trip {
   // Chosen before additions were recorded: the option's own planned flights, matched by flight and time.
   const mine = new Set(o.legs.map((l) => key(l.carrier, l.number, l.startLocal)));
   const ids = added.segments ?? planned.filter((s) => mine.has(key(s.carrier, s.number, s.start_local)) && String(s.notes).includes(`“${o.title}”`)).map((s) => s.id as string);
-  const drop = store.db.prepare("DELETE FROM trip_segments WHERE id = ? AND source = 'option'");
+  // Booked since (a booking reference on it), a flight stays whatever happens to the option it came from.
+  const drop = store.db.prepare("DELETE FROM trip_segments WHERE id = ? AND source = 'option' AND confirmation = ''");
   for (const sid of ids) {
     const s = planned.find((p) => p.id === sid);
     const heir = s && others.find((x) => x.keys.has(key(s.carrier, s.number, s.start_local)));
