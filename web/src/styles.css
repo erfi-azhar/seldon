@@ -13890,229 +13890,6 @@ button.xw-coin:hover,
   list-style: disc;
 }
 
-/* KrisFlyer elite miles under a trip's flights: the card's number, then what the trip adds, against the next tier. */
-.kf {
-  --kf-base: color-mix(in oklab, var(--ink) 55%, transparent);
-  --kf-before: oklch(0.7 0.07 250);
-  --kf-booked: oklch(0.68 0.14 75);
-  --kf-planned: oklch(0.68 0.14 75 / 0.5);
-  --kf-met: oklch(0.58 0.13 155);
-  display: grid;
-  gap: 16px;
-  margin-top: 14px;
-  padding: 18px 20px 16px;
-  border-radius: 18px;
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-.kf-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 12px 20px;
-  flex-wrap: wrap;
-}
-.kf-name {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.kf-name small,
-.kf-outcome small {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.kf-name b {
-  font-size: 15px;
-  font-weight: 650;
-}
-.kf-total {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  white-space: nowrap;
-}
-.kf-total b {
-  font-size: 22px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-.kf-total span {
-  font-size: 13px;
-  color: var(--ink-3);
-}
-.kf-total small {
-  margin-left: 4px;
-  font-size: 12px;
-  color: var(--ink-3);
-}
-.kf-bar {
-  position: relative;
-  display: flex;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--line);
-}
-.kf-seg {
-  height: 100%;
-  min-width: 3px;
-  box-shadow: inset -2px 0 0 var(--surface-2);
-}
-.kf-seg:first-child {
-  border-radius: 999px 0 0 999px;
-}
-.kf-seg:nth-last-child(2) {
-  border-radius: 0 999px 999px 0;
-  box-shadow: none;
-}
-.kf-seg:first-child:nth-last-child(2) {
-  border-radius: 999px;
-}
-.kf-seg.is-base,
-.kf-row i.is-base {
-  background: var(--kf-base);
-}
-.kf-seg.is-before,
-.kf-row i.is-before {
-  background: var(--kf-before);
-}
-.kf-seg.is-booked,
-.kf-row i.is-booked {
-  background: var(--kf-booked);
-}
-.kf-seg.is-planned,
-.kf-row i.is-planned {
-  background: repeating-linear-gradient(135deg, var(--kf-planned) 0 3px, transparent 3px 6px);
-  box-shadow: inset 0 0 0 1px var(--kf-planned);
-}
-.kf-goal {
-  position: absolute;
-  top: -5px;
-  bottom: -5px;
-  width: 2px;
-  margin-left: -1px;
-  border-radius: 2px;
-  background: var(--ink);
-}
-.kf-rows {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 8px 28px;
-  margin: 0;
-}
-.kf-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-}
-.kf-row dt {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ink-2);
-}
-.kf-row dd {
-  margin: 0;
-  font-weight: 600;
-}
-.kf-row i {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-}
-.kf-outcomes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 10px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-.kf-outcome {
-  display: grid;
-  gap: 3px;
-}
-.kf-outcome b {
-  font-size: 14px;
-  font-weight: 600;
-}
-.kf-outcome.is-met b {
-  color: var(--kf-met);
-}
-.kf-outcome b .num {
-  font-weight: 500;
-  color: var(--ink-3);
-}
-.kf-foot {
-  margin: -4px 0 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--ink-3);
-}
-@media (max-width: 520px) {
-  .kf {
-    padding: 16px;
-  }
-  .kf-total b {
-    font-size: 19px;
-  }
-}
-
-/* The same panel for Marriott Bonvoy: nights against the tiers, then points. */
-.kf.is-bonvoy {
-  --kf-booked: oklch(0.6 0.15 35);
-  --kf-planned: oklch(0.6 0.15 35 / 0.5);
-  --kf-before: oklch(0.66 0.1 35 / 0.6);
-}
-.kf.is-bonvoy .kf-bar {
-  margin-top: 14px;
-}
-.kf-goal.is-tier span {
-  position: absolute;
-  bottom: calc(100% + 3px);
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 10.5px;
-  font-weight: 600;
-  font-style: normal;
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-.kf-goal.is-tier.is-end span {
-  left: auto;
-  right: 0;
-  transform: none;
-}
-
-
-/* Bonvoy panel: the year's nights, each stay with the tier and perks you'll have there, then the points. */
-.bv-nights {
-  display: grid;
-  gap: 8px;
-  padding-top: 14px;
-}
-.bv-nights-line {
-  display: flex;
-  justify-content: space-between;
-  gap: 4px 12px;
-  flex-wrap: wrap;
-  margin: 0;
-  font-size: 13px;
-  color: var(--ink-2);
-}
-.bv-nights-line b {
-  color: var(--ink);
-  font-weight: 650;
-}
-.bv-nights-line .is-met {
-  color: var(--kf-met);
-  font-weight: 600;
-}
 .bv-perks {
   display: flex;
   flex-wrap: wrap;
@@ -14133,7 +13910,7 @@ button.xw-coin:hover,
   box-shadow: inset 0 0 0 1px var(--line);
 }
 .bv-perks svg {
-  color: var(--kf-met);
+  color: var(--lp-met);
 }
 .bv-reach,
 .bv-note {
@@ -14144,43 +13921,19 @@ button.xw-coin:hover,
   font-size: 12.5px;
 }
 .bv-reach {
-  color: var(--kf-booked);
+  color: var(--lp-accent);
   font-weight: 600;
 }
 .bv-note {
   color: var(--ink-3);
-}
-.bv-totals {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
-  gap: 10px 20px;
-  margin: 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-.bv-totals div {
-  display: grid;
-  gap: 2px;
-}
-.bv-totals dt {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.bv-totals dd {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 650;
 }
 
 /* On a Marriott stay's card: the tier you'll have there, its perks, and what the stay earns. */
 .stay-bonvoy-strip {
   display: grid;
   gap: 8px;
-  --kf-met: oklch(0.58 0.13 155);
-  --kf-booked: oklch(0.6 0.15 35);
+  --lp-met: oklch(0.58 0.13 155);
+  --lp-accent: oklch(0.6 0.15 35);
 }
 .sbs-head {
   display: flex;
@@ -14214,5 +13967,197 @@ button.xw-coin:hover,
 .sbs-earn b {
   font-size: 14px;
   font-weight: 650;
-  color: var(--kf-booked);
+  color: var(--lp-accent);
+}
+
+/* Loyalty panels under a trip's flights (KrisFlyer) and stays (Marriott Bonvoy): one layout, a colour per programme. */
+.loyalty {
+  --lp-accent: oklch(0.68 0.14 75);
+  --lp-before: oklch(0.7 0.07 250);
+  --lp-base: color-mix(in oklab, var(--ink) 55%, transparent);
+  --lp-met: oklch(0.58 0.13 155);
+  display: grid;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 18px 20px 16px;
+  border-radius: 18px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.loyalty.is-bonvoy {
+  --lp-accent: oklch(0.6 0.15 35);
+}
+.loyalty-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+}
+.loyalty-name {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.loyalty-name small,
+.loyalty-totals dt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.loyalty-name b {
+  font-size: 15px;
+  font-weight: 650;
+}
+.loyalty-headline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+.loyalty-headline b {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.loyalty-headline span {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.loyalty-meter {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+}
+.loyalty-bar {
+  position: relative;
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--line);
+}
+.loyalty-seg {
+  height: 100%;
+  min-width: 3px;
+  box-shadow: inset -2px 0 0 var(--surface-2);
+}
+.loyalty-seg:first-child {
+  border-radius: 999px 0 0 999px;
+}
+.loyalty-seg:last-of-type {
+  border-radius: 0 999px 999px 0;
+  box-shadow: none;
+}
+.loyalty-seg:first-child:last-of-type {
+  border-radius: 999px;
+}
+.loyalty-seg.is-base,
+.loyalty-swatch.is-base {
+  background: var(--lp-base);
+}
+.loyalty-seg.is-before,
+.loyalty-swatch.is-before {
+  background: var(--lp-before);
+}
+.loyalty-seg.is-booked,
+.loyalty-swatch.is-booked {
+  background: var(--lp-accent);
+}
+.loyalty-seg.is-planned,
+.loyalty-swatch.is-planned {
+  background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--lp-accent) 50%, transparent) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lp-accent) 50%, transparent);
+}
+.loyalty-mark {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+.loyalty-mark span {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-style: normal;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.loyalty-mark.is-end span {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.loyalty-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px 14px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.loyalty-line b {
+  color: var(--ink);
+  font-weight: 650;
+}
+.loyalty-outcome {
+  font-weight: 600;
+  color: var(--ink);
+}
+.loyalty-outcome.is-met {
+  color: var(--lp-met);
+}
+.loyalty-line .faint {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.loyalty-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px 20px;
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.loyalty-totals div {
+  display: grid;
+  gap: 3px;
+}
+.loyalty-totals dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.loyalty-totals dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+.loyalty-swatch {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.loyalty-foot {
+  margin: -4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+@media (max-width: 520px) {
+  .loyalty {
+    padding: 16px;
+  }
+  .loyalty-headline b {
+    font-size: 19px;
+  }
 }
