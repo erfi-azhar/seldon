@@ -1755,7 +1755,8 @@ function tierGoal(label: string): { tier: string; by: number | null; byLabel: st
   const by = m && month >= 0 ? Date.UTC(Number(m[3]), month, Number(m[1]), 23, 59) : null;
   return { tier, by, byLabel: m ? `${Number(m[1])} ${m[2]} ${m[3]}` : '' };
 }
-const isPlanned = (s: Segment) => s.source === 'option' || /not booked/i.test(s.notes);
+/** A flight still only planned: added from an option and not yet given a booking reference, or noted as not booked. */
+const isPlanned = (s: Segment) => (s.source === 'option' && !s.confirmation) || /not booked/i.test(s.notes);
 
 /**
  * Under a trip's flights: where its KrisFlyer elite miles take you. The bar starts from the elite miles on the
