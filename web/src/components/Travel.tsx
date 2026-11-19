@@ -3,7 +3,7 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { ArrowLeft, BedDouble, ShieldCheck, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, BedDouble, ShieldCheck, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronLeft, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { Cabin, FlightOption, ItineraryItem, LoungePick, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
@@ -2411,10 +2411,53 @@ export function TripPage({ id }: { id: string }) {
   const travels = spheres.find((s) => s.key === 'travels');
   const backTo = travels ? { href: `/spheres/${travels.id}`, label: travels.name } : { href: '/spheres', label: 'Spheres' };
   const trip = t?.trips.find((x) => x.id === id);
+  // The trips either side of this one, by when they start: a way to step through them without going back.
+  const ordered = [...(t?.trips ?? [])].sort((a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate) || a.title.localeCompare(b.title));
+  const at = ordered.findIndex((x) => x.id === id);
+  const prev = at > 0 ? ordered[at - 1] : undefined;
+  const next = at >= 0 && at < ordered.length - 1 ? ordered[at + 1] : undefined;
+  const [, navigate] = useLocation();
+  // [ and ] step to the previous and next trip, unless you're typing.
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))) return;
+      if (e.key === '[' && prev) navigate(`/trips/${prev.id}`);
+      if (e.key === ']' && next) navigate(`/trips/${next.id}`);
+    };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [prev, next, navigate]);
   const back = (
-    <Link href={backTo.href} className="back">
-      <ArrowLeft size={15} /> {backTo.label}
-    </Link>
+    <div className="trip-nav-row">
+      <Link href={backTo.href} className="back">
+        <ArrowLeft size={15} /> {backTo.label}
+      </Link>
+      {(prev || next) && (
+        <nav className="trip-nav" aria-label="Other trips">
+          {prev ? (
+            <Link href={`/trips/${prev.id}`} className="trip-nav-link is-prev" title={`Previous trip: ${prev.title}, ${dates(prev.startDate, prev.endDate)} ( [ )`}>
+              <ChevronLeft size={15} aria-hidden />
+              <span>
+                <small>Previous</small>
+                <b>{prev.title}</b>
+              </span>
+            </Link>
+          ) : (
+            <span />
+          )}
+          {next && (
+            <Link href={`/trips/${next.id}`} className="trip-nav-link is-next" title={`Next trip: ${next.title}, ${dates(next.startDate, next.endDate)} ( ] )`}>
+              <span>
+                <small>Next</small>
+                <b>{next.title}</b>
+              </span>
+              <ChevronRight size={15} aria-hidden />
+            </Link>
+          )}
+        </nav>
+      )}
+    </div>
   );
   if (!t && !isError) return <div className="page">{back}</div>;
   if (!trip)

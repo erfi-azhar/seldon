@@ -14161,3 +14161,71 @@ button.xw-coin:hover,
     font-size: 19px;
   }
 }
+
+/* Above a trip: back to Travels, and the trips either side of this one. */
+.trip-nav-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 18px;
+}
+.trip-nav-row .back {
+  margin-bottom: 0;
+}
+.trip-nav {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.trip-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 230px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  color: var(--ink-2);
+  text-decoration: none;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: color 0.15s, box-shadow 0.15s;
+}
+.trip-nav-link:hover {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.trip-nav-link.is-next {
+  text-align: right;
+}
+.trip-nav-link > span {
+  display: grid;
+  min-width: 0;
+}
+.trip-nav-link small {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.trip-nav-link b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+.trip-nav-link svg {
+  flex: none;
+}
+@media (max-width: 560px) {
+  .trip-nav-link {
+    max-width: 130px;
+    padding: 5px 9px;
+  }
+  .trip-nav-link small {
+    display: none;
+  }
+}
