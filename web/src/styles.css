@@ -14147,6 +14147,35 @@ button.xw-coin:hover,
   height: 9px;
   border-radius: 3px;
 }
+.loyalty-convert {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  background: color-mix(in oklab, var(--lp-accent) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lp-accent) 22%, transparent);
+}
+.loyalty-convert svg {
+  color: var(--lp-accent);
+}
+.loyalty-convert-label {
+  color: var(--ink-2);
+}
+.loyalty-convert b {
+  justify-self: end;
+  font-size: 15px;
+  font-weight: 650;
+}
+.loyalty-convert-how {
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
 .loyalty-foot {
   margin: -4px 0 0;
   font-size: 11.5px;

@@ -3,7 +3,7 @@
 // the flight you are about to take and the lounge you can use, the layover and what to
 // do with it, or the day you are on when away.
 
-import { ArrowLeft, BedDouble, ShieldCheck, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronLeft, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, BedDouble, ShieldCheck, Briefcase, CalendarDays, Camera, Check as CheckIcon, ChevronDown, ChevronLeft, ChevronRight, Clock, Hotel, ListChecks, Loader2, MapPin, Palmtree, Pencil, Plane, PlaneTakeoff, Plus, Route, Sofa, Sparkles, Star, Trash2, Wand2 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { Cabin, FlightOption, ItineraryItem, LoungePick, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
@@ -1192,6 +1192,7 @@ function LoyaltyPanel({
   outcome,
   met,
   totals,
+  convert,
   foot,
 }: {
   program: string;
@@ -1207,6 +1208,8 @@ function LoyaltyPanel({
   outcome: ReactNode;
   met: boolean;
   totals: LoyaltyTotal[];
+  /** What the balance would be worth moved into another programme. */
+  convert?: { label: string; value: string; how: string } | null;
   foot: ReactNode;
 }) {
   const pct = (v: number) => `${(Math.max(0, v) / scale) * 100}%`;
@@ -1253,6 +1256,14 @@ function LoyaltyPanel({
           </div>
         ))}
       </dl>
+      {convert && (
+        <p className="loyalty-convert">
+          <ArrowRightLeft size={14} aria-hidden />
+          <span className="loyalty-convert-label">{convert.label}</span>
+          <b className="num">{convert.value}</b>
+          <span className="loyalty-convert-how">{convert.how}</span>
+        </p>
+      )}
       <p className="loyalty-foot">{foot}</p>
     </section>
   );
@@ -1297,6 +1308,9 @@ function BonvoyProgress({ trip, state }: { trip: Trip; state: TravelState }) {
   const tripPts = est.filter((x) => !isPlanned(x.s)).reduce((k, x) => k + (x.p?.points ?? 0), 0);
   const plannedPts = est.filter((x) => isPlanned(x.s)).reduce((k, x) => k + (x.p?.points ?? 0), 0);
   const pointsAfter = (card.points ?? 0) + earlierPts + tripPts;
+  // Into KrisFlyer: 3 points a mile, and 5,000 bonus miles for each 60,000 points moved at once.
+  const hasKrisFlyer = state.loyalty.some((a) => a.kind === 'airline' && /krisflyer/i.test(a.program));
+  const asMiles = Math.floor(pointsAfter / 3) + 5000 * Math.floor(pointsAfter / 60000);
   const start = bonvoyTierAt(tier, first.before);
   const goal = next(after)?.tier ?? start;
   const reached = [...BONVOY_TIERS].reverse().find((t) => before < t.at && after >= t.at) ?? null;
@@ -1336,6 +1350,15 @@ function BonvoyProgress({ trip, state }: { trip: Trip; state: TravelState }) {
         { label: 'This trip, booked', value: `+${n(tripPts)}` },
         ...(plannedPts > 0 ? [{ label: 'Planned, not booked', value: `+${n(plannedPts)}` }] : []),
       ]}
+      convert={
+        hasKrisFlyer && pointsAfter >= 3000
+          ? {
+              label: 'As KrisFlyer miles',
+              value: `≈ ${n(Math.round(asMiles / 100) * 100)}`,
+              how: `3 points a mile, plus 5,000 for each 60,000 moved at once (${n(Math.floor(pointsAfter / 60000) * 60000)} points → ${n(Math.floor(pointsAfter / 60000) * 25000)} miles). Award miles only, not elite miles; check the bonus is still on before moving.`,
+            }
+          : null
+      }
       foot={
         <>
           {counted.length > 0 && <>Nights counted on from {counted.join(' and ')}. </>}
