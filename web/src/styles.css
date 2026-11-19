@@ -14113,52 +14113,6 @@ button.xw-coin:hover,
   color: var(--kf-met);
   font-weight: 600;
 }
-.bv-stays {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.bv-stay {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-.bv-stay.is-planned {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--line-2);
-  border: 1px dashed transparent;
-}
-.bv-stay-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 12px;
-  align-items: baseline;
-}
-.bv-stay-head b {
-  font-size: 14px;
-  font-weight: 650;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bv-stay-meta {
-  grid-column: 1;
-  font-size: 12.5px;
-  color: var(--ink-3);
-}
-.bv-stay-pts {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: center;
-  font-size: 14px;
-  font-weight: 650;
-  color: var(--kf-booked);
-}
 .bv-perks {
   display: flex;
   flex-wrap: wrap;
@@ -14219,4 +14173,46 @@ button.xw-coin:hover,
   margin: 0;
   font-size: 15px;
   font-weight: 650;
+}
+
+/* On a Marriott stay's card: the tier you'll have there, its perks, and what the stay earns. */
+.stay-bonvoy-strip {
+  display: grid;
+  gap: 8px;
+  --kf-met: oklch(0.58 0.13 155);
+  --kf-booked: oklch(0.6 0.15 35);
+}
+.sbs-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+}
+.sbs-tier {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.sbs-tier b {
+  margin-left: 4px;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+.sbs-earn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.sbs-earn b {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--kf-booked);
 }

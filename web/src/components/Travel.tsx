@@ -1035,11 +1035,51 @@ const dow = (date: string) => parseDay(date).toLocaleDateString(undefined, { wee
 const lateCheckout = (perks: string[]) => perks.map((p) => p.match(/^(\d{1,2}\s?[ap]m) late checkout/i)?.[1]).find(Boolean);
 
 
+/** At a Marriott stay: the tier you'll have there, what it gets you, the nights and points it earns, and any tier it reaches. */
+function StayBonvoy({ s, cardTier }: { s: Segment; cardTier: string }) {
+  const e = s.eliteNights!;
+  const at = bonvoyTierAt(cardTier, e.before);
+  const perks = bonvoyPerks(at);
+  const pts = stayPoints(s, cardTier);
+  const ahead = BONVOY_ORDER.indexOf(at) > BONVOY_ORDER.indexOf(cardTier);
+  return (
+    <div className="stay-bonvoy-strip">
+      <div className="sbs-head">
+        <span className="sbs-tier">
+          Bonvoy <b>{at}</b>
+        </span>
+        <span className="sbs-earn">
+          <span>+{plural(e.nights, 'elite night')}</span>
+          <b className="num" title={pts?.why ?? 'Put the price in the notes to estimate points'}>
+            {pts ? `≈ ${pts.points.toLocaleString()} pts` : 'Points: add the price'}
+          </b>
+        </span>
+      </div>
+      {perks.length > 0 && (
+        <ul className="bv-perks">
+          {perks.map((x) => (
+            <li key={x}>
+              <CheckIcon size={12} aria-hidden /> {x}
+            </li>
+          ))}
+        </ul>
+      )}
+      {e.reaches && (
+        <p className="bv-reach">
+          <Star size={12} aria-hidden /> Reaches {e.reaches} on this stay
+        </p>
+      )}
+      {ahead && <p className="bv-note">As {at} once your new status posts, usually a few days after the stay that reaches it.</p>}
+    </div>
+  );
+}
+
 /**
  * A hotel stay on its trip: the name and whether it is booked, the three facts that decide a day (in, out with any
- * late checkout your status gets, nights) and the address. Bonvoy nights, perks and points are in the panel below.
+ * late checkout your status gets, nights), then at a Marriott hotel what your Bonvoy status gets you there and the
+ * points it should earn, and the address. The trip's Bonvoy totals are in the panel below the stays.
  */
-function StayCard({ s, onEdit }: { s: Segment; tier?: string; onEdit: () => void }) {
+function StayCard({ s, tier, onEdit }: { s: Segment; tier: string; onEdit: () => void }) {
   const n = nightsOf(s);
   const [name, ...rest] = (s.title || 'Hotel').split(',');
   const brand = rest.join(',').trim().replace(/^an?\s+/i, '');
@@ -1090,6 +1130,8 @@ function StayCard({ s, onEdit }: { s: Segment; tier?: string; onEdit: () => void
         </div>
       </dl>
 
+      {s.eliteNights && <StayBonvoy s={s} cardTier={tier} />}
+
 
       {s.address && (
         <a className="stay-card-address" href={map} target="_blank" rel="noreferrer">
@@ -1129,10 +1171,10 @@ function stayPoints(s: Segment, cardTier: string): { points: number; why: string
 }
 
 /**
- * Under a trip's stays: where its Marriott stays take your Bonvoy status and points. The bar is the year's elite
- * nights (those before the trip, then each stay, striped when only planned) against the tiers. Each stay then gets
- * a row: its nights, the tier you'll have there and what it gets you, and the points it should earn. Last, the
- * nights and points totals: the card's balance, stays on earlier trips not yet in it, and this trip.
+ * Under a trip's stays: where its Marriott stays take your Bonvoy status and points, in total. The bar is the year's
+ * elite nights (those before the trip, then each stay, striped when only planned) against the tiers; then the points:
+ * the card's balance, stays on earlier trips not yet in it, and this trip. Each stay's own perks and points are on
+ * its card above.
  */
 function BonvoyProgress({ trip, state }: { trip: Trip; state: TravelState }) {
   const card = state.loyalty.find((a) => a.kind === 'hotel' && /bonvoy|marriott/i.test(a.program));
@@ -1215,43 +1257,6 @@ function BonvoyProgress({ trip, state }: { trip: Trip; state: TravelState }) {
         </div>
       )}
 
-      <ul className="bv-stays">
-        {est.map(({ s, p }) => {
-          const e = s.eliteNights!;
-          const at = bonvoyTierAt(tier, e.before);
-          const perks = bonvoyPerks(at);
-          const reaches = crossed(e.before, e.after);
-          return (
-            <li key={s.id} className={cx('bv-stay', planned(s) && 'is-planned')}>
-              <div className="bv-stay-head">
-                <b>{name(s)}</b>
-                <span className="bv-stay-meta">
-                  {plural(e.nights, 'night')} · {at}
-                  {planned(s) ? ' · planned' : ''}
-                </span>
-                <span className="bv-stay-pts num" title={p?.why ?? 'Add the price to its notes to estimate points'}>
-                  {p ? `≈ ${n(p.points)} pts` : 'No price'}
-                </span>
-              </div>
-              {perks.length > 0 && (
-                <ul className="bv-perks">
-                  {perks.map((x) => (
-                    <li key={x}>
-                      <CheckIcon size={12} aria-hidden /> {x}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {reaches && (
-                <p className="bv-reach">
-                  <Star size={12} aria-hidden /> Reaches {reaches.tier} on this stay
-                </p>
-              )}
-              {at !== tier && BONVOY_ORDER.indexOf(at) > BONVOY_ORDER.indexOf(tier) && <p className="bv-note">As {at} once your new status posts, usually a few days after the stay that reaches it.</p>}
-            </li>
-          );
-        })}
-      </ul>
 
       <dl className="bv-totals">
         <div>
