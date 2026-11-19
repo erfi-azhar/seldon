@@ -14042,3 +14042,118 @@ button.xw-coin:hover,
   font-size: 13px;
   list-style: disc;
 }
+
+/* KrisFlyer elite miles under a trip's flights: the card's number, then what the trip adds, against the next tier. */
+.kf-progress {
+  --kf-base: var(--ink-3);
+  --kf-before: oklch(0.72 0.06 250);
+  --kf-booked: oklch(0.62 0.13 75);
+  --kf-planned: oklch(0.62 0.13 75 / 0.45);
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.kf-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13.5px;
+}
+.kf-title b {
+  font-weight: 650;
+}
+.kf-target {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.kf-target small {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.kf-bar {
+  position: relative;
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: visible;
+}
+.kf-seg {
+  height: 100%;
+  min-width: 2px;
+  box-shadow: inset -1px 0 0 var(--surface-2);
+}
+.kf-seg:first-child {
+  border-radius: 999px 0 0 999px;
+}
+.kf-seg.is-base,
+.kf-legend i.is-base {
+  background: var(--kf-base);
+}
+.kf-seg.is-before,
+.kf-legend i.is-before {
+  background: var(--kf-before);
+}
+.kf-seg.is-booked,
+.kf-legend i.is-booked {
+  background: var(--kf-booked);
+}
+.kf-seg.is-planned,
+.kf-legend i.is-planned {
+  background: repeating-linear-gradient(135deg, var(--kf-planned) 0 4px, transparent 4px 7px);
+  box-shadow: inset 0 0 0 1px var(--kf-planned);
+}
+.kf-goal {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+.kf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.kf-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.kf-legend b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.kf-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.kf-verdict {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.kf-foot {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.kf-seg:nth-last-child(2) {
+  border-radius: 0 999px 999px 0;
+}
+.kf-seg:first-child:nth-last-child(2) {
+  border-radius: 999px;
+}

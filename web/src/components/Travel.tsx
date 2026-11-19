@@ -1439,6 +1439,7 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
           ) : (
             <div className="seg-list">{flights.map(row)}</div>
           )}
+          <MilesProgress trip={trip} state={state} />
       </FoldCard>
     ),
     route: <RouteCard trip={trip} />,
@@ -1743,6 +1744,106 @@ function flightElite(s: Pick<Segment, 'carrier' | 'cabin' | 'miles'>): { elite: 
   }
   const r = ELITE_RATE[cabin];
   return { elite: Math.round(s.miles * r.mid), why: `${Math.round(r.mid * 100)}% of ${flown} on a Standard fare; ${Math.round(r.low * 100)}–${Math.round(r.high * 100)}% by fare` };
+}
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/** "elite miles to Elite Gold by 31 Mar 2027" → the tier and the deadline (end of that day), when it says. */
+function tierGoal(label: string): { tier: string; by: number | null; byLabel: string } {
+  const tier = /\bto\s+(.+?)(?:\s+by\b|$)/i.exec(label)?.[1]?.trim() || 'the next tier';
+  const m = /\bby\s+(\d{1,2})\s+([a-z]{3})[a-z]*\.?\s+(\d{4})/i.exec(label);
+  const month = m ? MONTHS.indexOf(m[2]!.toLowerCase()) : -1;
+  const by = m && month >= 0 ? Date.UTC(Number(m[3]), month, Number(m[1]), 23, 59) : null;
+  return { tier, by, byLabel: m ? `${Number(m[1])} ${m[2]} ${m[3]}` : '' };
+}
+const isPlanned = (s: Segment) => s.source === 'option' || /not booked/i.test(s.notes);
+
+/**
+ * Under a trip's flights: where its KrisFlyer elite miles take you. The bar starts from the elite miles on the
+ * KrisFlyer card, adds booked flights on earlier trips not yet counted, then this trip's booked flights and,
+ * striped, the ones only planned, against the next tier's target. Flights flown before the card was last
+ * updated are already in its number; flights after the deadline count towards the next year instead.
+ */
+function MilesProgress({ trip, state }: { trip: Trip; state: TravelState }) {
+  const kf = state.loyalty.find((a) => a.kind === 'airline' && /krisflyer/i.test(a.program) && a.progress !== null && a.progressTarget);
+  if (!kf) return null;
+  const { tier, by, byLabel } = tierGoal(kf.progressLabel);
+  const since = Date.parse(kf.updatedAt);
+  const counts = (s: Segment) => s.kind === 'flight' && Date.parse(s.startUtc) > since && (by === null || Date.parse(s.startUtc) <= by);
+  const ours = trip.segments.filter(counts).map((s) => ({ s, e: flightElite(s)?.elite ?? 0 })).filter((x) => x.e > 0);
+  // Only show it for trips with flights that earn: Singapore Airlines, Scoot or a partner.
+  if (!ours.length) return null;
+  const first = Math.min(...ours.map((x) => Date.parse(x.s.startUtc)));
+  const before = state.trips
+    .filter((t) => t.id !== trip.id)
+    .flatMap((t) => t.segments)
+    .filter((s) => counts(s) && !isPlanned(s) && Date.parse(s.startUtc) < first)
+    .reduce((n, s) => n + (flightElite(s)?.elite ?? 0), 0);
+  const base = kf.progress!;
+  const target = kf.progressTarget!;
+  const booked = ours.filter((x) => !isPlanned(x.s));
+  const planned = ours.filter((x) => isPlanned(x.s));
+  const sum = (xs: typeof ours) => xs.reduce((n, x) => n + x.e, 0);
+  const afterBooked = base + before + sum(booked);
+  const afterAll = afterBooked + sum(planned);
+  const scale = Math.max(target, afterAll);
+  const pct = (n: number) => `${(n / scale) * 100}%`;
+  const n = (v: number) => Math.round(v).toLocaleString();
+  const name = (s: Segment) => `${s.carrier}${s.number} ${s.fromCode}–${s.toCode}`;
+  const verdict = (total: number) => (total >= target ? `reaches ${tier}` : `${n(target - total)} short of ${tier}`);
+  return (
+    <section className="kf-progress" aria-label={`KrisFlyer elite miles towards ${tier}`}>
+      <header className="kf-head">
+        <span className="kf-title">
+          <b>KrisFlyer</b> {kf.tier} → {tier}
+        </span>
+        <span className="kf-target num">
+          {n(target)}
+          {byLabel && <small> by {byLabel}</small>}
+        </span>
+      </header>
+      <div className="kf-bar" role="img" aria-label={`${n(afterBooked)} of ${n(target)} with booked flights${planned.length ? `, ${n(afterAll)} with planned ones` : ''}`}>
+        <span className="kf-seg is-base" style={{ width: pct(base) }} title={`On your card: ${n(base)}`} />
+        {before > 0 && <span className="kf-seg is-before" style={{ width: pct(before) }} title={`Earlier trips, not yet counted: ${n(before)}`} />}
+        {booked.map((x) => (
+          <span key={x.s.id} className="kf-seg is-booked" style={{ width: pct(x.e) }} title={`${name(x.s)}: ≈ ${n(x.e)}`} />
+        ))}
+        {planned.map((x) => (
+          <span key={x.s.id} className="kf-seg is-planned" style={{ width: pct(x.e) }} title={`${name(x.s)} (planned): ≈ ${n(x.e)}`} />
+        ))}
+        <i className="kf-goal" style={{ left: pct(target) }} aria-hidden />
+      </div>
+      <ul className="kf-legend">
+        <li>
+          <i className="is-base" /> On your card <b className="num">{n(base)}</b>
+        </li>
+        {before > 0 && (
+          <li>
+            <i className="is-before" /> Earlier trips <b className="num">+{n(before)}</b>
+          </li>
+        )}
+        <li>
+          <i className="is-booked" /> This trip, booked <b className="num">+{n(sum(booked))}</b>
+        </li>
+        {planned.length > 0 && (
+          <li>
+            <i className="is-planned" /> Planned, not booked <b className="num">+{n(sum(planned))}</b>
+          </li>
+        )}
+      </ul>
+      <p className="kf-verdict">
+        With what's booked: <b className="num">{n(afterBooked)}</b>, {verdict(afterBooked)}.
+        {planned.length > 0 && (
+          <>
+            {' '}
+            With the planned flights too: <b className="num">{n(afterAll)}</b>, {verdict(afterAll)}.
+          </>
+        )}
+      </p>
+      <p className="kf-foot">
+        Estimates by fare class; your card was updated {shortDay(kf.updatedAt.slice(0, 10))}, so flights before then are already in its number.
+      </p>
+    </section>
+  );
 }
 
 /** The cabin an option is really about: the one on its longest flight. */
