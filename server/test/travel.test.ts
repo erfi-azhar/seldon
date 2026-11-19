@@ -262,7 +262,10 @@ test('ahead of a trip Seldon drafts the plan and prepares the airport; without a
   assert.deepEqual(getTrip(store, trip.id).itinerary.map((i) => i.id), [done.id]);
 });
 
-test('travel API: trips, bookings, a plan you edit, settings; imports need a brain', async () => {
+test('travel API: trips, bookings, a plan you edit, settings; imports need a brain', async (t) => {
+  // Every request says it is DAY, so the clock must say so too: "departing" is measured from the
+  // clock (a flight within 36 hours), and left real it creeps in as the real date nears the trip.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(`${DAY}T12:00:00Z`) });
   const db = openDb(':memory:');
   const store = new Store(db);
   store.onboard({ userName: '', agentName: 'Seldon', sphereKeys: ['travels'] });
