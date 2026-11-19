@@ -8,7 +8,8 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from '
 import { Link, useLocation, useSearch as useUrlSearch } from 'wouter';
 import type { Cabin, FlightOption, ItineraryItem, LoungePick, LoyaltyAccount, Segment, StayOption, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { postForm, travelWrite, useTravel, useWrite } from '../api.ts';
-import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, shortDay, todayStr } from '../lib.ts';
+import { cx, daysFrom, formatNumber, parseDay, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
+import { FoldButton, useFold } from './Fold.tsx';
 import { useApp } from '../state.tsx';
 import { untilLabel, useNow } from './Prayer.tsx';
 import { AddTask, TaskRow } from './rows.tsx';
@@ -2715,6 +2716,7 @@ function TripCountdown({ trip }: { trip: Trip }) {
         <span className="trip-hero-tag">
           <PlaneTakeoff size={13} aria-hidden /> {trip.purpose === 'work' ? 'Work' : 'Personal'}
         </span>
+        <FoldButton />
       </div>
       {legs.length > 0 && (
         <div className="trip-hero-globe">
@@ -2793,6 +2795,7 @@ export function TravelModeCard() {
   const [picked, setPicked] = useState(false);
   const segments = useMemo(() => t?.trips.flatMap((x) => x.segments) ?? [], [t]);
   const journey = useMemo(() => activeJourney(segments, now), [segments, now]);
+  const folded = useFold();
   if (!t) return null;
   const today = todayStr();
   const c = t.context;
@@ -2806,6 +2809,23 @@ export function TravelModeCard() {
   // Only the next trip tucks beneath it; the rest wait in the Travels sphere.
   const group = [featured, ...followingTrips(featured, ahead.filter((x) => x.id !== featured.id)).slice(0, 1)];
   const shown = group.find((x) => x.id === chosen) ?? featured;
+  if (folded) {
+    const when = dayTrip ? null : current ? `until ${shortDay(current.endDate)}` : relativeDay(featured.startDate, today);
+    return (
+      <section className="card">
+        <div className="card-head">
+          <h2 className="card-title">{dayTrip ? 'Travel day' : current ? 'Away' : 'Next trip'}</h2>
+          <div className="card-head-end">
+            <span className="hint clamp-1">
+              {featured.title}
+              {when && ` · ${when}`}
+            </span>
+            <FoldButton />
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <div className="trip-feature">
       <div key={shown.id} className={cx('trip-swap', picked && 'is-swapped')}>
@@ -3105,7 +3125,10 @@ function TravelDayCard({ trip, journey }: { trip: Trip; journey: Journey | null 
         <span className="tm-kicker">
           <Plane size={13} aria-hidden /> {trip.title}
         </span>
-        <PurposeChip purpose={trip.purpose} />
+        <div className="card-head-end">
+          <PurposeChip purpose={trip.purpose} />
+          <FoldButton />
+        </div>
       </div>
 
       <TravelDayNow t={t} journey={journey} f={f} now={now} onLounges={setLounges} />
@@ -3184,7 +3207,10 @@ function TravelNowCard() {
         <span className="tm-kicker">
           <Palmtree size={13} /> {trip.title} · day {c.dayOfTrip} of {c.tripDays}
         </span>
-        <PurposeChip purpose={trip.purpose} />
+        <div className="card-head-end">
+          <PurposeChip purpose={trip.purpose} />
+          <FoldButton />
+        </div>
       </div>
       <div className="journey-now tm-welcome">
         <WelcomeTitle tz={c.here?.tz ?? c.stay?.startTz} city={c.here?.city || trip.destination || trip.title} />

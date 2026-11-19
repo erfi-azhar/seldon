@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Sparkles } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Activity, Overview, Task } from '../../../shared/types.ts';
 import { useOverview, useTravel, useWrite, write } from '../api.ts';
@@ -12,6 +12,7 @@ import { TravelModeCard, TravelPill, useTravelDay } from '../components/Travel.t
 import { NextPrayerPill } from '../components/Prayer.tsx';
 import { TodayCrypto } from '../components/Finance.tsx';
 import { GameCard } from '../components/Game.tsx';
+import { FoldButton, Foldable, useFold, useFoldAll } from '../components/Fold.tsx';
 import { Loading } from '../components/ui.tsx';
 import { cx, greeting, hueStyle, monthDay, plural, relativeDay, timeAgo, todayStr, weekdayLong } from '../lib.ts';
 import { useApp } from '../state.tsx';
@@ -25,6 +26,7 @@ function TodayTodos({ overview: o }: { overview: Overview }) {
   const open = o.tasks.due;
   const done = o.tasks.doneToday;
   const total = open.length + done.length;
+  const folded = useFold();
   const column = (label: string, tasks: { open: Task[]; done: Task[] }, add: ReactNode, showSphere: boolean) => (
     <div className="todo-col">
       <div className="todo-col-head">
@@ -46,24 +48,31 @@ function TodayTodos({ overview: o }: { overview: Overview }) {
     <section className="card today-todos">
       <div className="card-head">
         <h2 className="card-title">Today's to-dos</h2>
-        <span className="hint">{total === 0 ? `Nothing due. Add one, or ask ${agentName}.` : `${done.length} of ${total} done`}</span>
+        <div className="card-head-end">
+          <span className="hint">{total === 0 ? `Nothing due. Add one, or ask ${agentName}.` : `${done.length} of ${total} done`}</span>
+          <FoldButton />
+        </div>
       </div>
-      <div className={cx('todo-split', !work && 'single')}>
-        {work &&
-          column(
-            work.name,
-            { open: open.filter(isWork), done: done.filter(isWork) },
-            <AddTask sphereId={work.id} dueDate={today} placeholder={`Add a ${work.name.toLowerCase()} to-do for today…`} />,
-            false,
-          )}
-        {column(
-          work ? 'Everything else' : 'To do',
-          { open: open.filter((t) => !isWork(t)), done: done.filter((t) => !isWork(t)) },
-          <AddTask dueDate={today} placeholder="Add a to-do for today…" />,
-          true,
-        )}
-      </div>
-      <ComingUp tasks={o.tasks.upcoming} />
+      {!folded && (
+        <>
+          <div className={cx('todo-split', !work && 'single')}>
+            {work &&
+              column(
+                work.name,
+                { open: open.filter(isWork), done: done.filter(isWork) },
+                <AddTask sphereId={work.id} dueDate={today} placeholder={`Add a ${work.name.toLowerCase()} to-do for today…`} />,
+                false,
+              )}
+            {column(
+              work ? 'Everything else' : 'To do',
+              { open: open.filter((t) => !isWork(t)), done: done.filter((t) => !isWork(t)) },
+              <AddTask dueDate={today} placeholder="Add a to-do for today…" />,
+              true,
+            )}
+          </div>
+          <ComingUp tasks={o.tasks.upcoming} />
+        </>
+      )}
     </section>
   );
 }
@@ -169,6 +178,7 @@ function Journal({ date, initial }: { date: string; initial: string }) {
   });
   const [text, setText] = useState(restored ?? initial);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+  const folded = useFold();
   const dirty = useRef(restored !== null);
   const inFlight = useRef(false);
   // The entry as the server last had it.
@@ -266,23 +276,28 @@ function Journal({ date, initial }: { date: string; initial: string }) {
     <section className="card">
       <div className="card-head">
         <h2 className="card-title">Journal</h2>
-        <span className="saved">{status === 'failed' ? 'Could not save — will try again' : status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : ''}</span>
+        <div className="card-head-end">
+          <span className="saved">{status === 'failed' ? 'Could not save — will try again' : status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : ''}</span>
+          <FoldButton />
+        </div>
       </div>
-      <textarea
-        className="journal"
-        value={text}
-        placeholder="What happened today? What's on your mind?"
-        aria-label="Today's journal"
-        onChange={(e) => {
-          setText(e.target.value);
-          writeUnsaved(date, { body: e.target.value, base: server.current });
-          dirty.current = true;
-          if (status !== 'failed') setStatus('idle');
-          clearTimeout(timer.current);
-          timer.current = setTimeout(flush, 900);
-        }}
-        onBlur={flush}
-      />
+      {!folded && (
+        <textarea
+          className="journal"
+          value={text}
+          placeholder="What happened today? What's on your mind?"
+          aria-label="Today's journal"
+          onChange={(e) => {
+            setText(e.target.value);
+            writeUnsaved(date, { body: e.target.value, base: server.current });
+            dirty.current = true;
+            if (status !== 'failed') setStatus('idle');
+            clearTimeout(timer.current);
+            timer.current = setTimeout(flush, 900);
+          }}
+          onBlur={flush}
+        />
+      )}
     </section>
   );
 }
@@ -371,7 +386,6 @@ function useSkyTrip(): SkyTrip | null {
 export function Today() {
   const { data: o } = useOverview();
   const skyTrip = useSkyTrip();
-  const { openSheet, sphere } = useApp();
   const travelDay = useTravelDay();
   if (!o) return <Loading />;
 
@@ -401,73 +415,126 @@ export function Today() {
         <div className="hero-side">
           <NextPrayerPill />
           <TravelPill />
+          <FoldAll />
         </div>
       </header>
 
       {/* On a travel day the trip leads, and the day's to-dos take its place in the column. */}
-      <GameCard />
+      <Foldable id="game" label="the game plan">
+        <GameCard />
+      </Foldable>
 
       {travelDay ? (
         <div className="today-lead">
-          <TravelModeCard />
+          <Foldable id="travel" label="the trip">
+            <TravelModeCard />
+          </Foldable>
         </div>
       ) : (
-        <TodayTodos overview={o} />
+        <Foldable id="todos" label="today's to-dos">
+          <TodayTodos overview={o} />
+        </Foldable>
       )}
 
       <div className="today-grid">
         <div className="col">
-          {travelDay ? <TodayTodos overview={o} /> : <TravelModeCard />}
-          <SignalsCard />
-          <Journal key={o.date} date={o.date} initial={o.journal?.body ?? ''} />
+          {travelDay ? (
+            <Foldable id="todos" label="today's to-dos">
+              <TodayTodos overview={o} />
+            </Foldable>
+          ) : (
+            <Foldable id="travel" label="the trip">
+              <TravelModeCard />
+            </Foldable>
+          )}
+          <Foldable id="signals" label="what needs you">
+            <SignalsCard />
+          </Foldable>
+          <Foldable id="journal" label="the journal">
+            <Journal key={o.date} date={o.date} initial={o.journal?.body ?? ''} />
+          </Foldable>
         </div>
 
         <div className="col">
-          <TodayCrypto />
-          <section className="card" style={{ paddingBottom: 10 }}>
-            <div className="card-head">
-              <div className="card-head-title">
-                <h2 className="card-title">Habits</h2>
-                <HabitWeekLabel />
-              </div>
-            </div>
-            {o.habits.length === 0 ? (
-              <p className="empty">No habits yet. Open a sphere to start one.</p>
-            ) : (
-              <ul>
-                <HabitWeekHead />
-                {o.habits.map((h) => (
-                  <HabitRow key={h.id} habit={h} showSphere />
-                ))}
-              </ul>
-            )}
-          </section>
-
+          <Foldable id="crypto" label="crypto">
+            <TodayCrypto />
+          </Foldable>
+          <Foldable id="habits" label="habits">
+            <TodayHabits overview={o} />
+          </Foldable>
           {horizon && (
-            <section className="card" style={{ paddingBottom: 10 }}>
-              <div className="card-head">
-                <h2 className="card-title">On the horizon</h2>
-              </div>
-              {o.goalsDue.map((g) => {
-                const s = sphere(g.sphereId);
-                const late = g.targetDate! < today;
-                return (
-                  <button key={g.id} type="button" className="horizon-item tint" style={s ? hueStyle(s.hue) : undefined} onClick={() => openSheet({ kind: 'goal', id: g.id })}>
-                    {s && <Orb hue={s.hue} size={22} />}
-                    <span className="grow clamp-1">{g.title}</span>
-                    <span className={cx('chip', late && 'chip-bad')}>{late ? `passed ${relativeDay(g.targetDate!, today)}` : relativeDay(g.targetDate!, today)}</span>
-                  </button>
-                );
-              })}
-            </section>
+            <Foldable id="horizon" label="on the horizon">
+              <Horizon overview={o} />
+            </Foldable>
           )}
-
         </div>
       </div>
       {/* What changed lately: a quiet footnote, the rest (and Undo) one click away. */}
       {o.activity.length > 0 && <Lately items={o.activity} />}
       <HillBand />
     </div>
+  );
+}
+
+/** Folds every card on Today down to its head, or opens them all again. */
+function FoldAll() {
+  const { allFolded, foldAll } = useFoldAll();
+  return (
+    <button type="button" className="btn btn-ghost btn-sm fold-all" aria-label={allFolded ? 'Open all cards' : 'Fold all cards'} onClick={() => foldAll(!allFolded)}>
+      {allFolded ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+      {allFolded ? 'Open all' : 'Fold all'}
+    </button>
+  );
+}
+
+function TodayHabits({ overview: o }: { overview: Overview }) {
+  const folded = useFold();
+  return (
+    <section className="card" style={{ paddingBottom: 10 }}>
+      <div className="card-head">
+        <div className="card-head-title">
+          <h2 className="card-title">Habits</h2>
+          {!folded && <HabitWeekLabel />}
+        </div>
+        <FoldButton />
+      </div>
+      {folded ? null : o.habits.length === 0 ? (
+        <p className="empty">No habits yet. Open a sphere to start one.</p>
+      ) : (
+        <ul>
+          <HabitWeekHead />
+          {o.habits.map((h) => (
+            <HabitRow key={h.id} habit={h} showSphere />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function Horizon({ overview: o }: { overview: Overview }) {
+  const { openSheet, sphere } = useApp();
+  const folded = useFold();
+  const today = todayStr();
+  return (
+    <section className="card" style={{ paddingBottom: 10 }}>
+      <div className="card-head">
+        <h2 className="card-title">On the horizon</h2>
+        <FoldButton />
+      </div>
+      {!folded &&
+        o.goalsDue.map((g) => {
+          const s = sphere(g.sphereId);
+          const late = g.targetDate! < today;
+          return (
+            <button key={g.id} type="button" className="horizon-item tint" style={s ? hueStyle(s.hue) : undefined} onClick={() => openSheet({ kind: 'goal', id: g.id })}>
+              {s && <Orb hue={s.hue} size={22} />}
+              <span className="grow clamp-1">{g.title}</span>
+              <span className={cx('chip', late && 'chip-bad')}>{late ? `passed ${relativeDay(g.targetDate!, today)}` : relativeDay(g.targetDate!, today)}</span>
+            </button>
+          );
+        })}
+    </section>
   );
 }
 

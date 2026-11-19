@@ -13607,7 +13607,15 @@ button.xw-coin:hover,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+}
+.game-head-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: inherit;
+  min-width: 0;
 }
 .game-kicker,
 .game-aim-label {
@@ -14272,6 +14280,48 @@ a.trip-pager-step:focus-visible .trip-pager-tip {
 }
 @media (prefers-reduced-motion: reduce) {
   .trip-pager-tip {
+    transition: none;
+  }
+}
+
+/* ── Folding Today's cards ──────────────────────────────────────────────── */
+
+.card-head-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.fold-btn {
+  flex: none;
+  margin: -4px -6px -4px 0;
+  color: var(--ink-3);
+}
+.fold-btn svg {
+  transition: transform 0.18s ease;
+}
+.fold-btn.is-folded svg {
+  transform: rotate(-90deg);
+}
+.trip-hero-head .fold-btn {
+  align-self: flex-start;
+  color: var(--th-ink-2);
+}
+/* A folded card is just its head: even out the space around it. */
+.card:not(.game-card):has(.fold-btn.is-folded) {
+  padding-bottom: 0 !important;
+}
+.card:has(.fold-btn.is-folded) > .card-head {
+  padding-bottom: 16px;
+}
+.game-card.is-folded {
+  padding-block: 14px;
+}
+.fold-all {
+  color: var(--ink-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fold-btn svg {
     transition: none;
   }
 }

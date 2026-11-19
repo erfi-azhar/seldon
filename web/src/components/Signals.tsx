@@ -7,6 +7,7 @@ import { useSignals, useWrite, write } from '../api.ts';
 import { cx, hueStyle, timeAgo } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { AutoTextarea, Modal } from './ui.tsx';
+import { FoldButton, useFold } from './Fold.tsx';
 
 const SOURCE_ICON: Record<string, ReactNode> = {
   gmail: <Mail size={15} />,
@@ -94,14 +95,18 @@ function SignalRow({ signal }: { signal: Signal }) {
 
 export function SignalsCard({ sphereId, source, title = 'Needs you', empty }: { sphereId?: string; source?: string; title?: string; empty?: ReactNode }) {
   const { data: signals = [] } = useSignals({ sphereId, source });
+  const folded = useFold();
   if (signals.length === 0 && !empty) return null;
   return (
     <section className="card" style={{ paddingBottom: 8 }}>
       <div className="card-head">
         <h2 className="card-title">{title}</h2>
-        {signals.length > 0 && <span className="chip">{signals.length}</span>}
+        <div className="card-head-end">
+          {signals.length > 0 && <span className="chip">{signals.length}</span>}
+          <FoldButton />
+        </div>
       </div>
-      {signals.length === 0 ? <div className="empty">{empty}</div> : <ul>{signals.map((s) => <SignalRow key={s.id} signal={s} />)}</ul>}
+      {folded ? null : signals.length === 0 ? <div className="empty">{empty}</div> : <ul>{signals.map((s) => <SignalRow key={s.id} signal={s} />)}</ul>}
     </section>
   );
 }

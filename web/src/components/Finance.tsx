@@ -11,6 +11,7 @@ import { financeWrite, useFinance, useMarket, useSpheres, useWrite } from '../ap
 import { addDays, cx, dueLabel, parseNumber, plural, relativeDay, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { Field, Modal, ProgressBar, Seg, Spinner, useFolds } from './ui.tsx';
+import { FoldButton, useFold } from './Fold.tsx';
 
 const EXPENSE = ['Housing', 'Food', 'Groceries', 'Transport', 'Utilities', 'Shopping', 'Health', 'Entertainment', 'Travel', 'Subscriptions', 'Education', 'Family', 'Giving', 'Fees & interest', 'Other'];
 const INCOME = ['Salary', 'Bonus', 'Freelance', 'Business', 'Investments', 'Trading', 'Gifts', 'Refunds', 'Other'];
@@ -1401,6 +1402,7 @@ export function TodayCrypto() {
   const sheets = useCryptoSheets();
   const { data: spheres } = useSpheres();
   const financesId = spheres?.find((x) => x.key === 'finances')?.id;
+  const folded = useFold();
   if (!f) return null;
   const v = cryptoView(f);
   if (v.symbols.length === 0) return null;
@@ -1414,9 +1416,14 @@ export function TodayCrypto() {
             <ArrowUpRight size={14} />
           </Link>
         )}
+        <FoldButton />
       </CryptoHead>
-      <CryptoSummary crypto={f.crypto} />
-      <CryptoTicker v={v} sheets={sheets} />
+      {!folded && (
+        <>
+          <CryptoSummary crypto={f.crypto} />
+          <CryptoTicker v={v} sheets={sheets} />
+        </>
+      )}
       {sheets.render(v)}
     </section>
   );

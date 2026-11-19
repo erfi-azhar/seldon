@@ -8,6 +8,7 @@ import { cx, daysFrom, shortDay, todayStr } from '../lib.ts';
 import { useApp } from '../state.tsx';
 import { TravelNotifications } from './Journey.tsx';
 import { AutoTextarea, Check, InlineEdit, Loading } from './ui.tsx';
+import { FoldButton, useFold } from './Fold.tsx';
 
 const ALL_PROMPTS: DayPrompt[] = [...DAY_PROMPTS, WEEKLY_STEER];
 
@@ -58,6 +59,7 @@ function useAutosave(initial: string, save: (v: string) => void) {
 /** The game plan at a glance on Today: how you win, what's at stake, the mission, the boss fight, and today's quests. */
 export function GameCard() {
   const { data: g } = useGame();
+  const folded = useFold();
   if (!g) return null;
   const p = g.plan;
   const resetOn = g.reset && !g.reset.finishedAt;
@@ -76,26 +78,41 @@ export function GameCard() {
     );
   }
   const prompt = duePrompt(g);
+  const questsDone = g.quests.filter((q) => q.done).length;
   return (
-    <section className="card game-card">
-      <Link href="/game" className="game-head">
-        <span className="game-kicker">{resetOn ? `Reset day · ${Object.keys(g.reset!.answers).length} answers so far` : 'Game plan'}</span>
-        <ChevronRight size={16} className="faint" />
-      </Link>
-      {p.vision && <p className="game-vision">{p.vision}</p>}
-      {p.antiVision && (
-        <p className="game-stake">
-          <span>At stake</span> {p.antiVision}
-        </p>
-      )}
-      {(p.mission.text || p.project.text) && (
-        <div className="game-aims">
-          {p.mission.text && <Aim label="Mission" aim={p.mission} />}
-          {p.project.text && <Aim label="Boss fight" aim={p.project} />}
+    <section className={cx('card game-card', folded && 'is-folded')}>
+      <div className="game-head">
+        <Link href="/game" className="game-head-link">
+          <span className="game-kicker">{resetOn ? `Reset day · ${Object.keys(g.reset!.answers).length} answers so far` : 'Game plan'}</span>
+          <ChevronRight size={16} className="faint" />
+        </Link>
+        <div className="card-head-end">
+          {folded && g.quests.length > 0 && (
+            <span className="hint">
+              {questsDone} of {g.quests.length} quests done
+            </span>
+          )}
+          <FoldButton />
         </div>
+      </div>
+      {folded ? null : (
+        <>
+          {p.vision && <p className="game-vision">{p.vision}</p>}
+          {p.antiVision && (
+            <p className="game-stake">
+              <span>At stake</span> {p.antiVision}
+            </p>
+          )}
+          {(p.mission.text || p.project.text) && (
+            <div className="game-aims">
+              {p.mission.text && <Aim label="Mission" aim={p.mission} />}
+              {p.project.text && <Aim label="Boss fight" aim={p.project} />}
+            </div>
+          )}
+          <Quests g={g} />
+          {prompt && <PromptBox prompt={prompt} answer={g.answered[prompt.id] ?? ''} />}
+        </>
       )}
-      <Quests g={g} />
-      {prompt && <PromptBox prompt={prompt} answer={g.answered[prompt.id] ?? ''} />}
     </section>
   );
 }
