@@ -280,3 +280,36 @@ test('Bonvoy elite nights: counted on from the card, through earlier Marriott st
   const bali = by('W Bali')!;
   assert.deepEqual([bali.year, bali.before, bali.after, bali.recorded], [2027, 0, 3, null], 'a stay checking out next year starts that year afresh');
 });
+
+test('choosing another option for the same way replaces the one chosen, and booked flights never come off', async () => {
+  const { store } = setup();
+  const { addOption, chooseOption, unchooseOption, updateSegment } = await import('../src/features/travel.ts');
+  const gru = createTrip(store, { title: 'São Paulo', purpose: 'work', startDate: '2026-11-29', endDate: '2026-12-13' });
+  const out = addOption(store, gru.id, { title: 'Sunday via Frankfurt', legs: [
+    { carrier: 'SQ', number: '326', fromCode: 'SIN', toCode: 'FRA', startLocal: '2026-11-29T12:50', endLocal: '2026-11-29T19:25' },
+    { carrier: 'LH', number: '506', fromCode: 'FRA', toCode: 'GRU', startLocal: '2026-11-29T21:55', endLocal: '2026-11-30T06:00' },
+  ] });
+  const fra = addOption(store, gru.id, { title: 'Friday night via Frankfurt', legs: [
+    { carrier: 'LH', number: '507', fromCode: 'GRU', toCode: 'FRA', startLocal: '2026-12-11T18:10', endLocal: '2026-12-12T10:45' },
+    { carrier: 'SQ', number: '325', fromCode: 'FRA', toCode: 'SIN', startLocal: '2026-12-12T21:40', endLocal: '2026-12-13T17:00' },
+  ] });
+  const ist = addOption(store, gru.id, { title: 'Saturday via Istanbul', legs: [
+    { carrier: 'TK', number: '16', fromCode: 'GRU', toCode: 'IST', startLocal: '2026-12-12T04:10', endLocal: '2026-12-12T22:40' },
+    { carrier: 'TK', number: '54', fromCode: 'IST', toCode: 'SIN', startLocal: '2026-12-13T01:55', endLocal: '2026-12-13T17:55' },
+  ] });
+  const flights = () => getTrip(store, gru.id).segments.filter((s) => s.kind === 'flight').map((s) => `${s.carrier}${s.number}`);
+  const chosen = () => getTrip(store, gru.id).options.filter((o) => o.chosenAt).map((o) => o.title);
+
+  chooseOption(store, out.id);
+  chooseOption(store, fra.id);
+  assert.deepEqual(chosen().sort(), ['Friday night via Frankfurt', 'Sunday via Frankfurt'], 'the way out and the way home are chosen apart');
+  chooseOption(store, ist.id);
+  assert.deepEqual(chosen().sort(), ['Saturday via Istanbul', 'Sunday via Frankfurt'], 'Istanbul replaces Frankfurt on the way home');
+  assert.deepEqual(flights(), ['SQ326', 'LH506', 'TK16', 'TK54']);
+
+  // The way out gets booked; taking its option off leaves the booked flights where they are.
+  const sq326 = getTrip(store, gru.id).segments.find((s) => s.number === '326')!;
+  updateSegment(store, sq326.id, { confirmation: 'D52JIN' });
+  unchooseOption(store, out.id);
+  assert.deepEqual(flights(), ['SQ326', 'TK16', 'TK54'], 'the booked flight stays; the planned one comes off');
+});

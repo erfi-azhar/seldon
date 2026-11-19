@@ -1232,6 +1232,25 @@ function useStored<T>(key: string, initial: () => T): [T, (v: T) => void] {
   return [value, set];
 }
 
+/**
+ * Which way of a trip is shown, out or home: shared by the Flights card and the flight options, so switching one
+ * switches the other, and remembered per trip on this device.
+ */
+function useTripWay(tripId: string, initial: () => 'out' | 'back'): ['out' | 'back', (v: 'out' | 'back') => void] {
+  const key = `terminus.way.${tripId}`;
+  const [way, setWay] = useStored<'out' | 'back'>(key, initial);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ key: string; way: 'out' | 'back' }>).detail;
+      if (d.key === key) setWay(d.way);
+    };
+    window.addEventListener('terminus:way', on);
+    return () => window.removeEventListener('terminus:way', on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return [way, (v) => window.dispatchEvent(new CustomEvent('terminus:way', { detail: { key, way: v } }))];
+}
+
 /** A trip-page card that folds to its header: the title with a short summary, any actions, and a chevron. */
 function FoldCard({ id, icon, title, peek, extra, className, children }: { id: string; icon: ReactNode; title: string; peek?: ReactNode; extra?: ReactNode; className?: string; children: ReactNode }) {
   const [open, setOpen] = useStored(`terminus.card.${id}`, () => true);
@@ -1339,10 +1358,12 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
   const homeward = new Set(journeys(allFlights).filter((j) => j[j.length - 1]!.toCode === home && j[0]!.fromCode !== home).flat().map((f) => f.id));
   const outbound = allFlights.filter((f) => !homeward.has(f.id));
   const inbound = allFlights.filter((f) => homeward.has(f.id));
-  const twoWays = outbound.length > 0 && inbound.length > 0;
+  // Both ways have a place once there are flights home or options for them, even before one is picked.
+  const homeOptions = trip.options.some((o) => o.legs[o.legs.length - 1]?.toCode === home);
+  const twoWays = outbound.length > 0 && (inbound.length > 0 || homeOptions);
   // What matters now: the way out until you've landed, then the way home. A switch shows the other.
   const landed = outbound.length > 0 && Date.now() > Math.max(...outbound.map((f) => Date.parse(f.endUtc)));
-  const [way, setWay] = useState<'out' | 'back'>(() => (landed ? 'back' : 'out'));
+  const [way, setWay] = useTripWay(trip.id, () => (landed ? 'back' : 'out'));
   const flights = !twoWays ? allFlights : way === 'back' ? inbound : outbound;
   const legs = globeLegs(flights);
   // The flight in the air now, if it's one of these: the globe tracks it.
@@ -1428,6 +1449,8 @@ function TripDetail({ trip, state, head }: { trip: Trip; state: TravelState; hea
           )}
           {allFlights.length === 0 ? (
             <p className="empty">{trip.options.length ? 'Nothing booked yet. Compare the options below.' : 'No flights yet. Add them, paste a confirmation, or let Gmail bring them in.'}</p>
+          ) : flights.length === 0 ? (
+            <p className="empty">No flights home yet. Pick one in the flight options below, or add it once it's booked.</p>
           ) : legs.length ? (
             <div className={cx('flight-pair', live && 'is-live')}>
               {/* Beside the flights, touring them; in the air, above them on the card, tracking the one flying. */}
@@ -1901,7 +1924,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
   const backCount = trip.options.length - outCount;
   const split = outCount > 0 && backCount > 0;
   // Which way is shown, remembered per trip; once the way out is chosen, the way home comes first.
-  const [dir, setDir] = useStored<'out' | 'back'>(`terminus.options.dir.${trip.id}`, () =>
+  const [dir, setDir] = useTripWay(trip.id, () =>
     trip.options.some((o) => !isReturn(o) && o.chosenAt) && !trip.options.some((o) => isReturn(o) && o.chosenAt) ? 'back' : 'out',
   );
   const peek = useScrollEdges<HTMLDivElement>('x', [open, trip.options.length]);
@@ -1993,6 +2016,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
                 key={o.id}
                 o={o}
                 toGo={toGoFor(o)}
+                replaces={!o.chosenAt && trip.options.some((x) => x.chosenAt && x.id !== o.id && isReturn(x) === isReturn(o))}
                 goal={goal}
                 onToggle={() => (o.chosenAt ? unchoose.mutate(o.id) : choose.mutate(o.id))}
                 onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)}
@@ -2010,7 +2034,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
 }
 
 /** One way to make the journey: three numbers that decide it, the route as a timeline of airports, then the fine print. */
-function OptionCard({ o, toGo, goal, onToggle, onRemove, busy }: { o: FlightOption; toGo: number | null; goal: string; onToggle: () => void; onRemove: () => void; busy: boolean }) {
+function OptionCard({ o, toGo, goal, replaces, onToggle, onRemove, busy }: { o: FlightOption; toGo: number | null; goal: string; replaces: boolean; onToggle: () => void; onRemove: () => void; busy: boolean }) {
   const elite = eliteMiles(o);
   const first = o.legs[0]!;
   const last = o.legs[o.legs.length - 1]!;
@@ -2131,7 +2155,7 @@ function OptionCard({ o, toGo, goal, onToggle, onRemove, busy }: { o: FlightOpti
           disabled={busy}
           aria-pressed={!!o.chosenAt}
           onClick={onToggle}
-          title={o.chosenAt ? 'Take these planned flights off the trip' : 'Adds these flights to the trip as planned flights; book them separately'}
+          title={o.chosenAt ? 'Take these planned flights off the trip' : replaces ? 'Puts these flights on the trip in place of the ones chosen for this way' : 'Adds these flights to the trip as planned flights; book them separately'}
         >
           {busy ? <Spinner /> : o.chosenAt ? <CheckIcon size={13} className="opt-added-icon" /> : <Plus size={13} />}
           {o.chosenAt ? (
@@ -2139,6 +2163,8 @@ function OptionCard({ o, toGo, goal, onToggle, onRemove, busy }: { o: FlightOpti
               <span className="is-rest">Flights added to the trip</span>
               <span className="is-hover">Take them off the trip</span>
             </span>
+          ) : replaces ? (
+            'Switch to these flights'
           ) : (
             'Use these flights'
           )}
