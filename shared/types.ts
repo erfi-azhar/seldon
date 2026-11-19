@@ -958,6 +958,8 @@ export interface Segment {
   address: string;
   notes: string;
   source: string;
+  /** Flights: great-circle statute miles between the two airports, what frequent-flyer programmes credit; 0 when unknown. */
+  miles?: number;
   /** Flights: the cities at each end, when the airports are known. */
   fromCity?: string;
   toCity?: string;

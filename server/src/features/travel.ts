@@ -97,6 +97,7 @@ function segmentFromRow(r: Row, accounts: LoyaltyAccount[], stays?: MarriottStay
     address: r.address,
     notes: r.notes,
     source: r.source,
+    miles: r.kind === 'flight' ? milesBetween(r.from_code, r.to_code) : undefined,
     fromCity: airport(r.from_code)?.city ?? '',
     toCity: airport(r.to_code)?.city ?? '',
     fromGeo: geo(r.from_code),
