@@ -417,7 +417,7 @@ export function FigmaConnection() {
           </div>
           {save.error && <p className="error-text">{save.error.message}</p>}
           <p className="hint">
-            Terminus watches the Figma link on every Work card that isn't done; add other files above, one link per line. It reads the comments every quarter hour and tells you in Work when someone comments; {agentName} can turn threads into to-dos, which tick off when the thread is resolved in Figma. It never posts, resolves or changes anything in Figma. The token stays in your Terminus database and is never shown again.
+            Terminus watches the Figma link on every Work card that isn't done; add other files above, one link per line. Only threads started since the card was made, or ones you've joined, count: older threads between other people in a shared file are left out. It reads the comments every quarter hour and tells you in Work when someone comments; {agentName} can turn threads into to-dos, which tick off when the thread is resolved in Figma. It never posts, resolves or changes anything in Figma. The token stays in your Terminus database and is never shown again.
           </p>
         </>
       )}

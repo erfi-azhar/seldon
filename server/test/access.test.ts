@@ -61,6 +61,8 @@ test('tokens never reach secrets, tokens, export, import or deletes; read-only t
     ['GET', '/export'],
     ['POST', '/import'],
     ['PUT', '/integrations/gmail'],
+    ['PUT', '/integrations/figma'],
+    ['GET', '/integrations/figma'],
     ['GET', '/mcp/servers'],
     ['POST', '/capture/token'],
     ['POST', '/auth/logout'],

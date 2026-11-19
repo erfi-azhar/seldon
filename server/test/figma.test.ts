@@ -42,15 +42,17 @@ setFigmaTransport((async (input: string | URL | Request, init?: RequestInit) => 
 after(() => setFigmaTransport(null));
 
 let clock = 0;
+/** New comments land after the card is made (an hour from when the tests start). */
+const START = Date.now() + 3_600_000;
 const PEOPLE = { me: { id: 'me-1', handle: 'Sam Lee' }, ann: { id: 'u-ann', handle: 'Ann (PM)' }, raj: { id: 'u-raj', handle: 'Raj' } };
-function comment(id: string, who: keyof typeof PEOPLE, message: string, opts: { parent?: string; resolved?: boolean; node?: string } = {}): ApiComment {
+function comment(id: string, who: keyof typeof PEOPLE, message: string, opts: { parent?: string; resolved?: boolean; node?: string; at?: string } = {}): ApiComment {
   clock++;
   return {
     id,
     file_key: KEY,
     parent_id: opts.parent ?? '',
     user: { ...PEOPLE[who], img_url: 'https://example.com/a.png' },
-    created_at: new Date(Date.UTC(2026, 10, 18, 0, clock)).toISOString(),
+    created_at: opts.at ?? new Date(START + clock * 60_000).toISOString(),
     resolved_at: opts.resolved ? '2026-11-19T01:00:00Z' : null,
     message,
     client_meta: opts.node ? { node_id: opts.node, node_offset: { x: 4, y: 8 } } : { x: 10, y: 20 },
@@ -279,6 +281,35 @@ test('when Figma is not connected, Seldon is told where to connect it', async ()
 });
 
 // ── Which files ─────────────────────────────────────────────────────────────
+
+test("in a file shared for years, only threads since the card was made, or ones you've joined, count", async () => {
+  const s = await setup();
+  files[KEY] = [
+    ...startingComments(),
+    comment('old1', 'raj', 'Different loading states', { at: '2025-11-24T09:25:18Z' }),
+    comment('old2', 'ann', 'This version looks hmmm', { at: '2026-08-21T08:15:16Z' }),
+    comment('old3', 'raj', 'It is okay, can do an AB test', { parent: 'old2', at: '2026-08-21T08:18:36Z' }),
+    comment('old4', 'ann', 'Use the link style for Add', { at: '2025-10-31T04:29:47Z' }),
+    comment('old5', 'me', "I'll check with the PI team", { parent: 'old4', at: '2025-10-31T05:00:00Z' }),
+    comment('old6', 'ann', 'Any update?', { parent: 'old4', at: '2025-11-02T05:00:00Z' }),
+  ];
+  assert.equal((await s.call('PUT', '/api/integrations/figma', { token: TOKEN })).status, 200);
+  await s.settle();
+
+  const v = (await s.call<FigmaCardComments>('GET', `/api/figma/cards/${s.card.id}`)).body;
+  const ids = v.threads.map((t) => t.id);
+  assert.ok(!ids.includes('old1') && !ids.includes('old2'), "old threads between other people don't count");
+  assert.equal(v.threads.find((t) => t.id === 'old4')?.status, 'needs-you', "an old thread you joined still counts when it's your turn");
+  assert.equal(v.resolved, 1);
+  assert.deepEqual((await s.call('GET', '/api/figma/board')).body, { [s.card.id]: 3 });
+  const read = await runTool('list_figma_comments', { card_id: s.card.id }, { store: s.store, today: TODAY });
+  assert.ok(!read.content.includes('looks hmmm') && read.content.includes('Any update?'));
+
+  // A new reply on an old thread you're not in is not news; on one you joined, it is.
+  files[KEY] = [...(files[KEY] as ApiComment[]), comment('new1', 'raj', 'Still hmmm', { parent: 'old2' }), comment('new2', 'ann', 'Ping', { parent: 'old4' })];
+  assert.deepEqual(await runFigma(s.store), { files: 1, fresh: 1 });
+  assert.deepEqual(signals(s.store).map((x) => x.title), ['Ann (PM) on Checkout Flow: Ping']);
+});
 
 test("finished cards' files are not read; extra files from Settings are; files nothing links to are forgotten", async () => {
   const { store, call, card, settle } = await connected();
