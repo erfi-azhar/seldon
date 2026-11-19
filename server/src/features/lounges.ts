@@ -2,6 +2,7 @@
 // published KrisFlyer, Star Alliance and Marriott Bonvoy rules in broad strokes; the
 // desk has the final word, and Seldon's notes add the specific lounge at each airport.
 
+import { bonvoyPerks, bonvoyTierAt } from '../../../shared/bonvoy.ts';
 import type { LoungeAccess, LoyaltyAccount, Segment } from '../../../shared/types.ts';
 
 export const STAR_ALLIANCE = new Set(['SQ', 'A3', 'AC', 'AI', 'NH', 'OZ', 'OS', 'AV', 'SN', 'CA', 'CM', 'OU', 'MS', 'ET', 'BR', 'LO', 'LH', 'LX', 'NZ', 'ZH', 'SA', 'TP', 'TG', 'TK', 'UA']);
@@ -67,13 +68,8 @@ export const BONVOY_TIERS: { tier: string; at: number }[] = [
 const MARRIOTT_BRANDS = /marriott|ritz[- ]carlton|st\.? regis|\bw (hotel|singapore|[a-z]+)|westin|sheraton|le m[eé]ridien|\bjw\b|edition|luxury collection|renaissance|courtyard|four points|aloft|moxy|autograph collection|tribute portfolio|delta hotels|fairfield|element|\bac hotel|gaylord|design hotels|protea|bulgari/i;
 
 /** What your Bonvoy tier gets you at a Marriott-family hotel. */
-export function stayPerks(seg: Segment, accounts: LoyaltyAccount[]): string[] {
+/** What your Bonvoy tier gets you at a Marriott stay: the tier in force then, counting the year's nights before it. */
+export function stayPerks(seg: Segment, accounts: LoyaltyAccount[], nightsBefore: number | null = null): string[] {
   if (seg.kind !== 'stay' || !MARRIOTT_BRANDS.test(`${seg.title} ${seg.carrier}`)) return [];
-  const tier = bonvoy(accounts)?.tier.toLowerCase() ?? '';
-  if (/ambassador/.test(tier)) return ['Executive lounge and breakfast', 'Ambassador service and 24-hour check-in', '4pm late checkout', 'Best-available upgrade'];
-  if (/titanium/.test(tier)) return ['Executive lounge and breakfast', '4pm late checkout', 'Upgrade, suites included when available'];
-  if (/platinum/.test(tier)) return ['Executive lounge and breakfast', '4pm late checkout', 'Upgrade, suites included when available'];
-  if (/gold/.test(tier)) return ['2pm late checkout', 'Enhanced room upgrade', 'Welcome points'];
-  if (/silver/.test(tier)) return ['Priority late checkout'];
-  return [];
+  return bonvoyPerks(bonvoyTierAt(bonvoy(accounts)?.tier ?? '', nightsBefore));
 }

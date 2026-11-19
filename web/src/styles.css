@@ -3791,7 +3791,6 @@ code,
   letter-spacing: 0;
 }
 
-
 /* ── Surface language: liquid glass over a soft ambient field ───────────────
    The page sits on a faint colour field so translucent surfaces have something to
    pick up. Trays (cards, bars, sheets) are glass; the things inside them are tiles. */
@@ -8501,164 +8500,14 @@ button.layover-pill:hover .layover-lounge {
 .stay-card-stats {
   border-color: var(--line);
 }
+/* Last on the card (no address): no rule hanging under it. */
+.stay-card-stats:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 /* On a narrow card the small line wraps rather than cutting off "2pm late". */
 .stay-card-stats .opt-stat-sub {
   white-space: normal;
-}
-.stay-card-label {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-/* Bonvoy elite nights */
-.stay-bonvoy {
-  display: grid;
-  gap: 8px;
-}
-.stay-bonvoy-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-.stay-bonvoy-add {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--bonvoy-ink);
-  font-variant-numeric: tabular-nums;
-}
-.stay-bonvoy-bar {
-  position: relative;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--line-2);
-  overflow: hidden;
-}
-.stay-bonvoy-bar > span {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-}
-.stay-bonvoy-bar .is-before {
-  background: var(--ink-4);
-}
-.stay-bonvoy-bar .is-stay {
-  background: var(--bonvoy);
-}
-/* Tier marks: thin notches cut into the bar */
-.stay-bonvoy-bar > i {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  background: var(--surface-2);
-}
-.stay-bonvoy-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 2px 10px;
-  font-size: 12.5px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-.stay-bonvoy-foot b {
-  color: var(--ink);
-  font-weight: 650;
-}
-.stay-bonvoy-tier {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  justify-self: start;
-  margin: 2px 0 0;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--bonvoy-ink);
-  background: var(--bonvoy-soft);
-}
-.stay-bonvoy-note {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--ink-3);
-}
-/* What your status gets you */
-.stay-card-perks {
-  display: grid;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-.stay-card-perks ul {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 6px 14px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.stay-card-perks li {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 13px;
-  line-height: 1.35;
-  color: var(--ink-2);
-}
-.stay-card-perks li svg {
-  flex: none;
-  margin-top: 2px;
-  color: var(--good);
-}
-/* A stay's elite nights and benefits, folded into one line until opened. */
-.stay-fold > summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 2px 0;
-  list-style: none;
-  cursor: pointer;
-}
-.stay-fold > summary::-webkit-details-marker {
-  display: none;
-}
-.stay-fold > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 6px;
-}
-.stay-fold-gist {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-  font-size: 12.5px;
-  color: var(--ink-2);
-}
-.stay-fold-chev {
-  color: var(--ink-4);
-  transition: transform 0.18s ease;
-}
-.stay-fold[open] > summary .stay-fold-chev {
-  transform: rotate(180deg);
-}
-.stay-fold-body {
-  display: grid;
-  gap: 14px;
-  padding-top: 12px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .stay-fold-chev {
-    transition: none;
-  }
 }
 .stay-card-address {
   display: flex;
@@ -9257,7 +9106,6 @@ button.layover-pill:hover .layover-lounge {
   --b: 14px;
   --m: transparent 83%, #000 100%;
 }
-
 
 /* Today's to-dos: work beside everything else, one column on a phone. */
 .today-todos {
@@ -13734,7 +13582,6 @@ button.xw-coin:hover,
   }
 }
 
-
 /* Seldon's orb: a dotted thinking orb, scaled from its nearest tuned size. */
 .agent-orb {
   overflow: visible;
@@ -14241,35 +14088,131 @@ button.xw-coin:hover,
   right: 0;
   transform: none;
 }
-.bv-cols {
+
+
+/* Bonvoy panel: the year's nights, each stay with the tier and perks you'll have there, then the points. */
+.bv-nights {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 14px 32px;
-}
-.bv-col {
-  display: grid;
-  align-content: start;
   gap: 8px;
+  padding-top: 14px;
 }
-.bv-col h4 {
+.bv-nights-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px 12px;
+  flex-wrap: wrap;
   margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.bv-nights-line b {
+  color: var(--ink);
+  font-weight: 650;
+}
+.bv-nights-line .is-met {
+  color: var(--kf-met);
+  font-weight: 600;
+}
+.bv-perks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bv-perks li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.bv-perks svg {
+  color: var(--kf-met);
+}
+.bv-reach,
+.bv-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+}
+.bv-reach {
+  color: var(--kf-booked);
+  font-weight: 600;
+}
+.bv-note {
+  color: var(--ink-3);
+}
+.bv-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: 10px 20px;
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.bv-totals div {
+  display: grid;
+  gap: 2px;
+}
+.bv-totals dt {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.kf-rows.is-stacked {
-  grid-template-columns: 1fr;
-  gap: 6px;
+.bv-totals dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
 }
-.bv-out {
-  margin: 2px 0 0;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-  font-size: 13.5px;
+
+/* On a Marriott stay's card: the tier you'll have there, its perks, and what the stay earns. */
+.stay-bonvoy-strip {
+  display: grid;
+  gap: 8px;
+  --kf-met: oklch(0.58 0.13 155);
+  --kf-booked: oklch(0.6 0.15 35);
+}
+.sbs-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+}
+.sbs-tier {
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
-.bv-out.is-met {
-  color: var(--kf-met);
+.sbs-tier b {
+  margin-left: 4px;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+.sbs-earn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.sbs-earn b {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--kf-booked);
 }
