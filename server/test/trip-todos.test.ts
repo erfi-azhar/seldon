@@ -163,13 +163,25 @@ test('choosing an option can be taken back: its planned flights come off and the
   const satBiz = addOption(store, gru.id, { title: 'Saturday via Frankfurt', legs: legs('28').map((l) => ({ ...l, cabin: 'business' as const })) });
   chooseOption(store, sat.id);
   assert.equal(getTrip(store, gru.id).startDate, '2026-11-28');
-  chooseOption(store, satBiz.id); // the same flights: nothing new added
+  const cabins = () => getTrip(store, gru.id).segments.map((s) => s.cabin);
+  assert.deepEqual(cabins(), ['Economy', 'Economy']);
+  chooseOption(store, satBiz.id); // the same flights: nothing new added, but they're now planned in Business
   assert.equal(getTrip(store, gru.id).segments.length, 2);
+  assert.deepEqual(cabins(), ['Business', 'Business']);
 
-  // Another chosen option still flies them, so they stay.
+  // Another chosen option still flies them, so they stay, in that option's cabin.
   unchooseOption(store, sat.id);
   assert.equal(getTrip(store, gru.id).segments.length, 2);
+  assert.deepEqual(cabins(), ['Business', 'Business']);
   assert.equal(getTrip(store, gru.id).options.find((o) => o.id === sat.id)!.chosenAt, null);
+
+  // Switching back to Economy: the cabin follows, and taking Business off leaves them in Economy.
+  chooseOption(store, sat.id);
+  assert.deepEqual(cabins(), ['Economy', 'Economy']);
+  unchooseOption(store, satBiz.id);
+  assert.deepEqual(cabins(), ['Economy', 'Economy']);
+  assert.match(getTrip(store, gru.id).segments[0]!.notes, /not booked yet/);
+  chooseOption(store, satBiz.id);
 
   // Chose them back and take both off: flights gone, dates back.
   chooseOption(store, sat.id);

@@ -1759,28 +1759,37 @@ function tierGoal(label: string): { tier: string; by: number | null; byLabel: st
 const isPlanned = (s: Segment) => (s.source === 'option' && !s.confirmation) || /not booked/i.test(s.notes);
 
 /**
- * Under a trip's flights: where its KrisFlyer elite miles take you. The bar starts from the elite miles on the
- * KrisFlyer card, adds booked flights on earlier trips not yet counted, then this trip's booked flights and,
- * striped, the ones only planned, against the next tier's target. Flights flown before the card was last
+ * Where a trip leaves you against the next KrisFlyer tier: the elite miles on the card, booked flights on earlier
+ * trips not yet counted, and this trip's own flights with what each earns. Flights flown before the card was last
  * updated are already in its number; flights after the deadline count towards the next year instead.
  */
-function MilesProgress({ trip, state }: { trip: Trip; state: TravelState }) {
+function kfStanding(trip: Trip, state: TravelState) {
   const kf = state.loyalty.find((a) => a.kind === 'airline' && /krisflyer/i.test(a.program) && a.progress !== null && a.progressTarget);
   if (!kf) return null;
-  const { tier, by, byLabel } = tierGoal(kf.progressLabel);
+  const goal = tierGoal(kf.progressLabel);
   const since = Date.parse(kf.updatedAt);
-  const counts = (s: Segment) => s.kind === 'flight' && Date.parse(s.startUtc) > since && (by === null || Date.parse(s.startUtc) <= by);
+  const counts = (s: Segment) => s.kind === 'flight' && Date.parse(s.startUtc) > since && (goal.by === null || Date.parse(s.startUtc) <= goal.by);
   const ours = trip.segments.filter(counts).map((s) => ({ s, e: flightElite(s)?.elite ?? 0 })).filter((x) => x.e > 0);
-  // Only show it for trips with flights that earn: Singapore Airlines, Scoot or a partner.
-  if (!ours.length) return null;
-  const first = Math.min(...ours.map((x) => Date.parse(x.s.startUtc)));
+  const firstOf = (segs: Segment[]) => Math.min(...segs.filter((s) => s.kind === 'flight').map((s) => Date.parse(s.startUtc)));
+  const first = ours.length ? Math.min(...ours.map((x) => Date.parse(x.s.startUtc))) : firstOf(trip.segments);
   const before = state.trips
     .filter((t) => t.id !== trip.id)
     .flatMap((t) => t.segments)
     .filter((s) => counts(s) && !isPlanned(s) && Date.parse(s.startUtc) < first)
     .reduce((n, s) => n + (flightElite(s)?.elite ?? 0), 0);
-  const base = kf.progress!;
-  const target = kf.progressTarget!;
+  return { kf, ...goal, target: kf.progressTarget!, base: kf.progress!, before, ours };
+}
+
+/**
+ * Under a trip's flights: where its KrisFlyer elite miles take you. The bar starts from the elite miles on the
+ * KrisFlyer card, adds booked flights on earlier trips not yet counted, then this trip's booked flights and,
+ * striped, the ones only planned, against the next tier's target.
+ */
+function MilesProgress({ trip, state }: { trip: Trip; state: TravelState }) {
+  const st = kfStanding(trip, state);
+  // Only show it for trips with flights that earn: Singapore Airlines, Scoot or a partner.
+  if (!st || !st.ours.length) return null;
+  const { kf, tier, byLabel, target, base, before, ours } = st;
   const booked = ours.filter((x) => !isPlanned(x.s));
   const planned = ours.filter((x) => isPlanned(x.s));
   const sum = (xs: typeof ours) => xs.reduce((n, x) => n + x.e, 0);
@@ -1899,10 +1908,17 @@ function FlightOptions({ trip }: { trip: Trip }) {
   const grid = useScrollEdges<HTMLDivElement>('x', [open, trip.options.length, dir]);
   const chosen = trip.options.filter((o) => o.chosenAt).length;
   const best = [...trip.options].sort((a, b) => eliteMiles(b).mid - eliteMiles(a).mid)[0];
-  // How far there is still to go for the next KrisFlyer tier, to show what each option does for it.
-  const kf = t?.loyalty.find((a) => a.program === 'KrisFlyer');
-  const toGo = kf && kf.progress !== null && kf.progressTarget ? Math.max(0, kf.progressTarget - kf.progress) : null;
-  const goal = kf?.progressLabel?.match(/to (Elite \w+|PPS Club)/i)?.[1] ?? 'the next tier';
+  // How far there is still to go for the next KrisFlyer tier once what's booked has flown (the card, earlier trips,
+  // this trip's booked flights other than the option's own), to show what each option does for it.
+  const st = t ? kfStanding(trip, t) : null;
+  const goal = st?.tier ?? 'the next tier';
+  const legKey = (carrier: string, number: string, startLocal: string) => `${carrier}${number}|${startLocal.slice(0, 10)}`.toUpperCase();
+  const toGoFor = (o: FlightOption): number | null => {
+    if (!st) return null;
+    const own = new Set(o.legs.map((l) => legKey(l.carrier, l.number, l.startLocal)));
+    const booked = st.ours.filter((x) => !isPlanned(x.s) && !own.has(legKey(x.s.carrier, x.s.number, x.s.startLocal))).reduce((n, x) => n + x.e, 0);
+    return Math.max(0, st.target - st.base - st.before - booked);
+  };
   // The recommended option first, then the ones that earn the most elite miles.
   const ordered = [...trip.options].sort((a, b) => Number(b.recommended) - Number(a.recommended) || eliteMiles(b).mid - eliteMiles(a).mid);
   const departing = ordered.filter((o) => !isReturn(o));
@@ -1976,7 +1992,7 @@ function FlightOptions({ trip }: { trip: Trip }) {
               <OptionCard
                 key={o.id}
                 o={o}
-                toGo={toGo}
+                toGo={toGoFor(o)}
                 goal={goal}
                 onToggle={() => (o.chosenAt ? unchoose.mutate(o.id) : choose.mutate(o.id))}
                 onRemove={() => window.confirm(`Remove the option “${o.title}”?`) && remove.mutate(o.id)}

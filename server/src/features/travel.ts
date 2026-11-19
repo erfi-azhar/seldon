@@ -15,7 +15,7 @@ import { registerSnapshotSection } from '../agent/snapshot-hooks.ts';
 import { tool } from '../agent/tools.ts';
 import { read, today as todayOf } from '../http.ts';
 import { addDays, daysBetween, Invalid, localDate, newId, NotFound, nowIso, registerUndo, type Store } from '../store.ts';
-import type { EliteNights, FlightOption, GuideCity, ItemDetail, ItemRoute, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
+import type { Cabin, EliteNights, FlightOption, GuideCity, ItemDetail, ItemRoute, ItineraryItem, LoyaltyAccount, OptionLeg, Segment, StayOption, TravelContext, TravelSettings, TravelState, Trip, TripPurpose } from '../../../shared/types.ts';
 import { airport, validZone, zonedToUtc } from './airports.ts';
 import { getIntegration, updateIntegration } from './integrations.ts';
 import { BONVOY_TIERS, isMarriott, loungeAccess, stayPerks } from './lounges.ts';
@@ -547,6 +547,8 @@ export function updateOption(store: Store, id: string, p: Partial<OptionInput>):
 }
 
 /** Put an option's flights on its trip as planned flights (not booked yet), and mark it chosen. */
+const CABIN_LABEL: Record<Cabin, string> = { economy: 'Economy', premium: 'Premium Economy', business: 'Business' };
+
 export function chooseOption(store: Store, id: string): Trip {
   const r = store.db.prepare('SELECT * FROM trip_options WHERE id = ?').get(id) as Row | undefined;
   if (!r) throw new NotFound('Option');
@@ -556,10 +558,18 @@ export function chooseOption(store: Store, id: string): Trip {
   const before = getTrip(store, o.tripId);
   const segments: string[] = [];
   for (const l of o.legs) {
-    const cabin = { economy: 'Economy', premium: 'Premium Economy', business: 'Business' }[l.cabin ?? 'economy'];
+    const cabin = CABIN_LABEL[l.cabin ?? 'economy'];
     const input: SegmentInput = { kind: 'flight', carrier: l.carrier, number: l.number, fromCode: l.fromCode, toCode: l.toCode, startLocal: l.startLocal, endLocal: l.endLocal, startTz: l.startTz, endTz: l.endTz, cabin, notes: `Planned from the option “${o.title}”, not booked yet.` };
-    // A flight already booked on any trip (SQ857 home from Shenzhen, say) stays where it is.
-    if (findSame(store, null, normalise(input, settings))) continue;
+    // A flight already booked on any trip (SQ857 home from Shenzhen, say) stays where it is. One only planned from
+    // another option with the same flights (the Business version of this Economy one) takes this option's cabin.
+    const same = findSame(store, null, normalise(input, settings));
+    if (same) {
+      if (same.source === 'option' && !same.confirmation && same.trip_id === o.tripId) {
+        store.db.prepare('UPDATE trip_segments SET cabin = ?, notes = ? WHERE id = ?').run(cabin, input.notes ?? '', same.id);
+        segments.push(same.id as string);
+      }
+      continue;
+    }
     segments.push(addSegment(store, o.tripId, input, 'option').segment.id);
   }
   // Remember what was added, and the trip's dates before, so it can all be taken back.
@@ -602,6 +612,14 @@ export function unchooseOption(store: Store, id: string): Trip {
       if (added.endDate) theirs.endDate = theirs.endDate && theirs.endDate < added.endDate ? theirs.endDate : added.endDate;
       heir.row.added = JSON.stringify(theirs);
       store.db.prepare('UPDATE trip_options SET added = ? WHERE id = ?').run(heir.row.added, heir.row.id);
+      // Still only planned: it takes the cabin that option flies it in.
+      const theirsOpt = optionFromRow(heir.row);
+      const leg = theirsOpt.legs.find((l) => key(l.carrier, l.number, l.startLocal) === key(s.carrier, s.number, s.start_local));
+      if (leg && !s.confirmation) {
+        store.db
+          .prepare('UPDATE trip_segments SET cabin = ?, notes = ? WHERE id = ?')
+          .run(CABIN_LABEL[leg.cabin ?? 'economy'], `Planned from the option “${theirsOpt.title}”, not booked yet.`, sid);
+      }
       continue;
     }
     drop.run(sid);
